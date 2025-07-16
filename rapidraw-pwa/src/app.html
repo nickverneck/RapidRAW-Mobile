@@ -2,11 +2,40 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
+		
+		<!-- Primary Meta Tags -->
+		<title>RapiDraw PWA - Professional RAW Photo Editor</title>
+		<meta name="title" content="RapiDraw PWA - Professional RAW Photo Editor" />
+		<meta name="description" content="Professional RAW photo editing application with advanced tools and glassmorphism UI" />
+		
+		<!-- Viewport for PWA -->
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+		
+		<!-- PWA Meta Tags -->
+		<meta name="theme-color" content="#1e1b4b" />
+		<meta name="background-color" content="#0f0f23" />
+		<meta name="display" content="standalone" />
+		<meta name="orientation" content="landscape-primary" />
+		
+		<!-- Apple PWA Meta Tags -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="apple-mobile-web-app-title" content="RapiDraw" />
+		
+		<!-- Icons -->
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+		<link rel="mask-icon" href="%sveltekit.assets%/masked-icon.svg" color="#1e1b4b" />
+		
+		<!-- Manifest -->
+		<link rel="manifest" href="%sveltekit.assets%/manifest.json" />
+		
+		<!-- Preload Critical Resources -->
+		<link rel="preload" href="%sveltekit.assets%/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin />
+		
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover">
+	<body data-sveltekit-preload-data="hover" class="overflow-hidden">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>
