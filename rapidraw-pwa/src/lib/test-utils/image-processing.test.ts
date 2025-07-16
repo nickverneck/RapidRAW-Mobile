@@ -1,359 +1,726 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { createTestImage, createTestRAWData, mockWebGPU, mockWebGL } from './wasm-test-utils';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { get } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 
-// Mock WebAssembly modules for testing
-const mockImageProcessor = {
-  process_image: vi.fn().mockReturnValue(new Uint8Array(100)),
-  generate_histogram: vi.fn().mockReturnValue({
-    red: new Array(256).fill(0),
-    green: new Array(256).fill(0),
-    blue: new Array(256).fill(0),
-    luminance: new Array(256).fill(0)
-  }),
-  apply_color_grading: vi.fn().mockReturnValue(new Uint8Array(100)),
-  free: vi.fn()
+// Mock image data structure
+interface ImageData {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  data: ArrayBuffer | null;
+  metadata: Record<string, any>;
+}
+
+interface ImageAdjustments {
+  exposure: number;
+  contrast: number;
+  highlights: number;
+  shadows: number;
+  whites: number;
+  blacks: number;
+  saturation: number;
+  vibrance: number;
+  temperature: number;
+  tint: number;
+}
+
+interface HistoryEntry {
+  id: string;
+  timestamp: number;
+  adjustments: ImageAdjustments;
+  description: string;
+}
+
+// Mock WebAssembly module
+const mockWasmModule = {
+  process_image: vi.fn(),
+  get_histogram: vi.fn(),
+  apply_adjustments: vi.fn(),
 };
 
-const mockRawProcessor = {
-  decode_raw: vi.fn().mockReturnValue(new Uint8Array([255, 128, 64, 255])),
-  get_metadata: vi.fn().mockReturnValue({
-    camera: 'Canon EOS R5',
-    lens: 'RF 24-70mm f/2.8L IS USM',
-    iso: 800,
-    aperture: 2.8,
-    shutterSpeed: '1/125',
-    focalLength: 50,
-    whiteBalance: 5600,
-    colorSpace: 'sRGB'
-  }),
-  free: vi.fn()
+// Mock file reading
+const mockFileReader = {
+  readAsArrayBuffer: vi.fn(),
+  result: null,
+  onload: null,
+  onerror: null,
 };
 
-// Mock WASM module loading
-vi.mock('../wasm/image_processing', () => ({
-  ImageProcessor: vi.fn(() => mockImageProcessor)
-}));
+Object.defineProperty(window, 'FileReader', {
+  value: vi.fn(() => mockFileReader)
+});
 
-vi.mock('../wasm/raw_processing', () => ({
-  RawProcessor: vi.fn(() => mockRawProcessor)
-}));
-
-describe('Image Processing Workflow Tests', () => {
-  let testImageData: Uint8Array;
-  let testRAWData: Uint8Array;
-
-  beforeAll(async () => {
-    testImageData = createTestImage(1920, 1080);
-    testRAWData = createTestRAWData();
+describe('Image Data State Management and History', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  afterAll(() => {
-    // Cleanup any allocated memory
-    mockImageProcessor.free();
-    mockRawProcessor.free();
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  describe('RAW File Processing', () => {
-    it('should decode RAW files successfully', async () => {
-      const expectedDecodedData = new Uint8Array([255, 128, 64, 255]);
-      mockRawProcessor.decode_raw.mockReturnValue(expectedDecodedData);
-
-      const result = mockRawProcessor.decode_raw(testRAWData, 'CR2');
-
-      expect(mockRawProcessor.decode_raw).toHaveBeenCalledWith(testRAWData, 'CR2');
-      expect(result).toEqual(expectedDecodedData);
-    });
-
-    it('should extract metadata from RAW files', () => {
-      const expectedMetadata = {
-        camera: 'Canon EOS R5',
-        lens: 'RF 24-70mm f/2.8L IS USM',
-        iso: 800,
-        aperture: 2.8,
-        shutterSpeed: '1/125',
-        focalLength: 50,
-        whiteBalance: 5600,
-        colorSpace: 'sRGB'
+  describe('Image Store Management', () => {
+    it('should create and manage image store', () => {
+      const createImageStore = () => {
+        const images = writable<ImageData[]>([]);
+        const currentImageId = writable<string | null>(null);
+        
+        const currentImage = derived(
+          [images, currentImageId],
+          ([$images, $currentImageId]) => {
+            return $images.find(img => img.id === $currentImageId) || null;
+          }
+        );
+        
+        return {
+          images,
+          currentImageId,
+          currentImage,
+          addImage: (image: ImageData) => {
+            images.update(imgs => [...imgs, image]);
+          },
+          removeImage: (id: string) => {
+            images.update(imgs => imgs.filter(img => img.id !== id));
+            currentImageId.update(currentId => currentId === id ? null : currentId);
+          },
+          setCurrentImage: (id: string) => {
+            currentImageId.set(id);
+          }
+        };
       };
       
-      mockRawProcessor.get_metadata.mockReturnValue(expectedMetadata);
-
-      const metadata = mockRawProcessor.get_metadata(testRAWData);
-
-      expect(mockRawProcessor.get_metadata).toHaveBeenCalledWith(testRAWData);
-      expect(metadata).toEqual(expectedMetadata);
-      expect(metadata.camera).toBe('Canon EOS R5');
-      expect(metadata.iso).toBe(800);
-    });
-
-    it('should handle unsupported RAW formats gracefully', async () => {
-      mockRawProcessor.decode_raw.mockRejectedValue(new Error('Unsupported format: XYZ'));
-
-      await expect(mockRawProcessor.decode_raw(testRAWData, 'XYZ'))
-        .rejects.toThrow('Unsupported format: XYZ');
-    });
-
-    it('should handle corrupted RAW data', async () => {
-      const corruptedData = new Uint8Array([0, 0, 0, 0]);
-      mockRawProcessor.decode_raw.mockRejectedValue(new Error('Invalid RAW data'));
-
-      await expect(mockRawProcessor.decode_raw(corruptedData, 'CR2'))
-        .rejects.toThrow('Invalid RAW data');
-    });
-  });
-
-  describe('Histogram and Waveform Generation', () => {
-    it('should generate accurate histogram data', () => {
-      const expectedHistogram = {
-        red: new Array(256).fill(0).map(() => Math.floor(Math.random() * 1000)),
-        green: new Array(256).fill(0).map(() => Math.floor(Math.random() * 1000)),
-        blue: new Array(256).fill(0).map(() => Math.floor(Math.random() * 1000)),
-        luminance: new Array(256).fill(0).map(() => Math.floor(Math.random() * 1000))
-      };
-
-      mockImageProcessor.generate_histogram.mockReturnValue(expectedHistogram);
-
-      const histogram = mockImageProcessor.generate_histogram(testImageData);
-
-      expect(mockImageProcessor.generate_histogram).toHaveBeenCalledWith(testImageData);
-      expect(histogram).toHaveProperty('red');
-      expect(histogram).toHaveProperty('green');
-      expect(histogram).toHaveProperty('blue');
-      expect(histogram).toHaveProperty('luminance');
-      expect(histogram.red).toHaveLength(256);
-      expect(histogram.green).toHaveLength(256);
-      expect(histogram.blue).toHaveLength(256);
-      expect(histogram.luminance).toHaveLength(256);
-    });
-
-    it('should generate waveform data for RGB channels', () => {
-      const expectedWaveform = {
+      const imageStore = createImageStore();
+      
+      const testImage: ImageData = {
+        id: 'test-1',
+        name: 'test.jpg',
         width: 1920,
-        height: 200,
-        red: new Uint8Array(100), // Smaller size for testing
-        green: new Uint8Array(100),
-        blue: new Uint8Array(100)
+        height: 1080,
+        data: new ArrayBuffer(1024),
+        metadata: { camera: 'Canon EOS R5' }
       };
-
-      mockImageProcessor.generate_histogram.mockReturnValue(expectedWaveform);
-
-      const waveform = mockImageProcessor.generate_histogram(testImageData);
-
-      expect(waveform).toHaveProperty('width', 1920);
-      expect(waveform).toHaveProperty('height', 200);
-      expect(waveform.red).toBeInstanceOf(Uint8Array);
-      expect(waveform.green).toBeInstanceOf(Uint8Array);
-      expect(waveform.blue).toBeInstanceOf(Uint8Array);
-    });
-
-    it('should handle empty image data', async () => {
-      const emptyData = new Uint8Array(0);
-      mockImageProcessor.generate_histogram.mockRejectedValue(new Error('Empty image data'));
-
-      await expect(mockImageProcessor.generate_histogram(emptyData))
-        .rejects.toThrow('Empty image data');
-    });
-  });
-
-  describe('Real-time Adjustment Processing', () => {
-    it('should process basic adjustments in real-time', () => {
-      const adjustments = {
-        exposure: 0.5,
-        contrast: 0.2,
-        highlights: -0.3,
-        shadows: 0.4,
-        whites: 0.1,
-        blacks: -0.1
-      };
-
-      const expectedProcessedData = new Uint8Array(100); // Smaller test data
-      mockImageProcessor.process_image.mockReturnValue(expectedProcessedData);
-
-      const startTime = performance.now();
-      const result = mockImageProcessor.process_image(testImageData, adjustments);
-      const processingTime = performance.now() - startTime;
-
-      expect(mockImageProcessor.process_image).toHaveBeenCalledWith(testImageData, adjustments);
-      expect(result).toBeInstanceOf(Uint8Array);
-      // Real-time processing should complete within 100ms for test data
-      expect(processingTime).toBeLessThan(100);
-    });
-
-    it('should process color grading adjustments', () => {
-      const colorAdjustments = {
-        temperature: 200,
-        tint: -50,
-        saturation: 0.2,
-        vibrance: 0.1,
-        hsl: {
-          reds: { hue: 10, saturation: 5, lightness: 0 },
-          oranges: { hue: 0, saturation: 0, lightness: 0 },
-          yellows: { hue: -5, saturation: 10, lightness: 5 },
-          greens: { hue: 0, saturation: 0, lightness: 0 },
-          cyans: { hue: 0, saturation: 0, lightness: 0 },
-          blues: { hue: 0, saturation: 0, lightness: 0 },
-          purples: { hue: 0, saturation: 0, lightness: 0 },
-          magentas: { hue: 0, saturation: 0, lightness: 0 }
-        }
-      };
-
-      const expectedResult = new Uint8Array(100); // Smaller test data
-      mockImageProcessor.apply_color_grading.mockReturnValue(expectedResult);
-
-      const result = mockImageProcessor.apply_color_grading(testImageData, colorAdjustments);
-
-      expect(mockImageProcessor.apply_color_grading).toHaveBeenCalledWith(testImageData, colorAdjustments);
-      expect(result).toBeInstanceOf(Uint8Array);
-    });
-
-    it('should handle extreme adjustment values gracefully', async () => {
-      const extremeAdjustments = {
-        exposure: 5.0,  // Very high exposure
-        contrast: -1.0, // Maximum negative contrast
-        highlights: -1.0,
-        shadows: 1.0,
-        whites: 1.0,
-        blacks: -1.0
-      };
-
-      const expectedResult = new Uint8Array(testImageData.length);
-      mockImageProcessor.process_image.mockResolvedValue(expectedResult);
-
-      const result = await mockImageProcessor.process_image(testImageData, extremeAdjustments);
-
-      expect(result).toBeInstanceOf(Uint8Array);
-      expect(result.length).toBe(testImageData.length);
-    });
-  });
-
-  describe('WebGPU/WebGL Fallback Behavior', () => {
-    it('should use WebGPU when available', async () => {
-      const mockWebGPUContext = mockWebGPU();
       
-      // Mock WebGPU availability
-      Object.defineProperty(navigator, 'gpu', {
-        value: mockWebGPUContext,
-        configurable: true
-      });
-
-      const adjustments = { exposure: 0.5 };
-      const expectedResult = new Uint8Array(testImageData.length);
-      mockImageProcessor.process_image.mockResolvedValue(expectedResult);
-
-      const result = await mockImageProcessor.process_image(testImageData, adjustments);
-
-      expect(result).toBeInstanceOf(Uint8Array);
-      // In a real implementation, we would verify WebGPU was used
-    });
-
-    it('should fallback to WebGL when WebGPU is unavailable', async () => {
-      // Mock WebGPU as unavailable
-      Object.defineProperty(navigator, 'gpu', {
-        value: undefined,
-        configurable: true
-      });
-
-      const mockWebGLContext = mockWebGL();
-      const mockCanvas = document.createElement('canvas');
-      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(mockWebGLContext);
-
-      const adjustments = { exposure: 0.5 };
-      const expectedResult = new Uint8Array(testImageData.length);
-      mockImageProcessor.process_image.mockResolvedValue(expectedResult);
-
-      const result = await mockImageProcessor.process_image(testImageData, adjustments);
-
-      expect(result).toBeInstanceOf(Uint8Array);
-      // In a real implementation, we would verify WebGL was used
-    });
-
-    it('should fallback to CPU processing when neither WebGPU nor WebGL are available', async () => {
-      // Mock both WebGPU and WebGL as unavailable
-      Object.defineProperty(navigator, 'gpu', {
-        value: undefined,
-        configurable: true
-      });
-
-      const mockCanvas = document.createElement('canvas');
-      vi.spyOn(mockCanvas, 'getContext').mockReturnValue(null);
-
-      const adjustments = { exposure: 0.5 };
-      const expectedResult = new Uint8Array(testImageData.length);
-      mockImageProcessor.process_image.mockResolvedValue(expectedResult);
-
-      const result = await mockImageProcessor.process_image(testImageData, adjustments);
-
-      expect(result).toBeInstanceOf(Uint8Array);
-      // CPU fallback should still work but may be slower
-    });
-
-    it('should handle GPU context loss gracefully', async () => {
-      const mockWebGLContext = mockWebGL();
+      // Add image
+      imageStore.addImage(testImage);
       
-      // Simulate context loss
-      const contextLossEvent = new Event('webglcontextlost');
-      mockWebGLContext.canvas.dispatchEvent(contextLossEvent);
+      const images = get(imageStore.images);
+      expect(images).toHaveLength(1);
+      expect(images[0]).toEqual(testImage);
+      
+      // Set current image
+      imageStore.setCurrentImage('test-1');
+      
+      const currentImage = get(imageStore.currentImage);
+      expect(currentImage).toEqual(testImage);
+      
+      // Remove image
+      imageStore.removeImage('test-1');
+      
+      const imagesAfterRemoval = get(imageStore.images);
+      const currentImageAfterRemoval = get(imageStore.currentImage);
+      
+      expect(imagesAfterRemoval).toHaveLength(0);
+      expect(currentImageAfterRemoval).toBeNull();
+    });
 
-      const adjustments = { exposure: 0.5 };
-      // Should fallback to CPU processing
-      const expectedResult = new Uint8Array(testImageData.length);
-      mockImageProcessor.process_image.mockResolvedValue(expectedResult);
+    it('should handle multiple images', () => {
+      const createImageStore = () => {
+        const images = writable<ImageData[]>([]);
+        const currentImageId = writable<string | null>(null);
+        
+        return {
+          images,
+          currentImageId,
+          addImage: (image: ImageData) => {
+            images.update(imgs => [...imgs, image]);
+          },
+          setCurrentImage: (id: string) => {
+            currentImageId.set(id);
+          }
+        };
+      };
+      
+      const imageStore = createImageStore();
+      
+      const images = [
+        { id: '1', name: 'img1.jpg', width: 1920, height: 1080, data: null, metadata: {} },
+        { id: '2', name: 'img2.jpg', width: 3840, height: 2160, data: null, metadata: {} },
+        { id: '3', name: 'img3.jpg', width: 2560, height: 1440, data: null, metadata: {} }
+      ];
+      
+      images.forEach(img => imageStore.addImage(img));
+      
+      const storedImages = get(imageStore.images);
+      expect(storedImages).toHaveLength(3);
+      expect(storedImages.map(img => img.id)).toEqual(['1', '2', '3']);
+    });
 
-      const result = await mockImageProcessor.process_image(testImageData, adjustments);
-
-      expect(result).toBeInstanceOf(Uint8Array);
+    it('should validate image data', () => {
+      const createImageStore = () => {
+        const images = writable<ImageData[]>([]);
+        
+        const validateImage = (image: ImageData): boolean => {
+          return !!(
+            image.id &&
+            image.name &&
+            image.width > 0 &&
+            image.height > 0
+          );
+        };
+        
+        return {
+          images,
+          addImage: (image: ImageData) => {
+            if (!validateImage(image)) {
+              throw new Error('Invalid image data');
+            }
+            images.update(imgs => [...imgs, image]);
+          }
+        };
+      };
+      
+      const imageStore = createImageStore();
+      
+      const validImage: ImageData = {
+        id: 'valid',
+        name: 'valid.jpg',
+        width: 1920,
+        height: 1080,
+        data: null,
+        metadata: {}
+      };
+      
+      const invalidImage: ImageData = {
+        id: '',
+        name: '',
+        width: 0,
+        height: 0,
+        data: null,
+        metadata: {}
+      };
+      
+      expect(() => imageStore.addImage(validImage)).not.toThrow();
+      expect(() => imageStore.addImage(invalidImage)).toThrow('Invalid image data');
     });
   });
 
-  describe('Performance Benchmarks', () => {
-    it('should complete processing within performance thresholds', async () => {
-      const adjustments = {
-        exposure: 0.5,
-        contrast: 0.2,
-        highlights: -0.3,
-        shadows: 0.4
+  describe('Image Adjustments Management', () => {
+    it('should manage image adjustments state', () => {
+      const createAdjustmentsStore = () => {
+        const adjustments = writable<ImageAdjustments>({
+          exposure: 0,
+          contrast: 0,
+          highlights: 0,
+          shadows: 0,
+          whites: 0,
+          blacks: 0,
+          saturation: 0,
+          vibrance: 0,
+          temperature: 0,
+          tint: 0
+        });
+        
+        return {
+          adjustments,
+          updateAdjustment: <K extends keyof ImageAdjustments>(
+            key: K,
+            value: ImageAdjustments[K]
+          ) => {
+            adjustments.update(adj => ({ ...adj, [key]: value }));
+          },
+          resetAdjustments: () => {
+            adjustments.set({
+              exposure: 0,
+              contrast: 0,
+              highlights: 0,
+              shadows: 0,
+              whites: 0,
+              blacks: 0,
+              saturation: 0,
+              vibrance: 0,
+              temperature: 0,
+              tint: 0
+            });
+          }
+        };
       };
+      
+      const adjustmentsStore = createAdjustmentsStore();
+      
+      // Update single adjustment
+      adjustmentsStore.updateAdjustment('exposure', 1.5);
+      
+      let currentAdjustments = get(adjustmentsStore.adjustments);
+      expect(currentAdjustments.exposure).toBe(1.5);
+      expect(currentAdjustments.contrast).toBe(0);
+      
+      // Update multiple adjustments
+      adjustmentsStore.updateAdjustment('contrast', 25);
+      adjustmentsStore.updateAdjustment('saturation', 10);
+      
+      currentAdjustments = get(adjustmentsStore.adjustments);
+      expect(currentAdjustments.exposure).toBe(1.5);
+      expect(currentAdjustments.contrast).toBe(25);
+      expect(currentAdjustments.saturation).toBe(10);
+      
+      // Reset adjustments
+      adjustmentsStore.resetAdjustments();
+      
+      currentAdjustments = get(adjustmentsStore.adjustments);
+      expect(currentAdjustments.exposure).toBe(0);
+      expect(currentAdjustments.contrast).toBe(0);
+      expect(currentAdjustments.saturation).toBe(0);
+    });
 
-      const iterations = 10;
-      const times: number[] = [];
+    it('should validate adjustment values', () => {
+      const createAdjustmentsStore = () => {
+        const adjustments = writable<ImageAdjustments>({
+          exposure: 0,
+          contrast: 0,
+          highlights: 0,
+          shadows: 0,
+          whites: 0,
+          blacks: 0,
+          saturation: 0,
+          vibrance: 0,
+          temperature: 0,
+          tint: 0
+        });
+        
+        const validateAdjustment = (key: keyof ImageAdjustments, value: number): boolean => {
+          const ranges: Record<keyof ImageAdjustments, [number, number]> = {
+            exposure: [-5, 5],
+            contrast: [-100, 100],
+            highlights: [-100, 100],
+            shadows: [-100, 100],
+            whites: [-100, 100],
+            blacks: [-100, 100],
+            saturation: [-100, 100],
+            vibrance: [-100, 100],
+            temperature: [-2000, 2000],
+            tint: [-100, 100]
+          };
+          
+          const [min, max] = ranges[key];
+          return value >= min && value <= max;
+        };
+        
+        return {
+          adjustments,
+          updateAdjustment: <K extends keyof ImageAdjustments>(
+            key: K,
+            value: ImageAdjustments[K]
+          ) => {
+            if (!validateAdjustment(key, value)) {
+              throw new Error(`Invalid ${key} value: ${value}`);
+            }
+            adjustments.update(adj => ({ ...adj, [key]: value }));
+          }
+        };
+      };
+      
+      const adjustmentsStore = createAdjustmentsStore();
+      
+      // Valid values
+      expect(() => adjustmentsStore.updateAdjustment('exposure', 2.5)).not.toThrow();
+      expect(() => adjustmentsStore.updateAdjustment('contrast', 50)).not.toThrow();
+      
+      // Invalid values
+      expect(() => adjustmentsStore.updateAdjustment('exposure', 10)).toThrow();
+      expect(() => adjustmentsStore.updateAdjustment('contrast', 150)).toThrow();
+    });
+  });
 
-      for (let i = 0; i < iterations; i++) {
-        const startTime = performance.now();
-        await mockImageProcessor.process_image(testImageData, adjustments);
-        const endTime = performance.now();
-        times.push(endTime - startTime);
+  describe('History Management', () => {
+    it('should manage adjustment history', () => {
+      const createHistoryStore = () => {
+        const history = writable<HistoryEntry[]>([]);
+        const currentIndex = writable(-1);
+        
+        const canUndo = derived(currentIndex, $index => $index > 0);
+        const canRedo = derived(
+          [history, currentIndex],
+          ([$history, $index]) => $index < $history.length - 1
+        );
+        
+        return {
+          history,
+          currentIndex,
+          canUndo,
+          canRedo,
+          addEntry: (adjustments: ImageAdjustments, description: string) => {
+            const entry: HistoryEntry = {
+              id: `entry-${Date.now()}`,
+              timestamp: Date.now(),
+              adjustments: { ...adjustments },
+              description
+            };
+            
+            history.update(hist => {
+              const currentIdx = get(currentIndex);
+              // Remove any entries after current index (for branching history)
+              const newHistory = hist.slice(0, currentIdx + 1);
+              return [...newHistory, entry];
+            });
+            
+            currentIndex.update(idx => idx + 1);
+          },
+          undo: () => {
+            currentIndex.update(idx => Math.max(0, idx - 1));
+          },
+          redo: () => {
+            const hist = get(history);
+            currentIndex.update(idx => Math.min(hist.length - 1, idx + 1));
+          },
+          getCurrentEntry: () => {
+            const hist = get(history);
+            const idx = get(currentIndex);
+            return hist[idx] || null;
+          }
+        };
+      };
+      
+      const historyStore = createHistoryStore();
+      
+      const baseAdjustments: ImageAdjustments = {
+        exposure: 0, contrast: 0, highlights: 0, shadows: 0,
+        whites: 0, blacks: 0, saturation: 0, vibrance: 0,
+        temperature: 0, tint: 0
+      };
+      
+      // Add initial entry
+      historyStore.addEntry(baseAdjustments, 'Initial state');
+      
+      expect(get(historyStore.canUndo)).toBe(false);
+      expect(get(historyStore.canRedo)).toBe(false);
+      
+      // Add adjustment
+      const adjustedState = { ...baseAdjustments, exposure: 1.5 };
+      historyStore.addEntry(adjustedState, 'Increased exposure');
+      
+      expect(get(historyStore.canUndo)).toBe(true);
+      expect(get(historyStore.canRedo)).toBe(false);
+      
+      // Add another adjustment
+      const furtherAdjusted = { ...adjustedState, contrast: 25 };
+      historyStore.addEntry(furtherAdjusted, 'Increased contrast');
+      
+      // Test undo
+      historyStore.undo();
+      let currentEntry = historyStore.getCurrentEntry();
+      expect(currentEntry?.adjustments.exposure).toBe(1.5);
+      expect(currentEntry?.adjustments.contrast).toBe(0);
+      expect(get(historyStore.canRedo)).toBe(true);
+      
+      // Test redo
+      historyStore.redo();
+      currentEntry = historyStore.getCurrentEntry();
+      expect(currentEntry?.adjustments.contrast).toBe(25);
+      expect(get(historyStore.canRedo)).toBe(false);
+    });
+
+    it('should handle history branching', () => {
+      const createHistoryStore = () => {
+        const history = writable<HistoryEntry[]>([]);
+        const currentIndex = writable(-1);
+        
+        return {
+          history,
+          currentIndex,
+          addEntry: (adjustments: ImageAdjustments, description: string) => {
+            const entry: HistoryEntry = {
+              id: `entry-${Date.now()}`,
+              timestamp: Date.now(),
+              adjustments: { ...adjustments },
+              description
+            };
+            
+            history.update(hist => {
+              const currentIdx = get(currentIndex);
+              // Remove any entries after current index (for branching history)
+              const newHistory = hist.slice(0, currentIdx + 1);
+              return [...newHistory, entry];
+            });
+            
+            currentIndex.update(idx => idx + 1);
+          },
+          undo: () => {
+            currentIndex.update(idx => Math.max(0, idx - 1));
+          }
+        };
+      };
+      
+      const historyStore = createHistoryStore();
+      
+      const baseAdjustments: ImageAdjustments = {
+        exposure: 0, contrast: 0, highlights: 0, shadows: 0,
+        whites: 0, blacks: 0, saturation: 0, vibrance: 0,
+        temperature: 0, tint: 0
+      };
+      
+      // Create initial history
+      historyStore.addEntry(baseAdjustments, 'Initial');
+      historyStore.addEntry({ ...baseAdjustments, exposure: 1 }, 'Exposure +1');
+      historyStore.addEntry({ ...baseAdjustments, exposure: 1, contrast: 20 }, 'Contrast +20');
+      
+      expect(get(historyStore.history)).toHaveLength(3);
+      
+      // Undo to middle state
+      historyStore.undo();
+      
+      // Add new branch
+      historyStore.addEntry({ ...baseAdjustments, exposure: 1, saturation: 15 }, 'Saturation +15');
+      
+      // History should be truncated and new entry added
+      const history = get(historyStore.history);
+      expect(history).toHaveLength(3);
+      expect(history[2].description).toBe('Saturation +15');
+      expect(history[2].adjustments.saturation).toBe(15);
+    });
+
+    it('should limit history size', () => {
+      const createHistoryStore = (maxSize = 50) => {
+        const history = writable<HistoryEntry[]>([]);
+        const currentIndex = writable(-1);
+        
+        return {
+          history,
+          currentIndex,
+          addEntry: (adjustments: ImageAdjustments, description: string) => {
+            const entry: HistoryEntry = {
+              id: `entry-${Date.now()}`,
+              timestamp: Date.now(),
+              adjustments: { ...adjustments },
+              description
+            };
+            
+            history.update(hist => {
+              const currentIdx = get(currentIndex);
+              let newHistory = hist.slice(0, currentIdx + 1);
+              newHistory.push(entry);
+              
+              // Limit history size
+              if (newHistory.length > maxSize) {
+                newHistory = newHistory.slice(-maxSize);
+                currentIndex.set(maxSize - 1);
+              } else {
+                currentIndex.update(idx => idx + 1);
+              }
+              
+              return newHistory;
+            });
+          }
+        };
+      };
+      
+      const historyStore = createHistoryStore(3);
+      
+      const baseAdjustments: ImageAdjustments = {
+        exposure: 0, contrast: 0, highlights: 0, shadows: 0,
+        whites: 0, blacks: 0, saturation: 0, vibrance: 0,
+        temperature: 0, tint: 0
+      };
+      
+      // Add more entries than the limit
+      for (let i = 0; i < 5; i++) {
+        historyStore.addEntry(
+          { ...baseAdjustments, exposure: i },
+          `Entry ${i}`
+        );
       }
+      
+      const history = get(historyStore.history);
+      expect(history).toHaveLength(3);
+      expect(history[0].description).toBe('Entry 2');
+      expect(history[2].description).toBe('Entry 4');
+    });
+  });
 
-      const averageTime = times.reduce((sum, time) => sum + time, 0) / times.length;
-      const maxTime = Math.max(...times);
-
-      // Performance thresholds for test data
-      expect(averageTime).toBeLessThan(50); // Average under 50ms
-      expect(maxTime).toBeLessThan(100); // Max under 100ms
+  describe('Image Processing Integration', () => {
+    it('should integrate with WebAssembly processing', async () => {
+      mockWasmModule.apply_adjustments.mockResolvedValue(new ArrayBuffer(1024));
+      
+      const createImageProcessor = () => {
+        const isProcessing = writable(false);
+        const processedImageData = writable<ArrayBuffer | null>(null);
+        
+        return {
+          isProcessing,
+          processedImageData,
+          processImage: async (imageData: ArrayBuffer, adjustments: ImageAdjustments) => {
+            isProcessing.set(true);
+            
+            try {
+              const result = await mockWasmModule.apply_adjustments(imageData, adjustments);
+              processedImageData.set(result);
+              return result;
+            } finally {
+              isProcessing.set(false);
+            }
+          }
+        };
+      };
+      
+      const processor = createImageProcessor();
+      
+      const testImageData = new ArrayBuffer(2048);
+      const testAdjustments: ImageAdjustments = {
+        exposure: 1.5, contrast: 25, highlights: 0, shadows: 0,
+        whites: 0, blacks: 0, saturation: 10, vibrance: 0,
+        temperature: 0, tint: 0
+      };
+      
+      expect(get(processor.isProcessing)).toBe(false);
+      
+      const resultPromise = processor.processImage(testImageData, testAdjustments);
+      
+      expect(get(processor.isProcessing)).toBe(true);
+      
+      const result = await resultPromise;
+      
+      expect(get(processor.isProcessing)).toBe(false);
+      expect(result).toBeInstanceOf(ArrayBuffer);
+      expect(get(processor.processedImageData)).toBe(result);
+      expect(mockWasmModule.apply_adjustments).toHaveBeenCalledWith(
+        testImageData,
+        testAdjustments
+      );
     });
 
-    it('should handle memory efficiently for large images', async () => {
-      // Create a larger test image (4K resolution)
-      const largeImageData = createTestImage(3840, 2160);
-      const adjustments = { exposure: 0.5 };
-
-      const initialMemory = (performance as any).memory?.usedJSHeapSize || 0;
+    it('should handle processing errors', async () => {
+      mockWasmModule.apply_adjustments.mockRejectedValue(new Error('Processing failed'));
       
-      const expectedResult = new Uint8Array(largeImageData.length);
-      mockImageProcessor.process_image.mockResolvedValue(expectedResult);
+      const createImageProcessor = () => {
+        const isProcessing = writable(false);
+        const error = writable<string | null>(null);
+        
+        return {
+          isProcessing,
+          error,
+          processImage: async (imageData: ArrayBuffer, adjustments: ImageAdjustments) => {
+            isProcessing.set(true);
+            error.set(null);
+            
+            try {
+              const result = await mockWasmModule.apply_adjustments(imageData, adjustments);
+              return result;
+            } catch (err) {
+              error.set(err instanceof Error ? err.message : 'Unknown error');
+              throw err;
+            } finally {
+              isProcessing.set(false);
+            }
+          }
+        };
+      };
+      
+      const processor = createImageProcessor();
+      
+      const testImageData = new ArrayBuffer(2048);
+      const testAdjustments: ImageAdjustments = {
+        exposure: 0, contrast: 0, highlights: 0, shadows: 0,
+        whites: 0, blacks: 0, saturation: 0, vibrance: 0,
+        temperature: 0, tint: 0
+      };
+      
+      await expect(
+        processor.processImage(testImageData, testAdjustments)
+      ).rejects.toThrow('Processing failed');
+      
+      expect(get(processor.isProcessing)).toBe(false);
+      expect(get(processor.error)).toBe('Processing failed');
+    });
+  });
 
-      await mockImageProcessor.process_image(largeImageData, adjustments);
-
-      // Force garbage collection if available
-      if (global.gc) {
-        global.gc();
+  describe('Performance and Memory Management', () => {
+    it('should handle large image data efficiently', () => {
+      const createImageStore = () => {
+        const images = writable<ImageData[]>([]);
+        
+        return {
+          images,
+          addImage: (image: ImageData) => {
+            images.update(imgs => {
+              // Limit number of images in memory
+              const maxImages = 10;
+              const newImages = [...imgs, image];
+              
+              if (newImages.length > maxImages) {
+                // Remove oldest images
+                return newImages.slice(-maxImages);
+              }
+              
+              return newImages;
+            });
+          }
+        };
+      };
+      
+      const imageStore = createImageStore();
+      
+      // Add many large images
+      for (let i = 0; i < 15; i++) {
+        const largeImage: ImageData = {
+          id: `large-${i}`,
+          name: `large-${i}.jpg`,
+          width: 8000,
+          height: 6000,
+          data: new ArrayBuffer(8000 * 6000 * 4), // Simulated large image
+          metadata: {}
+        };
+        
+        imageStore.addImage(largeImage);
       }
+      
+      const images = get(imageStore.images);
+      expect(images).toHaveLength(10);
+      expect(images[0].id).toBe('large-5'); // Oldest kept
+      expect(images[9].id).toBe('large-14'); // Newest
+    });
 
-      const finalMemory = (performance as any).memory?.usedJSHeapSize || 0;
-      const memoryIncrease = finalMemory - initialMemory;
-
-      // Memory increase should be reasonable (less than 100MB for test)
-      expect(memoryIncrease).toBeLessThan(100 * 1024 * 1024);
+    it('should clean up resources when images are removed', () => {
+      const createImageStore = () => {
+        const images = writable<ImageData[]>([]);
+        const cleanupCallbacks = new Map<string, () => void>();
+        
+        return {
+          images,
+          addImage: (image: ImageData, cleanup?: () => void) => {
+            images.update(imgs => [...imgs, image]);
+            if (cleanup) {
+              cleanupCallbacks.set(image.id, cleanup);
+            }
+          },
+          removeImage: (id: string) => {
+            images.update(imgs => imgs.filter(img => img.id !== id));
+            
+            // Call cleanup callback
+            const cleanup = cleanupCallbacks.get(id);
+            if (cleanup) {
+              cleanup();
+              cleanupCallbacks.delete(id);
+            }
+          }
+        };
+      };
+      
+      const imageStore = createImageStore();
+      const cleanupSpy = vi.fn();
+      
+      const testImage: ImageData = {
+        id: 'test',
+        name: 'test.jpg',
+        width: 1920,
+        height: 1080,
+        data: new ArrayBuffer(1024),
+        metadata: {}
+      };
+      
+      imageStore.addImage(testImage, cleanupSpy);
+      imageStore.removeImage('test');
+      
+      expect(cleanupSpy).toHaveBeenCalled();
     });
   });
 });
