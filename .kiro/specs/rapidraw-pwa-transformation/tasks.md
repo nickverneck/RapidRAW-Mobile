@@ -39,28 +39,28 @@
 
 ## Phase 2: WebAssembly Testing and Setup
 
-- [ ] 2. Create WebAssembly module tests
+- [x] 2. Create WebAssembly module tests
   - Write Rust unit tests for core image processing functions
   - Create integration tests for WebAssembly-JavaScript interop
   - Build performance benchmarks for WASM vs JavaScript processing
   - Set up memory usage and leak detection tests for WASM modules
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 9.3_
 
-- [ ] 2.1 Write image processing workflow tests
+- [x] 2.1 Write image processing workflow tests
   - Create tests for RAW file decoding and metadata extraction
   - Write tests for histogram and waveform generation
   - Build tests for real-time adjustment processing
   - Create tests for WebGPU/WebGL fallback behavior
   - _Requirements: 5.1, 5.2, 5.3, 12.3, 12.4, 12.5_
 
-- [ ] 2.2 Set up WebAssembly build pipeline
+- [x] 2.2 Set up WebAssembly build pipeline
   - Configure wasm-pack for Rust to WebAssembly compilation
   - Create Cargo workspace for WebAssembly modules
   - Set up build scripts for automatic WASM compilation during development
   - Configure Vite to handle WebAssembly module imports
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 2.3 Implement core WebAssembly modules
+- [x] 2.3 Implement core WebAssembly modules
   - Create image_processing.wasm module with wasm-bindgen bindings
   - Build raw_processing.wasm with support for major RAW formats
   - Implement color_grading.wasm module for LUT generation

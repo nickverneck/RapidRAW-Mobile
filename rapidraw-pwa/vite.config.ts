@@ -2,6 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { resolve } from 'path';
 
 export default defineConfig({
 	plugins: [
@@ -110,6 +111,33 @@ export default defineConfig({
 			}
 		})
 	],
+	resolve: {
+		alias: {
+			'@': resolve(__dirname, './src'),
+			'@wasm': resolve(__dirname, './src/lib/wasm')
+		}
+	},
+	optimizeDeps: {
+		exclude: ['@rapidraw/image-processing', '@rapidraw/raw-processing', '@rapidraw/color-grading']
+	},
+	server: {
+		fs: {
+			allow: ['..']
+		},
+		headers: {
+			'Cross-Origin-Embedder-Policy': 'require-corp',
+			'Cross-Origin-Opener-Policy': 'same-origin'
+		}
+	},
+	build: {
+		target: 'esnext',
+		rollupOptions: {
+			external: (id) => {
+				// Don't bundle WASM files, let them be loaded dynamically
+				return id.includes('.wasm');
+			}
+		}
+	},
 	test: {
 		projects: [
 			{

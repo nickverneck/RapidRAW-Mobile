@@ -1,0 +1,28 @@
+[package]
+name = "raw-processing"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = { workspace = true, features = ["serde-serialize"] }
+js-sys = { workspace = true }
+web-sys = { workspace = true, features = [
+  "console",
+  "File",
+  "FileReader",
+  "Blob"
+] }
+console_error_panic_hook = { workspace = true }
+wee_alloc = { workspace = true, optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+
+# RAW processing dependencies
+rawler = { version = "0.6", default-features = false }
+image = { version = "0.24", default-features = false }
+
+[features]
+default = ["console_error_panic_hook"]

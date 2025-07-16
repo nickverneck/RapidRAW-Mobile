@@ -1,0 +1,24 @@
+[workspace]
+members = [
+    "image-processing",
+    "raw-processing", 
+    "color-grading"
+]
+
+[workspace.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = "0.3"
+console_error_panic_hook = "0.1"
+wee_alloc = "0.4"
+
+[profile.release]
+# Optimize for size and performance
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.release.package."*"]
+# Optimize dependencies for size
+opt-level = "s"

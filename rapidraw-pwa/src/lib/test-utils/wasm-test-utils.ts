@@ -236,3 +236,195 @@ export function generateTestHSLAdjustments() {
 		magentas: { hue: 0, saturation: 0, lightness: 0 }
 	};
 }
+/**
+
+ * Additional test utilities for image processing workflow tests
+ */
+
+export function createTestImage(width: number, height: number): Uint8Array {
+	return generateTestImageData(width, height);
+}
+
+export function createTestRAWData(): Uint8Array {
+	// Create mock RAW file header and data
+	const headerSize = 1024;
+	const imageDataSize = 1920 * 1080 * 2; // 16-bit per pixel
+	const totalSize = headerSize + imageDataSize;
+	
+	const rawData = new Uint8Array(totalSize);
+	
+	// Mock RAW file header (simplified)
+	const header = new TextEncoder().encode('MOCK_RAW_HEADER');
+	rawData.set(header, 0);
+	
+	// Fill with mock sensor data
+	for (let i = headerSize; i < totalSize; i += 2) {
+		const value = Math.floor(Math.random() * 65536);
+		rawData[i] = value & 0xFF;
+		rawData[i + 1] = (value >> 8) & 0xFF;
+	}
+	
+	return rawData;
+}
+
+export function mockWebGPU() {
+	const mockAdapter = {
+		requestDevice: vi.fn().mockResolvedValue({
+			createBuffer: vi.fn(),
+			createTexture: vi.fn(),
+			createShaderModule: vi.fn(),
+			createComputePipeline: vi.fn(),
+			createCommandEncoder: vi.fn(),
+			queue: {
+				submit: vi.fn(),
+				writeBuffer: vi.fn(),
+				writeTexture: vi.fn()
+			}
+		})
+	};
+
+	return {
+		requestAdapter: vi.fn().mockResolvedValue(mockAdapter)
+	};
+}
+
+export function mockWebGL() {
+	const canvas = document.createElement('canvas');
+	const mockContext = {
+		canvas,
+		createShader: vi.fn(),
+		createProgram: vi.fn(),
+		createBuffer: vi.fn(),
+		createTexture: vi.fn(),
+		createFramebuffer: vi.fn(),
+		shaderSource: vi.fn(),
+		compileShader: vi.fn(),
+		attachShader: vi.fn(),
+		linkProgram: vi.fn(),
+		useProgram: vi.fn(),
+		bindBuffer: vi.fn(),
+		bindTexture: vi.fn(),
+		bindFramebuffer: vi.fn(),
+		bufferData: vi.fn(),
+		texImage2D: vi.fn(),
+		texParameteri: vi.fn(),
+		viewport: vi.fn(),
+		drawArrays: vi.fn(),
+		drawElements: vi.fn(),
+		getUniformLocation: vi.fn(),
+		getAttribLocation: vi.fn(),
+		uniform1f: vi.fn(),
+		uniform2f: vi.fn(),
+		uniform3f: vi.fn(),
+		uniform4f: vi.fn(),
+		uniformMatrix4fv: vi.fn(),
+		enableVertexAttribArray: vi.fn(),
+		vertexAttribPointer: vi.fn(),
+		readPixels: vi.fn(),
+		getError: vi.fn().mockReturnValue(0), // GL_NO_ERROR
+		VERTEX_SHADER: 35633,
+		FRAGMENT_SHADER: 35632,
+		ARRAY_BUFFER: 34962,
+		ELEMENT_ARRAY_BUFFER: 34963,
+		TEXTURE_2D: 3553,
+		FRAMEBUFFER: 36160,
+		RGBA: 6408,
+		UNSIGNED_BYTE: 5121,
+		FLOAT: 5126,
+		TRIANGLES: 4,
+		STATIC_DRAW: 35044
+	};
+
+	// Add event listener support for context loss
+	canvas.addEventListener = vi.fn();
+	canvas.removeEventListener = vi.fn();
+	canvas.dispatchEvent = vi.fn();
+
+	return mockContext;
+}
+
+export function measureMemoryUsage(): Promise<number> {
+	return new Promise((resolve) => {
+		if ('memory' in performance) {
+			resolve((performance as any).memory.usedJSHeapSize);
+		} else {
+			resolve(0);
+		}
+	});
+}
+
+export interface BenchmarkResult {
+	wasmTime: number;
+	jsTime: number;
+	speedup: number;
+	memoryUsage: number;
+}
+
+export async function benchmarkProcessing(
+	wasmFn: () => Promise<any>,
+	jsFn: () => Promise<any>,
+	iterations: number = 10
+): Promise<BenchmarkResult> {
+	// Benchmark WebAssembly implementation
+	const wasmTimes: number[] = [];
+	for (let i = 0; i < iterations; i++) {
+		const start = performance.now();
+		await wasmFn();
+		wasmTimes.push(performance.now() - start);
+	}
+
+	// Benchmark JavaScript implementation
+	const jsTimes: number[] = [];
+	for (let i = 0; i < iterations; i++) {
+		const start = performance.now();
+		await jsFn();
+		jsTimes.push(performance.now() - start);
+	}
+
+	const wasmTime = wasmTimes.reduce((sum, time) => sum + time, 0) / wasmTimes.length;
+	const jsTime = jsTimes.reduce((sum, time) => sum + time, 0) / jsTimes.length;
+
+	return {
+		wasmTime,
+		jsTime,
+		speedup: jsTime / wasmTime,
+		memoryUsage: await measureMemoryUsage()
+	};
+}
+
+export function createMemoryLeakDetector() {
+	let initialMemory = 0;
+	let samples: number[] = [];
+
+	return {
+		start: async () => {
+			initialMemory = await measureMemoryUsage();
+			samples = [];
+		},
+		
+		sample: async () => {
+			const currentMemory = await measureMemoryUsage();
+			samples.push(currentMemory);
+		},
+		
+		detect: () => {
+			if (samples.length < 2) return false;
+			
+			// Check for consistent memory growth
+			let growthCount = 0;
+			for (let i = 1; i < samples.length; i++) {
+				if (samples[i] > samples[i - 1]) {
+					growthCount++;
+				}
+			}
+			
+			// If memory grows in more than 70% of samples, likely a leak
+			return growthCount / (samples.length - 1) > 0.7;
+		},
+		
+		getMemoryGrowth: () => {
+			if (samples.length === 0) return 0;
+			return Math.max(...samples) - initialMemory;
+		}
+	};
+}
