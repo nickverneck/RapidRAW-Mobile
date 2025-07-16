@@ -42,6 +42,7 @@
 							on:click|stopPropagation={undo}
 							disabled={!$canUndo}
 							title="Undo (Ctrl+Z)"
+							aria-label="Undo (Ctrl+Z)"
 						>
 							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<path d="M3 7v6h6"/>
@@ -54,6 +55,7 @@
 							on:click|stopPropagation={redo}
 							disabled={!$canRedo}
 							title="Redo (Ctrl+Y)"
+							aria-label="Redo (Ctrl+Y)"
 						>
 							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<path d="M21 7v6h-6"/>
@@ -65,6 +67,7 @@
 							class="control-button"
 							on:click|stopPropagation={resetAdjustments}
 							title="Reset all adjustments"
+							aria-label="Reset all adjustments"
 						>
 							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 								<path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/>
