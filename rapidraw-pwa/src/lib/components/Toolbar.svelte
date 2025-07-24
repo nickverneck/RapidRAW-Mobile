@@ -117,7 +117,7 @@
 						stroke="currentColor" 
 						stroke-width="2"
 					>
-						{@html getIconSvg($toolbarCollapsed ? 'chevronRight' : 'chevronLeft')}
+						{@html getIconSvg($toolbarCollapsed ? 'chevronLeft' : 'chevronRight')}
 					</svg>
 				</button>
 			{/if}
@@ -216,23 +216,7 @@
 					</div>
 				{/if}
 			</div>
-		{:else if !selectedImage}
-			<div class="no-image-panel glass-panel">
-				<svg 
-					class="no-image-icon" 
-					width="32" 
-					height="32" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
-					stroke-width="1.5"
-				>
-					<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-					<circle cx="9" cy="9" r="2"/>
-					<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
-				</svg>
-				<p class="no-image-text">Select an image to use editing tools</p>
-			</div>
+
 		{/if}
 	</div>
 
@@ -247,12 +231,9 @@
 		backdrop-filter: blur(15px);
 		-webkit-backdrop-filter: blur(15px);
 		border-left: 1px solid rgba(255, 255, 255, 0.1);
-		overflow: hidden;
-		transition: width 0.3s ease;
-	}
-
-	.toolbar.collapsed {
-		width: 60px;
+		width: 100%;
+		overflow: visible;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.toolbar.mobile {
@@ -301,6 +282,8 @@
 		gap: 0.5rem;
 		padding: 1rem;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		overflow: visible;
 	}
 
 	.tool-buttons.mobile-grid {
@@ -512,19 +495,12 @@
 		background: rgba(59, 130, 246, 0.4);
 	}
 
-	.placeholder-panel,
-	.no-image-panel {
+	.placeholder-panel {
 		text-align: center;
 		padding: 2rem 1rem;
 		color: rgba(255, 255, 255, 0.6);
 	}
 
-	.no-image-icon {
-		margin-bottom: 1rem;
-		opacity: 0.5;
-	}
-
-	.no-image-text,
 	.placeholder-text {
 		font-size: 0.9rem;
 		margin: 0;

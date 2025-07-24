@@ -501,14 +501,14 @@
 	}
 
 	.nav-next {
-		/* Position relative to toolbar - 320px toolbar width + 1rem spacing */
-		right: calc(320px + 1rem);
+		/* Default position when toolbar is expanded (260px width) - moved further left */
+		right: calc(260px + 2rem);
 		transition: right 0.3s ease;
 	}
 
 	.nav-next.toolbar-collapsed {
-		/* When toolbar is collapsed, position relative to 60px collapsed width */
-		right: calc(60px + 1rem);
+		/* When toolbar is collapsed, position relative to 60px collapsed width - moved further left */
+		right: calc(60px + 2rem);
 	}
 
 	.nav-btn:hover {

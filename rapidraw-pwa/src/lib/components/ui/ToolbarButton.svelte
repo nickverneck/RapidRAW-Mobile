@@ -13,19 +13,6 @@
 	}
 
 	let { tool, active = false, disabled = false, collapsed = false, onclick }: Props = $props();
-
-	function getIconSvg(iconName: string): string {
-		const icons: Record<string, string> = {
-			metadata: '<circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>',
-			adjustments: '<circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6"/>',
-			crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 6H8a2 2 0 0 0-2 2v10"/>',
-			masking: '<path d="M12 2l3.09 6.26L22 9l-5.91 5.91L22 22l-6.74-1.09L12 22l-3.26-1.09L2 22l5.91-7.09L2 9l6.91-.74L12 2z"/>',
-			presets: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
-			ai: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27,6.96 12,12.01 20.73,6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
-			export: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/>'
-		};
-		return icons[iconName] || '';
-	}
 </script>
 
 <button 
@@ -39,16 +26,59 @@
 	title={collapsed ? tool.name : tool.description}
 >
 	<div class="tool-icon">
-		<svg 
-			width="20" 
-			height="20" 
-			viewBox="0 0 24 24" 
-			fill="none" 
-			stroke="currentColor" 
-			stroke-width="2"
-		>
-			{@html getIconSvg(tool.icon)}
-		</svg>
+		{#if tool.icon === 'info'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="12" cy="12" r="10"/>
+				<path d="M12 16v-4"/>
+				<path d="M12 8h.01"/>
+			</svg>
+		{:else if tool.icon === 'sliders'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<line x1="4" x2="4" y1="21" y2="14"/>
+				<line x1="4" x2="4" y1="10" y2="3"/>
+				<line x1="12" x2="12" y1="21" y2="12"/>
+				<line x1="12" x2="12" y1="8" y2="3"/>
+				<line x1="20" x2="20" y1="21" y2="16"/>
+				<line x1="20" x2="20" y1="12" y2="3"/>
+				<line x1="1" x2="7" y1="14" y2="14"/>
+				<line x1="9" x2="15" y1="8" y2="8"/>
+				<line x1="17" x2="23" y1="16" y2="16"/>
+			</svg>
+		{:else if tool.icon === 'crop'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M6 2v14a2 2 0 0 0 2 2h14"/>
+				<path d="M18 6H8a2 2 0 0 0-2 2v10"/>
+			</svg>
+		{:else if tool.icon === 'layers'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<polygon points="12,2 2,7 12,12 22,7"/>
+				<polyline points="2,17 12,22 22,17"/>
+				<polyline points="2,12 12,17 22,12"/>
+			</svg>
+		{:else if tool.icon === 'palette'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<circle cx="13.5" cy="6.5" r=".5"/>
+				<circle cx="17.5" cy="10.5" r=".5"/>
+				<circle cx="8.5" cy="7.5" r=".5"/>
+				<circle cx="6.5" cy="12.5" r=".5"/>
+				<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+			</svg>
+		{:else if tool.icon === 'brain'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/>
+				<path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/>
+			</svg>
+		{:else if tool.icon === 'download'}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+				<polyline points="7,10 12,15 17,10"/>
+				<line x1="12" y1="15" x2="12" y2="3"/>
+			</svg>
+		{:else}
+			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+				<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+			</svg>
+		{/if}
 	</div>
 	{#if !collapsed}
 		<span class="tool-name">{tool.name}</span>

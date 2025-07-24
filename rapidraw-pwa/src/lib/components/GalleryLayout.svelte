@@ -230,12 +230,13 @@
 
 	.toolbar-container {
 		grid-area: toolbar;
-		width: 320px;
+		width: 260px;
 		background: rgba(0, 0, 0, 0.1);
 		backdrop-filter: blur(15px);
 		-webkit-backdrop-filter: blur(15px);
 		border-left: 1px solid rgba(255, 255, 255, 0.1);
 		transition: width 0.3s ease;
+		overflow: visible;
 	}
 
 	.toolbar-container.collapsed {

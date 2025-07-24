@@ -428,13 +428,17 @@
 	.scroll-indicators {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: center;
+		position: relative;
 		padding: 0.5rem 0.75rem;
 		background: rgba(0, 0, 0, 0.3);
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
 	.scroll-btn {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
 		padding: 0.5rem;
 		border: none;
 		background: rgba(255, 255, 255, 0.1);
@@ -450,17 +454,28 @@
 		color: white;
 	}
 
-	/* Position scroll-right button relative to toolbar */
-	.scroll-right {
-		position: fixed;
-		bottom: 0.5rem;
-		right: 280px; /* Default toolbar width (260px) + margin */
-		transition: right 0.3s ease;
-		z-index: 10;
+	/* Position scroll buttons for mobile layout */
+	.scroll-left {
+		left: 0.75rem;
 	}
 
-	.scroll-right.toolbar-collapsed {
-		right: 80px; /* Collapsed toolbar width (60px) + margin */
+	.scroll-right {
+		right: 0.75rem;
+	}
+
+	/* Desktop positioning for scroll-right button relative to toolbar */
+	@media (min-width: 769px) {
+		.scroll-right {
+			position: fixed;
+			bottom: 0.5rem;
+			right: calc(260px + 2rem); /* Default toolbar width (260px) + increased margin */
+			transition: right 0.3s ease;
+			z-index: 10;
+		}
+
+		.scroll-right.toolbar-collapsed {
+			right: calc(60px + 2rem); /* Collapsed toolbar width (60px) + increased margin */
+		}
 	}
 
 	.image-counter {
@@ -503,6 +518,7 @@
 		.thumbnails-scroll {
 			padding: 0.5rem;
 			gap: 0.375rem;
+			margin-top: -8px; /* Move up for better visibility */
 		}
 
 		.scroll-indicators {

@@ -228,6 +228,7 @@
 		justify-content: center;
 		height: 100%;
 		padding: 1rem 0;
+		margin-top: 8px; /* Move down to avoid covering filename */
 	}
 
 	.expand-btn {
