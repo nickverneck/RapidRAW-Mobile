@@ -12,6 +12,9 @@
   --color-glass-dark-hover: rgba(0, 0, 0, 0.15);
   --color-glass-dark-active: rgba(0, 0, 0, 0.2);
   
+  /* Shared Component Background */
+  --glass-bg-color: rgba(255, 255, 255, 0.05);
+  
   /* Backdrop Blur Utilities */
   --backdrop-blur-xs: blur(2px);
   --backdrop-blur-sm: blur(4px);

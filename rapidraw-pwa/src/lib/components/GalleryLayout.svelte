@@ -197,8 +197,8 @@
 	}
 
 	.sidebar-container.collapsed {
-		width: 0;
-		overflow: hidden;
+		width: 60px;
+		overflow: visible;
 	}
 
 	.main-content {

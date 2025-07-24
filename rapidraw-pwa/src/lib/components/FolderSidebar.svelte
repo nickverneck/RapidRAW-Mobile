@@ -47,34 +47,43 @@
 </script>
 
 <div class="folder-sidebar glass-sidebar" class:collapsed>
-	<!-- Header -->
-	<div class="sidebar-header">
-		<div class="header-content">
-			<h2 class="sidebar-title">Folders</h2>
+	{#if collapsed}
+		<!-- Collapsed floating folder icon -->
+		<div class="collapsed-icon">
 			<button 
-				class="toggle-btn glass-button touch-target"
+				class="expand-btn glass-button touch-target"
 				on:click={handleToggleSidebar}
-				aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				aria-label="Expand folders"
 			>
-				<svg 
-					width="20" 
-					height="20" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
-					stroke-width="2"
-				>
-					{#if collapsed}
-						<path d="M9 18l6-6-6-6"/>
-					{:else}
-						<path d="M15 18l-6-6 6-6"/>
-					{/if}
+				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/>
 				</svg>
 			</button>
 		</div>
-	</div>
+	{:else}
+		<!-- Header -->
+		<div class="sidebar-header">
+			<div class="header-content">
+				<h2 class="sidebar-title">Folders</h2>
+				<button 
+					class="toggle-btn glass-button touch-target"
+					on:click={handleToggleSidebar}
+					aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				>
+					<svg 
+						width="20" 
+						height="20" 
+						viewBox="0 0 24 24" 
+						fill="none" 
+						stroke="currentColor" 
+						stroke-width="2"
+					>
+						<path d="M15 18l-6-6 6-6"/>
+					</svg>
+				</button>
+			</div>
+		</div>
 
-	{#if !collapsed}
 		<!-- Folder List -->
 		<div class="folder-list">
 			{#if folders.length === 0}
@@ -201,13 +210,43 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
+		background: var(--glass-bg-color);
+		backdrop-filter: blur(15px);
+		-webkit-backdrop-filter: blur(15px);
 		border-right: 1px solid rgba(255, 255, 255, 0.1);
 		overflow: hidden;
 	}
 
 	.folder-sidebar.collapsed {
-		width: 0;
-		border-right: none;
+		width: 60px;
+		border-right: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.collapsed-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		padding: 1rem 0;
+	}
+
+	.expand-btn {
+		padding: 0.75rem;
+		border: none;
+		background: rgba(255, 255, 255, 0.1);
+		color: rgba(255, 255, 255, 0.8);
+		border-radius: 8px;
+		transition: all 0.2s ease;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.expand-btn:hover {
+		background: rgba(255, 255, 255, 0.2);
+		color: white;
+		transform: translateY(-1px);
 	}
 
 	.sidebar-header {

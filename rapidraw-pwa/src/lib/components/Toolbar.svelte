@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { writable } from 'svelte/store';
 	import type { ImageFile } from '$lib/stores/folderStore';
+	import ToolbarButton from './ui/ToolbarButton.svelte';
 
 	interface Props {
 		selectedImage: ImageFile | null;
-		mobile: boolean;
+		mobile?: boolean;
 	}
 
-	let { selectedImage, mobile }: Props = $props();
+	let { selectedImage, mobile = false }: Props = $props();
 
 	// Toolbar state
 	const activePanel = writable<string | null>(null);
@@ -120,38 +121,21 @@
 		</div>
 	</div>
 
-	{#if !$isCollapsed}
-		<!-- Tool Buttons -->
-		<div class="tool-buttons" class:mobile-grid={mobile}>
-			{#each tools as tool (tool.id)}
-				<button 
-					class="tool-btn glass-button touch-target"
-					class:active={$activePanel === tool.id}
-					class:disabled={!selectedImage}
-					on:click={() => selectedImage && handleToolSelect(tool.id)}
-					disabled={!selectedImage}
-					aria-label={tool.description}
-					title={tool.description}
-				>
-					<div class="tool-icon">
-						<svg 
-							width="20" 
-							height="20" 
-							viewBox="0 0 24 24" 
-							fill="none" 
-							stroke="currentColor" 
-							stroke-width="2"
-						>
-							{@html getIconSvg(tool.icon)}
-						</svg>
-					</div>
-					<span class="tool-name">{tool.name}</span>
-				</button>
-			{/each}
-		</div>
+	<!-- Tool Buttons -->
+	<div class="tool-buttons" class:mobile-grid={mobile}>
+		{#each tools as tool (tool.id)}
+			<ToolbarButton 
+				{tool}
+				active={$activePanel === tool.id}
+				disabled={!selectedImage}
+				collapsed={$isCollapsed}
+				onclick={() => selectedImage && handleToolSelect(tool.id)}
+			/>
+		{/each}
+	</div>
 
-		<!-- Active Panel Content -->
-		{#if $activePanel && selectedImage}
+	<!-- Active Panel Content -->
+	{#if !$isCollapsed && $activePanel && selectedImage}
 			<div class="panel-content glass-panel">
 				{#if $activePanel === 'metadata'}
 					<div class="metadata-panel">
@@ -247,8 +231,7 @@
 				<p class="no-image-text">Select an image to use editing tools</p>
 			</div>
 		{/if}
-	{/if}
-</div>
+	</div>
 
 <style>
 
@@ -257,7 +240,7 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		background: rgba(255, 255, 255, 0.05);
+		background: var(--glass-bg-color);
 		backdrop-filter: blur(15px);
 		-webkit-backdrop-filter: blur(15px);
 		border-left: 1px solid rgba(255, 255, 255, 0.1);

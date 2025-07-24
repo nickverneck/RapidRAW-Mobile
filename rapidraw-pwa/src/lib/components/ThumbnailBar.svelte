@@ -277,7 +277,9 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		background: rgba(255, 255, 255, 0.05);
+		background: var(--glass-bg-color);
+		backdrop-filter: blur(15px);
+		-webkit-backdrop-filter: blur(15px);
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
