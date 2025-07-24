@@ -1,190 +1,33 @@
-<div class="editor-container" data-testid="image-editor">
-	<!-- Loading overlay -->
-	{#if $isLoading}
-		<div class="loading-overlay">
-			<div class="loading-spinner"></div>
-			<p>Loading...</p>
-		</div>
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { folderStore, hasSelectedFolder } from '$lib/stores/folderStore';
+	import FolderSelection from '$lib/components/FolderSelection.svelte';
+	import GalleryLayout from '$lib/components/GalleryLayout.svelte';
+	import '$lib/styles/glassmorphism.css';
+
+	onMount(() => {
+		// Initialize folder store
+		folderStore.init();
+	});
+</script>
+
+<div class="app-container">
+	{#if $hasSelectedFolder}
+		<!-- Gallery Layout: Show when user has selected a folder -->
+		<GalleryLayout />
+	{:else}
+		<!-- Folder Selection: Show when no folder is selected -->
+		<FolderSelection />
 	{/if}
+</div>
 
-	<!-- File input (hidden) -->
-	<input
-		bind:this={fileInput}
-		type="file"
-		accept="image/*"
-		on:change={handleFileSelect}
-		style="display: none;"
-	/>
-
-	<div class="editor-content">
-		<!-- Image Canvas Area -->
-		<div 
-			class="image-canvas-container"
-			on:drop={handleDrop}
-			on:dragover={handleDragOver}
-			role="button"
-			tabindex="0"
-			on:click={() => fileInput?.click()}
-			on:keydown={(e) => e.key === 'Enter' && fileInput?.click()}
-		>
-			<div class="image-canvas" data-testid="image-canvas">
-				{#if $currentImage}
-					<img 
-						src={$currentImage.thumbnail || ''} 
-						alt={$currentImage.name}
-						class="current-image"
-					/>
-					
-					<!-- Image controls overlay -->
-					<div class="image-controls">
-						<button 
-							class="control-button"
-							on:click|stopPropagation={undo}
-							disabled={!$canUndo}
-							title="Undo (Ctrl+Z)"
-							aria-label="Undo (Ctrl+Z)"
-						>
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M3 7v6h6"/>
-								<path d="m21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
-							</svg>
-						</button>
-						
-						<button 
-							class="control-button"
-							on:click|stopPropagation={redo}
-							disabled={!$canRedo}
-							title="Redo (Ctrl+Y)"
-							aria-label="Redo (Ctrl+Y)"
-						>
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M21 7v6h-6"/>
-								<path d="m3 17a9 9 0 019-9 9 9 0 016 2.3l3-2.3"/>
-							</svg>
-						</button>
-						
-						<button 
-							class="control-button"
-							on:click|stopPropagation={resetAdjustments}
-							title="Reset all adjustments"
-							aria-label="Reset all adjustments"
-						>
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-								<path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/>
-								<path d="M21 3v5h-5"/>
-								<path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/>
-								<path d="M8 16H3v5"/>
-							</svg>
-						</button>
-					</div>
-				{:else}
-					<div class="placeholder-content">
-						<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-							<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-							<circle cx="8.5" cy="8.5" r="1.5"/>
-							<polyline points="21,15 16,10 5,21"/>
-						</svg>
-						<p>Drop an image here or click to select</p>
-						<p class="hint">Supports JPG, PNG, TIFF, and RAW formats</p>
-					</div>
-				{/if}
-			</div>
-		</div>
-		
-		<!-- Adjustment Panel -->
-		<GlassPanel variant="secondary" size="md" class="adjustment-panel" data-testid="adjustment-panel">
-			<h3>Basic Adjustments</h3>
-			
-			<TouchSlider 
-				label="Exposure"
-				bind:value={$currentAdjustments.exposure}
-				min={-5}
-				max={5}
-				step={0.1}
-				hapticFeedback={true}
-				showValue={true}
-				variant="primary"
-				size="md"
-				on:change={(e) => handleAdjustmentChange('exposure', e.detail.value)}
-			/>
-			
-			<TouchSlider 
-				label="Contrast"
-				bind:value={$currentAdjustments.contrast}
-				min={-100}
-				max={100}
-				step={1}
-				hapticFeedback={true}
-				showValue={true}
-				variant="primary"
-				size="md"
-				on:change={(e) => handleAdjustmentChange('contrast', e.detail.value)}
-			/>
-			
-			<TouchSlider 
-				label="Highlights"
-				bind:value={$currentAdjustments.highlights}
-				min={-100}
-				max={100}
-				step={1}
-				hapticFeedback={true}
-				showValue={true}
-				variant="primary"
-				size="md"
-				on:change={(e) => handleAdjustmentChange('highlights', e.detail.value)}
-			/>
-			
-			<TouchSlider 
-				label="Shadows"
-				bind:value={$currentAdjustments.shadows}
-				min={-100}
-				max={100}
-				step={1}
-				hapticFeedback={true}
-				showValue={true}
-				variant="primary"
-				size="md"
-				on:change={(e) => handleAdjustmentChange('shadows', e.detail.value)}
-			/>
-			
-			<TouchSlider 
-				label="Saturation"
-				bind:value={$currentAdjustments.saturation}
-				min={-100}
-				max={100}
-				step={1}
-				hapticFeedback={true}
-				showValue={true}
-				variant="accent"
-				size="md"
-				on:change={(e) => handleAdjustmentChange('saturation', e.detail.value)}
-			/>
-			
-			<TouchSlider 
-				label="Temperature"
-				bind:value={$currentAdjustments.temperature}
-				min={-2000}
-				max={2000}
-				step={50}
-				hapticFeedback={true}
-				showValue={true}
-				variant="secondary"
-				size="md"
-				on:change={(e) => handleAdjustmentChange('temperature', e.detail.value)}
-			/>
-		</GlassPanel>
-
-		<!-- Touch-optimized components for testing -->
-		<GlassPanel variant="primary" size="md" class="touch-controls">
-			<h4>Touch Controls</h4>
-			<button class="glass-button" data-testid="glass-button" on:click={() => uiStore.showToast('info', 'Button clicked', 'Glass button was pressed')}>
-				Glass Button
-			</button>
-			<TouchSlider 
-				label="Touch Slider Test"
-				bind:value={touchSliderValue}
-				min={0}
-				max={100}
+<style>
+	.app-container {
+		width: 100%;
+		height: 100vh;
+		overflow: hidden;
+	}
+</style>
 				step={1}
 				hapticFeedback={true}
 				showValue={true}

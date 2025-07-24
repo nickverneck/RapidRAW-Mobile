@@ -134,6 +134,68 @@
   - Implement SvelteKit routing to replace React Router functionality
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
+- [x] 4.3.1 Migrate core UI components
+  - Convert Button.jsx to Button.svelte with equivalent styling and behavior
+  - Migrate Slider.jsx to TouchSlider.svelte with mobile-optimized touch interactions
+  - Convert CollapsibleSection.jsx to CollapsibleSection.svelte with smooth animations
+  - Migrate Dropdown.jsx to Dropdown.svelte with touch-friendly interactions
+  - Convert Input.jsx to Input.svelte with mobile keyboard optimizations
+  - Migrate Switch.jsx to Switch.svelte with haptic feedback support
+  - _Requirements: 1.2, 2.1, 2.2, 6.1_
+
+- [ ] 4.3.2 Migrate adjustment panel components
+  - Convert BasicAdjustments.jsx to BasicAdjustments.svelte with reactive state
+  - Migrate ColorPanel.jsx to ColorPanel.svelte with enhanced HSL controls
+  - Convert CurveGraph.jsx to CurveEditor.svelte with touch-optimized curve editing
+  - Migrate DetailsPanel.jsx to DetailsPanel.svelte with mobile-friendly controls
+  - Convert EffectsPanel.jsx to EffectsPanel.svelte with glassmorphism styling
+  - _Requirements: 1.2, 7.1, 7.2, 6.3_
+
+- [ ] 4.3.3 Migrate modal components
+  - Convert ConfirmModal.jsx to ConfirmModal.svelte with mobile-optimized layout
+  - Migrate CreateFolderModal.jsx to CreateFolderModal.svelte with touch keyboard
+  - Convert RenameFolderModal.jsx to RenameFolderModal.svelte with validation
+  - Migrate AddPresetModal.jsx to AddPresetModal.svelte with preset management
+  - Convert RenamePresetModal.jsx to RenamePresetModal.svelte with error handling
+  - _Requirements: 1.2, 2.1, 2.2_
+
+- [ ] 4.3.4 Migrate main panel components
+  - Convert Editor.jsx to ImageEditor.svelte with touch gesture support
+  - Migrate MainLibrary.jsx to LibraryView.svelte with responsive grid layout
+  - Convert FolderTree.jsx to FolderTree.svelte with touch-friendly navigation
+  - Migrate Filmstrip.jsx to Filmstrip.svelte with swipe gestures
+  - Convert BottomBar.jsx to BottomBar.svelte with mobile-optimized controls
+  - Migrate SettingsPanel.jsx to SettingsPanel.svelte with responsive design
+  - _Requirements: 1.2, 2.1, 2.2, 2.4, 6.4_
+
+- [ ] 4.3.5 Migrate right panel components
+  - Convert RightPanelSwitcher.jsx to RightPanelSwitcher.svelte with tab navigation
+  - Migrate ControlsPanel.jsx to ControlsPanel.svelte with collapsible sections
+  - Convert MetadataPanel.jsx to MetadataPanel.svelte with responsive layout
+  - Migrate CropPanel.jsx to CropPanel.svelte with touch crop handles
+  - Convert ExportPanel.jsx to ExportPanel.svelte with mobile export options
+  - Migrate LibraryExportPanel.jsx to LibraryExportPanel.svelte with batch processing
+  - Convert AIPanel.jsx to AIPanel.svelte with AI tool integration
+  - Migrate PresetsPanel.jsx to PresetsPanel.svelte with preset management
+  - Convert MasksPanel.jsx to MasksPanel.svelte with touch masking tools
+  - Migrate MaskControls.jsx to MaskControls.svelte with brush controls
+  - _Requirements: 1.2, 2.1, 2.2, 6.1, 6.2, 6.3_
+
+- [ ] 4.3.6 Migrate editor-specific components
+  - Convert FullScreenViewer.jsx to FullScreenViewer.svelte with gesture controls
+  - Migrate EditorToolbar.jsx to EditorToolbar.svelte with mobile-optimized buttons
+  - Convert ImageCanvas.jsx to ImageCanvas.svelte with WebGL/Canvas integration
+  - Migrate Waveform.jsx to Waveform.svelte with touch interactions
+  - _Requirements: 1.2, 2.6, 6.4_
+
+- [ ] 4.3.7 Update state management and routing
+  - Replace React Context with Svelte stores for global state
+  - Convert React hooks (useState, useEffect, useCallback) to Svelte equivalents
+  - Implement SvelteKit routing for navigation between views
+  - Update event handling from React synthetic events to native DOM events
+  - Migrate React refs to Svelte bind:this syntax
+  - _Requirements: 1.4, 1.5_
+
 ## Phase 5: Image Processing and Color Grading Tests
 
 - [ ] 5. Write advanced color grading tests
