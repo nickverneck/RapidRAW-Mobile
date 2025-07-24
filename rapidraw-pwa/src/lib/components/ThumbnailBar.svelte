@@ -271,7 +271,7 @@
 </div>
 
 <style>
-	@import '$lib/styles/glassmorphism.css';
+
 
 	.thumbnail-bar {
 		height: 100%;

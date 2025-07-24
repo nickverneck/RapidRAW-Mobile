@@ -35,7 +35,7 @@
 </script>
 
 <div class="folder-selection-container">
-	<div class="welcome-content glass-panel">
+	<div class="welcome-content bg-white/5 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl p-8">
 		<div class="logo-section">
 			<h1 class="app-title">RapidRAW</h1>
 			<p class="welcome-text">Welcome back!</p>
@@ -46,7 +46,7 @@
 			<div class="action-section">
 				{#if isSupported}
 					<button 
-						class="select-folder-btn glass-button touch-target"
+						class="select-folder-btn bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md min-w-11 min-h-11 flex items-center justify-center px-6 py-3"
 						on:click={handleSelectFolder}
 						aria-label="Select a folder containing your photos"
 					>
@@ -64,31 +64,26 @@
 						Select Folder
 					</button>
 					
-					<p class="help-text">
+					<p class="help-text text-white text-base opacity-80 mb-0">
 						Choose a folder containing your photos to get started. 
 						RapidRAW will remember your selection for future sessions.
 					</p>
 				{:else}
-					<div class="unsupported-browser glass-panel">
+					<div class="unsupported-browser bg-white/5 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl">
 						<svg 
-							class="warning-icon" 
-							width="48" 
-							height="48" 
-							viewBox="0 0 24 24" 
+							class="warning-icon w-6 h-6 text-red-400" 
 							fill="none" 
 							stroke="currentColor" 
-							stroke-width="2"
+							viewBox="0 0 24 24"
 						>
-							<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-							<path d="M12 9v4"/>
-							<path d="m12 17 .01 0"/>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
 						</svg>
-						<h3>Browser Not Supported</h3>
-						<p>
+						<h3 class="text-white text-lg font-bold mb-2">Browser Not Supported</h3>
+						<p class="text-white text-base opacity-90 mb-2">
 							RapidRAW requires a modern browser with File System Access API support. 
 							Please use Chrome, Edge, or another Chromium-based browser for the best experience.
 						</p>
-						<p class="browser-list">
+						<p class="browser-list text-white text-sm opacity-70 mb-0">
 							Supported browsers:
 							<br>• Chrome 86+
 							<br>• Edge 86+
@@ -100,37 +95,31 @@
 		{:else}
 			<div class="continue-section">
 				<button 
-					class="continue-btn glass-button touch-target"
+					class="continue-btn bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md min-w-11 min-h-11 flex items-center justify-center"
 					on:click={() => {/* Navigation will be handled by parent component */}}
 				>
 					<svg 
-						class="continue-icon" 
-						width="24" 
-						height="24" 
-						viewBox="0 0 24 24" 
+						class="continue-icon w-6 h-6 mr-2" 
 						fill="none" 
 						stroke="currentColor" 
-						stroke-width="2"
+						viewBox="0 0 24 24"
 					>
-						<path d="M9 18l6-6-6-6"/>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 18l6-6-6-6" />
 					</svg>
 					Continue Session
 				</button>
 				
 				<button 
-					class="change-folder-btn glass-button touch-target secondary"
+					class="change-folder-btn bg-white/10 backdrop-blur-lg border border-white/20 rounded-lg text-white transition-all duration-300 hover:bg-white/15 hover:border-white/30 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:shadow-md min-w-11 min-h-11 flex items-center justify-center"
 					on:click={handleSelectFolder}
 				>
 					<svg 
-						class="folder-icon" 
-						width="20" 
-						height="20" 
-						viewBox="0 0 24 24" 
+						class="folder-icon w-5 h-5 mr-2" 
 						fill="none" 
 						stroke="currentColor" 
-						stroke-width="2"
+						viewBox="0 0 24 24"
 					>
-						<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-5l-2-2H5a2 2 0 00-2 2z" />
 					</svg>
 					Change Folder
 				</button>
@@ -140,30 +129,26 @@
 
 	<!-- Error Toast -->
 	{#if showError}
-		<div class="error-toast glass-modal" role="alert">
-			<div class="error-content">
+		<div class="error-toast bg-white/5 backdrop-blur-lg border border-white/10 rounded-xl shadow-2xl">
+			<div class="error-content flex items-center gap-2">
 				<svg 
-					class="error-icon" 
-					width="20" 
-					height="20" 
-					viewBox="0 0 24 24" 
+					class="error-icon w-5 h-5 text-red-400" 
 					fill="none" 
 					stroke="currentColor" 
-					stroke-width="2"
+					viewBox="0 0 24 24"
 				>
-					<circle cx="12" cy="12" r="10"/>
-					<path d="m15 9-6 6"/>
-					<path d="m9 9 6 6"/>
+					<circle cx="12" cy="12" r="10" />
+					<path d="m15 9-6 6" />
+					<path d="m9 9 6 6" />
 				</svg>
-				<p class="error-message">{errorMessage}</p>
+				<p class="error-message text-white text-base">{errorMessage}</p>
 				<button 
 					class="dismiss-btn"
 					on:click={dismissError}
 					aria-label="Dismiss error"
 				>
-					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path d="m18 6-12 12"/>
-						<path d="m6 6 12 12"/>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
 					</svg>
 				</button>
 			</div>
@@ -172,7 +157,7 @@
 </div>
 
 <style>
-	@import '$lib/styles/glassmorphism.css';
+
 
 	.folder-selection-container {
 		display: flex;

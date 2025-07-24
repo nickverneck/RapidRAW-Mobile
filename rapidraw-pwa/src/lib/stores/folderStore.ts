@@ -36,8 +36,8 @@ const initialState: FolderState = {
 function createFolderStore() {
 	const { subscribe, set, update } = writable<FolderState>(initialState);
 
-	// Check if File System Access API is supported
-	const isSupported = 'showDirectoryPicker' in window;
+	// Check if File System Access API is supported (SSR-safe)
+	const isSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
 	return {
 		subscribe,
@@ -69,18 +69,15 @@ function createFolderStore() {
 
 		// Select a new folder using File System Access API
 		selectFolder: async () => {
-			if (!isSupported) {
-				update(state => ({
-					...state,
-					error: 'File System Access API is not supported in this browser. Please use Chrome, Edge, or another Chromium-based browser.'
-				}));
+			if (!isSupported || typeof window === 'undefined') {
+				update(state => ({ ...state, error: 'File System Access API not supported in this browser' }));
 				return;
 			}
 
 			try {
 				update(state => ({ ...state, isLoading: true, error: null }));
 
-				const dirHandle = await window.showDirectoryPicker({
+				const dirHandle = await (window as any).showDirectoryPicker({
 					mode: 'read'
 				});
 
@@ -131,7 +128,7 @@ function createFolderStore() {
 				const images: ImageFile[] = [];
 				const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff', 'image/bmp'];
 
-				for await (const [name, handle] of folder.handle.entries()) {
+				for await (const [name, handle] of (folder.handle as any).entries()) {
 					if (handle.kind === 'file') {
 						const file = await handle.getFile();
 						

@@ -173,7 +173,7 @@
 </div>
 
 <style>
-	@import '$lib/styles/glassmorphism.css';
+
 
 	.gallery-layout {
 		display: grid;

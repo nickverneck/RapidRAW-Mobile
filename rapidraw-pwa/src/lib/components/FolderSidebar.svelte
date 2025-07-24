@@ -195,7 +195,7 @@
 </div>
 
 <style>
-	@import '$lib/styles/glassmorphism.css';
+
 
 	.folder-sidebar {
 		height: 100%;

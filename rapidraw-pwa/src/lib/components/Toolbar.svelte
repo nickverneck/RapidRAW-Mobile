@@ -251,7 +251,7 @@
 </div>
 
 <style>
-	@import '$lib/styles/glassmorphism.css';
+
 
 	.toolbar {
 		height: 100%;

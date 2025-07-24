@@ -383,7 +383,7 @@
 </div>
 
 <style>
-	@import '$lib/styles/glassmorphism.css';
+
 
 	.image-viewer {
 		position: relative;
