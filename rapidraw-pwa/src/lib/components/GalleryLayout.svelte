@@ -2,6 +2,8 @@
 	import { folderStore, currentImages, isLoadingImages } from '$lib/stores/folderStore';
 	import { writable } from 'svelte/store';
 	import { onMount } from 'svelte';
+	import uiStore from '$lib/stores/uiStore';
+	const { toolbarCollapsed } = uiStore;
 	import FolderSidebar from './FolderSidebar.svelte';
 	import ImageViewer from './ImageViewer.svelte';
 	import ThumbnailBar from './ThumbnailBar.svelte';
@@ -140,7 +142,7 @@
 	</div>
 
 	<!-- Toolbar -->
-	<div class="toolbar-container" class:mobile={$isMobile}>
+	<div class="toolbar-container" class:mobile={$isMobile} class:collapsed={$toolbarCollapsed}>
 		<Toolbar 
 			selectedImage={$selectedImage}
 			mobile={$isMobile}
@@ -233,6 +235,11 @@
 		backdrop-filter: blur(15px);
 		-webkit-backdrop-filter: blur(15px);
 		border-left: 1px solid rgba(255, 255, 255, 0.1);
+		transition: width 0.3s ease;
+	}
+
+	.toolbar-container.collapsed {
+		width: 60px;
 	}
 
 	.loading-overlay {

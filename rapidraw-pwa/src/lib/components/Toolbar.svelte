@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { writable } from 'svelte/store';
 	import type { ImageFile } from '$lib/stores/folderStore';
+	import uiStore from '$lib/stores/uiStore';
 	import ToolbarButton from './ui/ToolbarButton.svelte';
 
 	interface Props {
@@ -12,7 +13,7 @@
 
 	// Toolbar state
 	const activePanel = writable<string | null>(null);
-	const isCollapsed = writable(false);
+	const { toolbarCollapsed } = uiStore;
 
 	// Tool panels
 	const tools = [
@@ -65,8 +66,8 @@
 	}
 
 	function toggleCollapse() {
-		isCollapsed.update(collapsed => !collapsed);
-		if ($isCollapsed) {
+		toolbarCollapsed.update(collapsed => !collapsed);
+		if ($toolbarCollapsed) {
 			activePanel.set(null);
 		}
 	}
@@ -88,23 +89,25 @@
 	}
 </script>
 
-<div class="toolbar" class:mobile class:collapsed={$isCollapsed}>
+<div class="toolbar" class:mobile class:collapsed={$toolbarCollapsed}>
 	<!-- Toolbar Header -->
 	<div class="toolbar-header">
 		<div class="header-content">
-			<h3 class="toolbar-title">
-				{#if mobile}
-					Tools
-				{:else}
-					Editing Tools
-				{/if}
-			</h3>
+			{#if !$toolbarCollapsed}
+				<h3 class="toolbar-title">
+					{#if mobile}
+						Tools
+					{:else}
+						Editing Tools
+					{/if}
+				</h3>
+			{/if}
 			
 			{#if !mobile}
 				<button 
 					class="collapse-btn glass-button touch-target"
 					on:click={toggleCollapse}
-					aria-label={$isCollapsed ? 'Expand toolbar' : 'Collapse toolbar'}
+					aria-label={$toolbarCollapsed ? 'Expand toolbar' : 'Collapse toolbar'}
 				>
 					<svg 
 						width="16" 
@@ -114,7 +117,7 @@
 						stroke="currentColor" 
 						stroke-width="2"
 					>
-						{@html getIconSvg($isCollapsed ? 'chevronLeft' : 'chevronRight')}
+						{@html getIconSvg($toolbarCollapsed ? 'chevronRight' : 'chevronLeft')}
 					</svg>
 				</button>
 			{/if}
@@ -128,14 +131,14 @@
 				{tool}
 				active={$activePanel === tool.id}
 				disabled={!selectedImage}
-				collapsed={$isCollapsed}
+				collapsed={$toolbarCollapsed}
 				onclick={() => selectedImage && handleToolSelect(tool.id)}
 			/>
 		{/each}
 	</div>
 
 	<!-- Active Panel Content -->
-	{#if !$isCollapsed && $activePanel && selectedImage}
+	{#if !$toolbarCollapsed && $activePanel && selectedImage}
 			<div class="panel-content glass-panel">
 				{#if $activePanel === 'metadata'}
 					<div class="metadata-panel">

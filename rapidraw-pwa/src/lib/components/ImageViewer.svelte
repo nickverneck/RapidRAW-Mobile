@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import type { ImageFile } from '$lib/stores/folderStore';
+	import uiStore from '$lib/stores/uiStore';
 
 	interface Props {
 		image: ImageFile | null;
 		showNavigation: boolean;
 	}
 
-	let { image, showNavigation }: Props = $props();
+	let { image, showNavigation = false }: Props = $props();
 
 	const dispatch = createEventDispatcher();
+	const { toolbarCollapsed } = uiStore;
 
 	let imageElement: HTMLImageElement;
 	let containerElement: HTMLElement;
@@ -270,6 +272,7 @@
 
 			<button 
 				class="nav-btn nav-next glass-button touch-target"
+				class:toolbar-collapsed={$toolbarCollapsed}
 				on:click={handleNext}
 				aria-label="Next image"
 			>
@@ -498,7 +501,14 @@
 	}
 
 	.nav-next {
-		right: 1rem;
+		/* Position relative to toolbar - 320px toolbar width + 1rem spacing */
+		right: calc(320px + 1rem);
+		transition: right 0.3s ease;
+	}
+
+	.nav-next.toolbar-collapsed {
+		/* When toolbar is collapsed, position relative to 60px collapsed width */
+		right: calc(60px + 1rem);
 	}
 
 	.nav-btn:hover {

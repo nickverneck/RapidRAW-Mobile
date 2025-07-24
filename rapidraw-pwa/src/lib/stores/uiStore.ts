@@ -83,6 +83,7 @@ const toasts = writable<ToastMessage[]>([]);
 const preferences = writable<UIPreferences>(defaultPreferences);
 const isLoading = writable(false);
 const keyboardShortcuts = writable<KeyboardShortcuts>({});
+const toolbarCollapsed = writable(false);
 
 // Derived stores
 const breakpoint = derived(viewport, ($viewport) => {
@@ -183,6 +184,7 @@ const uiStore = {
   preferences,
   isLoading,
   keyboardShortcuts,
+  toolbarCollapsed,
   breakpoint,
   layoutType,
   effectiveTheme,

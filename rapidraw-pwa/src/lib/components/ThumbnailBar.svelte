@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { createEventDispatcher } from 'svelte';
 	import type { ImageFile } from '$lib/stores/folderStore';
+	import uiStore from '$lib/stores/uiStore';
 
 	interface Props {
 		images: ImageFile[];
@@ -10,6 +12,7 @@
 	let { images, selectedImage }: Props = $props();
 
 	const dispatch = createEventDispatcher();
+	const { toolbarCollapsed } = uiStore;
 
 	let scrollContainer: HTMLElement;
 	let isDragging = $state(false);
@@ -252,6 +255,7 @@
 
 			<button 
 				class="scroll-btn scroll-right glass-button"
+				class:toolbar-collapsed={$toolbarCollapsed}
 				on:click={() => scrollContainer.scrollBy({ left: 200, behavior: 'smooth' })}
 				aria-label="Scroll right"
 			>
@@ -444,6 +448,19 @@
 	.scroll-btn:hover {
 		background: rgba(255, 255, 255, 0.2);
 		color: white;
+	}
+
+	/* Position scroll-right button relative to toolbar */
+	.scroll-right {
+		position: fixed;
+		bottom: 0.5rem;
+		right: 280px; /* Default toolbar width (260px) + margin */
+		transition: right 0.3s ease;
+		z-index: 10;
+	}
+
+	.scroll-right.toolbar-collapsed {
+		right: 80px; /* Collapsed toolbar width (60px) + margin */
 	}
 
 	.image-counter {
