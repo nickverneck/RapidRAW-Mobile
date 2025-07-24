@@ -316,8 +316,8 @@
 	}
 
 	.folder-item.active {
-		background: rgba(59, 130, 246, 0.2);
-		border-color: rgba(59, 130, 246, 0.4);
+		background: rgba(255, 255, 255, 0.15);
+		border-color: rgba(255, 255, 255, 0.3);
 	}
 
 	.folder-info {

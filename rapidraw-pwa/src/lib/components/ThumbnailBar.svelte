@@ -277,7 +277,7 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		background: rgba(0, 0, 0, 0.2);
+		background: rgba(255, 255, 255, 0.05);
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
