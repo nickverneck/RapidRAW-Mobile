@@ -125,9 +125,9 @@
 </script>
 
 <svelte:window 
-	on:mousemove={handleMouseMove}
-	on:mouseup={handleMouseUp}
-	on:keydown={handleKeydown}
+	onmousemove={handleMouseMove}
+	onmouseup={handleMouseUp}
+	onkeydown={handleKeydown}
 />
 
 <div class="thumbnail-bar">
@@ -152,10 +152,10 @@
 		<div 
 			class="thumbnails-scroll"
 			bind:this={scrollContainer}
-			on:mousedown={handleMouseDown}
-			on:mouseleave={handleMouseLeave}
-			on:touchstart={handleTouchStart}
-			on:touchmove={handleTouchMove}
+			onmousedown={handleMouseDown}
+			onmouseleave={handleMouseLeave}
+			ontouchstart={handleTouchStart}
+			ontouchmove={handleTouchMove}
 			role="listbox"
 			aria-label="Image thumbnails"
 			tabindex="0"
@@ -167,8 +167,8 @@
 					role="option"
 					aria-selected={selectedImage?.path === image.path}
 					tabindex="0"
-					on:click={() => handleImageSelect(image)}
-					on:keydown={(e) => e.key === 'Enter' && handleImageSelect(image)}
+					onclick={() => handleImageSelect(image)}
+					onkeydown={(e) => e.key === 'Enter' && handleImageSelect(image)}
 				>
 					<div class="thumbnail-image-container">
 						{#if image.thumbnail}

@@ -68,7 +68,7 @@
 		<div class="collapsed-icon">
 			<button 
 				class="expand-btn glass-button touch-target"
-				on:click={handleToggleSidebar}
+				onclick={handleToggleSidebar}
 				aria-label="Expand folders"
 			>
 				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -83,7 +83,7 @@
 				<h2 class="sidebar-title">Folders</h2>
 				<button 
 					class="toggle-btn glass-button touch-target"
-					on:click={handleToggleSidebar}
+					onclick={handleToggleSidebar}
 					aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 				>
 					<svg 
@@ -118,7 +118,7 @@
 					<p class="empty-text">No folders selected</p>
 					<button 
 						class="add-folder-btn glass-button touch-target"
-						on:click={handleAddFolder}
+						onclick={handleAddFolder}
 					>
 						<svg 
 							width="16" 
@@ -140,8 +140,8 @@
 						class:active={currentFolder?.path === folder.path}
 						role="button"
 						tabindex="0"
-						on:click={() => handleFolderSelect(folder)}
-						on:keydown={(e) => e.key === 'Enter' && handleFolderSelect(folder)}
+						onclick={() => handleFolderSelect(folder)}
+						onkeydown={(e) => e.key === 'Enter' && handleFolderSelect(folder)}
 					>
 						<div class="folder-info">
 							<svg 
@@ -163,7 +163,7 @@
 						
 						<button 
 							class="remove-btn"
-							on:click={(e) => handleRemoveFolder(folder, e)}
+							onclick={(e) => handleRemoveFolder(folder, e)}
 							aria-label="Remove folder"
 							title="Remove folder"
 						>
@@ -185,7 +185,7 @@
 				<!-- Add Another Folder Button -->
 				<button 
 					class="add-another-btn glass-button touch-target"
-					on:click={handleAddFolder}
+					onclick={handleAddFolder}
 					disabled={isLoading}
 				>
 					<svg 

@@ -208,19 +208,19 @@
 </script>
 
 <svelte:window 
-	on:mousemove={handleMouseMove}
-	on:mouseup={handleMouseUp}
+	onmousemove={handleMouseMove}
+	onmouseup={handleMouseUp}
 />
 
 <div 
 	class="image-viewer"
 	bind:this={containerElement}
-	on:wheel={handleWheel}
-	on:dblclick={handleDoubleClick}
-	on:mousedown={handleMouseDown}
-	on:touchstart={handleTouchStart}
-	on:touchmove={handleTouchMove}
-	on:touchend={handleTouchEnd}
+	onwheel={handleWheel}
+	ondblclick={handleDoubleClick}
+	onmousedown={handleMouseDown}
+	ontouchstart={handleTouchStart}
+	ontouchmove={handleTouchMove}
+	ontouchend={handleTouchEnd}
 	role="img"
 	tabindex="0"
 >
@@ -260,8 +260,8 @@
 					src={image.thumbnail}
 					alt={image.name}
 					class="main-image"
-					on:load={handleImageLoad}
-					on:error={handleImageError}
+					onload={handleImageLoad}
+					onerror={handleImageError}
 					draggable="false"
 				/>
 			{/if}
@@ -271,7 +271,7 @@
 		{#if showNavigation}
 			<button 
 				class="nav-btn nav-prev glass-button touch-target"
-				on:click={handlePrevious}
+				onclick={handlePrevious}
 				aria-label="Previous image"
 			>
 				<svg 
@@ -289,7 +289,7 @@
 			<button 
 				class="nav-btn nav-next glass-button touch-target"
 				class:toolbar-collapsed={$toolbarCollapsed}
-				on:click={handleNext}
+				onclick={handleNext}
 				aria-label="Next image"
 			>
 				<svg 
@@ -309,7 +309,7 @@
 		<div class="zoom-controls glass-panel">
 			<button 
 				class="zoom-btn glass-button touch-target"
-				on:click={zoomOut}
+				onclick={zoomOut}
 				disabled={scale <= 0.1}
 				aria-label="Zoom out"
 			>
@@ -331,7 +331,7 @@
 
 			<button 
 				class="zoom-btn glass-button touch-target"
-				on:click={zoomIn}
+				onclick={zoomIn}
 				disabled={scale >= 5}
 				aria-label="Zoom in"
 			>
@@ -353,7 +353,7 @@
 			{#if scale !== 1}
 				<button 
 					class="reset-btn glass-button touch-target"
-					on:click={resetZoom}
+					onclick={resetZoom}
 					aria-label="Reset zoom"
 				>
 					<svg 
