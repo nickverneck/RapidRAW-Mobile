@@ -192,7 +192,7 @@ const uiStore = {
   canUseHaptics,
 
   // Actions
-  init(): void {
+  init(): (() => void) | void {
     if (!browser) return;
     
     // Load saved preferences

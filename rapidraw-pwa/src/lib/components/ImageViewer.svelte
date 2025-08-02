@@ -58,10 +58,10 @@
 	// Zoom functionality
 	function handleWheel(event: WheelEvent) {
 		event.preventDefault();
-		
+
 		const delta = event.deltaY > 0 ? -0.1 : 0.1;
 		const newScale = Math.max(0.1, Math.min(5, scale + delta));
-		
+
 		if (newScale !== scale) {
 			scale = newScale;
 		}
@@ -69,7 +69,7 @@
 
 	function handleDoubleClick(event: MouseEvent) {
 		event.preventDefault();
-		
+
 		if (scale === 1) {
 			scale = 2;
 			// Center zoom on click point
@@ -78,7 +78,7 @@
 			const centerY = rect.height / 2;
 			const clickX = event.clientX - rect.left;
 			const clickY = event.clientY - rect.top;
-			
+
 			translateX = (centerX - clickX) * scale;
 			translateY = (centerY - clickY) * scale;
 		} else {
@@ -96,22 +96,22 @@
 
 	function handleMouseDown(event: MouseEvent) {
 		if (scale <= 1) return;
-		
+
 		isDragging = true;
 		startX = event.clientX;
 		startY = event.clientY;
 		startTranslateX = translateX;
 		startTranslateY = translateY;
-		
+
 		event.preventDefault();
 	}
 
 	function handleMouseMove(event: MouseEvent) {
 		if (!isDragging || scale <= 1) return;
-		
+
 		const deltaX = event.clientX - startX;
 		const deltaY = event.clientY - startY;
-		
+
 		translateX = startTranslateX + deltaX;
 		translateY = startTranslateY + deltaY;
 	}
@@ -135,12 +135,11 @@
 			const touch1 = event.touches[0];
 			const touch2 = event.touches[1];
 			const distance = Math.sqrt(
-				Math.pow(touch2.clientX - touch1.clientX, 2) + 
-				Math.pow(touch2.clientY - touch1.clientY, 2)
+				Math.pow(touch2.clientX - touch1.clientX, 2) + Math.pow(touch2.clientY - touch1.clientY, 2)
 			);
 			lastTouchDistance = distance;
 		}
-		
+
 		event.preventDefault();
 	}
 
@@ -150,7 +149,7 @@
 			const touch = event.touches[0];
 			const deltaX = touch.clientX - startX;
 			const deltaY = touch.clientY - startY;
-			
+
 			translateX = startTranslateX + deltaX;
 			translateY = startTranslateY + deltaY;
 		} else if (event.touches.length === 2) {
@@ -158,19 +157,18 @@
 			const touch1 = event.touches[0];
 			const touch2 = event.touches[1];
 			const distance = Math.sqrt(
-				Math.pow(touch2.clientX - touch1.clientX, 2) + 
-				Math.pow(touch2.clientY - touch1.clientY, 2)
+				Math.pow(touch2.clientX - touch1.clientX, 2) + Math.pow(touch2.clientY - touch1.clientY, 2)
 			);
-			
+
 			if (lastTouchDistance > 0) {
 				const scaleChange = distance / lastTouchDistance;
 				const newScale = Math.max(0.1, Math.min(5, scale * scaleChange));
 				scale = newScale;
 			}
-			
+
 			lastTouchDistance = distance;
 		}
-		
+
 		event.preventDefault();
 	}
 
@@ -207,12 +205,9 @@
 	}
 </script>
 
-<svelte:window 
-	onmousemove={handleMouseMove}
-	onmouseup={handleMouseUp}
-/>
+<svelte:window onmousemove={handleMouseMove} onmouseup={handleMouseUp} />
 
-<div 
+<div
 	class="image-viewer"
 	bind:this={containerElement}
 	onwheel={handleWheel}
@@ -226,7 +221,7 @@
 >
 	{#if image}
 		<!-- Image Container -->
-		<div 
+		<div
 			class="image-container"
 			style="transform: translate({translateX}px, {translateY}px) scale({scale})"
 		>
@@ -238,18 +233,18 @@
 
 			{#if hasError}
 				<div class="image-error glass-panel">
-					<svg 
-						class="error-icon" 
-						width="48" 
-						height="48" 
-						viewBox="0 0 24 24" 
-						fill="none" 
-						stroke="currentColor" 
+					<svg
+						class="error-icon"
+						width="48"
+						height="48"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
 						stroke-width="1.5"
 					>
-						<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-						<circle cx="9" cy="9" r="2"/>
-						<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+						<rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+						<circle cx="9" cy="9" r="2" />
+						<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
 					</svg>
 					<p class="error-text">Failed to load image</p>
 					<p class="error-subtext">{image.name}</p>
@@ -269,105 +264,105 @@
 
 		<!-- Navigation Controls -->
 		{#if showNavigation}
-			<button 
+			<button
 				class="nav-btn nav-prev glass-button touch-target"
 				onclick={handlePrevious}
 				aria-label="Previous image"
 			>
-				<svg 
-					width="24" 
-					height="24" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
+				<svg
+					width="24"
+					height="24"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
 					stroke-width="2"
 				>
-					<path d="m15 18-6-6 6-6"/>
+					<path d="m15 18-6-6 6-6" />
 				</svg>
 			</button>
 
-			<button 
+			<button
 				class="nav-btn nav-next glass-button touch-target"
 				class:toolbar-collapsed={$toolbarCollapsed}
 				onclick={handleNext}
 				aria-label="Next image"
 			>
-				<svg 
-					width="24" 
-					height="24" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
+				<svg
+					width="24"
+					height="24"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
 					stroke-width="2"
 				>
-					<path d="m9 18 6-6-6-6"/>
+					<path d="m9 18 6-6-6-6" />
 				</svg>
 			</button>
 		{/if}
 
-		<!-- Zoom Controls -->
-		<div class="zoom-controls glass-panel">
-			<button 
+		<!-- Zoom Controls - Hidden on mobile, users can use pinch-to-zoom -->
+		<div class="zoom-controls glass-panel" class:mobile-hidden={$viewport.isMobile}>
+			<button
 				class="zoom-btn glass-button touch-target"
 				onclick={zoomOut}
 				disabled={scale <= 0.1}
 				aria-label="Zoom out"
 			>
-				<svg 
-					width="20" 
-					height="20" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
+				<svg
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
 					stroke-width="2"
 				>
-					<circle cx="11" cy="11" r="8"/>
-					<path d="m21 21-4.35-4.35"/>
-					<path d="M8 11h6"/>
+					<circle cx="11" cy="11" r="8" />
+					<path d="m21 21-4.35-4.35" />
+					<path d="M8 11h6" />
 				</svg>
 			</button>
 
 			<span class="zoom-level">{Math.round(scale * 100)}%</span>
 
-			<button 
+			<button
 				class="zoom-btn glass-button touch-target"
 				onclick={zoomIn}
 				disabled={scale >= 5}
 				aria-label="Zoom in"
 			>
-				<svg 
-					width="20" 
-					height="20" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
+				<svg
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
 					stroke-width="2"
 				>
-					<circle cx="11" cy="11" r="8"/>
-					<path d="m21 21-4.35-4.35"/>
-					<path d="M11 8v6"/>
-					<path d="M8 11h6"/>
+					<circle cx="11" cy="11" r="8" />
+					<path d="m21 21-4.35-4.35" />
+					<path d="M11 8v6" />
+					<path d="M8 11h6" />
 				</svg>
 			</button>
 
 			{#if scale !== 1}
-				<button 
+				<button
 					class="reset-btn glass-button touch-target"
 					onclick={resetZoom}
 					aria-label="Reset zoom"
 				>
-					<svg 
-						width="20" 
-						height="20" 
-						viewBox="0 0 24 24" 
-						fill="none" 
-						stroke="currentColor" 
+					<svg
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
 						stroke-width="2"
 					>
-						<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-						<path d="M21 3v5h-5"/>
-						<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-						<path d="M8 16H3v5"/>
+						<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+						<path d="M21 3v5h-5" />
+						<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+						<path d="M8 16H3v5" />
 					</svg>
 				</button>
 			{/if}
@@ -378,16 +373,8 @@
 			<div class="image-header">
 				<h3 class="image-name">{image.name}</h3>
 				<div class="image-controls">
-					<StarRating 
-						rating={image.rating}
-						size="small"
-						on:ratingChange={handleRatingChange}
-					/>
-					<FlagToggle 
-						flagged={image.flagged}
-						size="small"
-						on:toggle={handleFlagToggle}
-					/>
+					<StarRating rating={image.rating} size="small" on:ratingChange={handleRatingChange} />
+					<FlagToggle flagged={image.flagged} size="small" on:toggle={handleFlagToggle} />
 				</div>
 			</div>
 			{#if !$viewport.isMobile}
@@ -399,18 +386,18 @@
 	{:else}
 		<!-- No Image Selected -->
 		<div class="no-image glass-panel">
-			<svg 
-				class="no-image-icon" 
-				width="64" 
-				height="64" 
-				viewBox="0 0 24 24" 
-				fill="none" 
-				stroke="currentColor" 
+			<svg
+				class="no-image-icon"
+				width="64"
+				height="64"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
 				stroke-width="1"
 			>
-				<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-				<circle cx="9" cy="9" r="2"/>
-				<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+				<rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+				<circle cx="9" cy="9" r="2" />
+				<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
 			</svg>
 			<p class="no-image-text">Select an image to view</p>
 		</div>
@@ -418,8 +405,6 @@
 </div>
 
 <style>
-
-
 	.image-viewer {
 		position: relative;
 		width: 100%;
@@ -472,8 +457,12 @@
 	}
 
 	@keyframes spin {
-		0% { transform: rotate(0deg); }
-		100% { transform: rotate(360deg); }
+		0% {
+			transform: rotate(0deg);
+		}
+		100% {
+			transform: rotate(360deg);
+		}
 	}
 
 	.image-error {
@@ -639,8 +628,18 @@
 		margin: 0;
 	}
 
+	/* Hide zoom controls on mobile */
+	.mobile-hidden {
+		display: none !important;
+	}
+
 	/* Mobile styles */
 	@media (max-width: 768px) {
+		/* Hide zoom controls on mobile as fallback */
+		.zoom-controls {
+			display: none !important;
+		}
+
 		.nav-btn {
 			padding: 0.75rem;
 		}
@@ -651,16 +650,6 @@
 
 		.nav-next {
 			right: 0.5rem;
-		}
-
-		.zoom-controls {
-			bottom: 0.5rem;
-			padding: 0.5rem 0.75rem;
-		}
-
-		.zoom-btn,
-		.reset-btn {
-			padding: 0.75rem;
 		}
 
 		.image-info {

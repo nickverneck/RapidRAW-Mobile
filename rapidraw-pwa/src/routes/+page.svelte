@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { folderStore, hasSelectedFolder } from '$lib/stores/folderStore';
+	import uiStore from '$lib/stores/uiStore';
 	import FolderSelection from '$lib/components/FolderSelection.svelte';
 	import GalleryLayout from '$lib/components/GalleryLayout.svelte';
 
 	onMount(() => {
-		// Initialize folder store
+		// Initialize stores
 		folderStore.init();
+		uiStore.init();
 	});
 </script>
 
