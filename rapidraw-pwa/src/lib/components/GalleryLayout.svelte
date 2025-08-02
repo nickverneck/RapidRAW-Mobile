@@ -15,7 +15,7 @@
 	const sidebarCollapsed = writable(false);
 	const isMobile = writable(false);
 
-	let galleryContainer: HTMLElement;
+
 
 	onMount(() => {
 		// Check if we're on mobile
@@ -99,7 +99,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="gallery-layout" bind:this={galleryContainer}>
+<div class="gallery-layout">
 	<!-- Loading Overlay -->
 	{#if $isLoadingImages}
 		<div class="loading-overlay glass-modal">
@@ -149,12 +149,12 @@
 		/>
 	</div>
 
-	<!-- Mobile Sidebar Toggle Button -->
-	{#if $isMobile}
+	<!-- Mobile Sidebar Toggle Button - Hidden when folder sidebar is visible -->
+	{#if $isMobile && $sidebarCollapsed}
 		<button 
 			class="mobile-sidebar-toggle glass-button touch-target"
 			on:click={toggleSidebar}
-			aria-label={$sidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
+			aria-label="Open sidebar"
 		>
 			<svg 
 				width="24" 
@@ -164,11 +164,7 @@
 				stroke="currentColor" 
 				stroke-width="2"
 			>
-				{#if $sidebarCollapsed}
-					<path d="M3 12h18m-9-9l9 9-9 9"/>
-				{:else}
-					<path d="M21 12H3m18-9l-9 9 9 9"/>
-				{/if}
+				<path d="M3 12h18m-9-9l9 9-9 9"/>
 			</svg>
 		</button>
 	{/if}
