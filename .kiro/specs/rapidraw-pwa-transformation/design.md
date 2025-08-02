@@ -91,6 +91,10 @@ The application will follow a modular component architecture with clear separati
 - `ColorWheel.svelte` - Interactive color wheel for HSL adjustments
 - `PresetManager.svelte` - Color grade preset management
 - `LUTExporter.svelte` - LUT export functionality
+- `StarRating.svelte` - Interactive star rating component (0-5 stars)
+- `FlagToggle.svelte` - Toggle button for flagging images
+- `FilterPanel.svelte` - Filtering controls for star ratings and flags
+- `ImageInfoMobile.svelte` - Mobile-optimized image information display
 
 ### WebAssembly Modules
 
@@ -201,6 +205,57 @@ class TouchGestureManager {
 }
 ```
 
+### Image Rating and Filtering System
+
+#### Rating and Flag Management
+```typescript
+interface RatingManager {
+  setImageRating(imagePath: string, rating: number): Promise<void>;
+  getImageRating(imagePath: string): Promise<number>;
+  toggleImageFlag(imagePath: string): Promise<boolean>;
+  getImageFlag(imagePath: string): Promise<boolean>;
+  bulkUpdateRatings(updates: Array<{path: string, rating: number, flagged: boolean}>): Promise<void>;
+}
+
+interface FilterManager {
+  applyStarFilter(minRating: number): ImageFile[];
+  applyFlagFilter(showOnlyFlagged: boolean): ImageFile[];
+  applyCombinedFilters(minRating: number, showOnlyFlagged: boolean): ImageFile[];
+  clearAllFilters(): ImageFile[];
+  getActiveFilters(): FilterState;
+}
+
+class ImageFilterService {
+  private ratingManager: RatingManager;
+  private filterManager: FilterManager;
+  
+  constructor(images: ImageFile[]);
+  
+  updateImageRating(imagePath: string, rating: number): Promise<void>;
+  toggleImageFlag(imagePath: string): Promise<void>;
+  getFilteredImages(filterState: FilterState): ImageFile[];
+  persistRatingData(): Promise<void>;
+  loadRatingData(): Promise<void>;
+}
+```
+
+#### Star Rating Component Interface
+```typescript
+interface StarRatingProps {
+  rating: number; // 0-5
+  size: 'small' | 'medium' | 'large';
+  interactive: boolean;
+  showCount: boolean;
+  onRatingChange?: (rating: number) => void;
+}
+
+interface FlagToggleProps {
+  flagged: boolean;
+  size: 'small' | 'medium' | 'large';
+  onToggle?: (flagged: boolean) => void;
+}
+```
+
 ## Data Models
 
 ### Image Processing Models
@@ -292,13 +347,47 @@ interface LUTExportSettings {
 
 ### Storage Models
 
+#### Enhanced Image Models with Rating and Flagging
+```typescript
+interface ImageFile {
+  name: string;
+  handle: FileSystemFileHandle;
+  thumbnail?: string;
+  path: string;
+  lastModified: number;
+  size: number;
+  rating: number; // 0-5 stars
+  flagged: boolean;
+  metadata?: ImageMetadata;
+}
+
+interface ImageRatingData {
+  path: string;
+  rating: number;
+  flagged: boolean;
+  lastModified: number;
+}
+
+interface FilterState {
+  minStarRating: number; // 0-5, shows images with this rating or higher
+  showFlagged: boolean; // true = only flagged, false = all
+  isActive: boolean; // true when any filters are applied
+}
+```
+
 #### IndexedDB Schema
 ```typescript
 interface StorageSchema {
   images: {
     key: string;
     value: ImageData;
-    indexes: ['name', 'format', 'createdAt'];
+    indexes: ['name', 'format', 'createdAt', 'rating', 'flagged'];
+  };
+  
+  imageRatings: {
+    key: string; // image path
+    value: ImageRatingData;
+    indexes: ['rating', 'flagged', 'lastModified'];
   };
   
   presets: {

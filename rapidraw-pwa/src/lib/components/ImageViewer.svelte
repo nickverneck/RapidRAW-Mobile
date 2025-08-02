@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import type { ImageFile } from '$lib/stores/folderStore';
+	import { folderStore } from '$lib/stores/folderStore';
 	import uiStore from '$lib/stores/uiStore';
+	import StarRating from './StarRating.svelte';
+	import FlagToggle from './FlagToggle.svelte';
 
 	interface Props {
 		image: ImageFile | null;
@@ -11,7 +14,7 @@
 	let { image, showNavigation = false }: Props = $props();
 
 	const dispatch = createEventDispatcher();
-	const { toolbarCollapsed } = uiStore;
+	const { toolbarCollapsed, viewport } = uiStore;
 
 	let imageElement: HTMLImageElement;
 	let containerElement: HTMLElement;
@@ -189,6 +192,19 @@
 	function zoomOut() {
 		scale = Math.max(0.1, scale / 1.2);
 	}
+
+	// Rating and flag handlers
+	function handleRatingChange(event: CustomEvent<number>) {
+		if (image) {
+			folderStore.setImageRating(image.path, event.detail);
+		}
+	}
+
+	function handleFlagToggle(event: CustomEvent<boolean>) {
+		if (image) {
+			folderStore.toggleImageFlag(image.path);
+		}
+	}
 </script>
 
 <svelte:window 
@@ -359,10 +375,26 @@
 
 		<!-- Image Info -->
 		<div class="image-info glass-panel">
-			<h3 class="image-name">{image.name}</h3>
-			<p class="image-details">
-				{Math.round(image.size / 1024)} KB
-			</p>
+			<div class="image-header">
+				<h3 class="image-name">{image.name}</h3>
+				<div class="image-controls">
+					<StarRating 
+						rating={image.rating}
+						size="small"
+						on:ratingChange={handleRatingChange}
+					/>
+					<FlagToggle 
+						flagged={image.flagged}
+						size="small"
+						on:toggle={handleFlagToggle}
+					/>
+				</div>
+			</div>
+			{#if !$viewport.isMobile}
+				<p class="image-details">
+					{Math.round(image.size / 1024)} KB
+				</p>
+			{/if}
 		</div>
 	{:else}
 		<!-- No Image Selected -->
@@ -571,17 +603,34 @@
 		-webkit-backdrop-filter: blur(15px);
 		border-radius: 8px;
 		z-index: 10;
-		max-width: 300px;
+		max-width: 350px;
+	}
+
+	.image-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.5rem;
 	}
 
 	.image-name {
 		font-size: 1rem;
 		font-weight: 600;
 		color: white;
-		margin: 0 0 0.25rem 0;
+		margin: 0;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.image-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-shrink: 0;
 	}
 
 	.image-details {
@@ -621,8 +670,18 @@
 			max-width: none;
 		}
 
+		.image-header {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.5rem;
+		}
+
 		.image-name {
 			font-size: 0.9rem;
+		}
+
+		.image-controls {
+			align-self: flex-end;
 		}
 
 		.image-details {

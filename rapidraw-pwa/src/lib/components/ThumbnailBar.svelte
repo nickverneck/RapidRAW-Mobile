@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { createEventDispatcher } from 'svelte';
 	import type { ImageFile } from '$lib/stores/folderStore';
 	import uiStore from '$lib/stores/uiStore';
+	import './ThumbnailBar.css';
 
 	interface Props {
 		images: ImageFile[];
@@ -12,7 +12,7 @@
 	let { images, selectedImage }: Props = $props();
 
 	const dispatch = createEventDispatcher();
-	const { toolbarCollapsed } = uiStore;
+	const { toolbarCollapsed, viewport } = uiStore;
 
 	let scrollContainer: HTMLElement;
 	let isDragging = $state(false);
@@ -199,7 +199,9 @@
 					
 					<div class="thumbnail-info">
 						<span class="thumbnail-name">{image.name}</span>
-						<span class="thumbnail-size">{formatFileSize(image.size)}</span>
+						{#if !$viewport.isMobile}
+							<span class="thumbnail-size">{formatFileSize(image.size)}</span>
+						{/if}
 					</div>
 
 					<!-- Selection indicator -->
@@ -226,380 +228,52 @@
 			{/each}
 		</div>
 
-		<!-- Scroll indicators -->
-		<div class="scroll-indicators">
-			<button 
-				class="scroll-btn scroll-left glass-button"
-				on:click={() => scrollContainer.scrollBy({ left: -200, behavior: 'smooth' })}
-				aria-label="Scroll left"
-			>
-				<svg 
-					width="16" 
-					height="16" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
-					stroke-width="2"
+		<!-- Scroll indicators - hidden on mobile -->
+		{#if !$viewport.isMobile}
+			<div class="scroll-indicators">
+				<button 
+					class="scroll-btn scroll-left glass-button"
+					onclick={() => scrollContainer.scrollBy({ left: -200, behavior: 'smooth' })}
+					aria-label="Scroll left"
 				>
-					<path d="m15 18-6-6 6-6"/>
-				</svg>
-			</button>
+					<svg 
+						width="16" 
+						height="16" 
+						viewBox="0 0 24 24" 
+						fill="none" 
+						stroke="currentColor" 
+						stroke-width="2"
+					>
+						<path d="m15 18-6-6 6-6"/>
+					</svg>
+				</button>
 
-			<div class="image-counter">
-				{#if selectedImage}
-					{images.findIndex(img => img.path === selectedImage.path) + 1} of {images.length}
-				{:else}
-					{images.length} images
-				{/if}
+				<div class="image-counter">
+					{#if selectedImage}
+						{images.findIndex(img => img.path === selectedImage.path) + 1} of {images.length}
+					{:else}
+						{images.length} images
+					{/if}
+				</div>
+
+				<button 
+					class="scroll-btn scroll-right glass-button"
+					class:toolbar-collapsed={$toolbarCollapsed}
+					onclick={() => scrollContainer.scrollBy({ left: 200, behavior: 'smooth' })}
+					aria-label="Scroll right"
+				>
+					<svg 
+						width="16" 
+						height="16" 
+						viewBox="0 0 24 24" 
+						fill="none" 
+						stroke="currentColor" 
+						stroke-width="2"
+					>
+						<path d="m9 18 6-6-6-6"/>
+					</svg>
+				</button>
 			</div>
-
-			<button 
-				class="scroll-btn scroll-right glass-button"
-				class:toolbar-collapsed={$toolbarCollapsed}
-				on:click={() => scrollContainer.scrollBy({ left: 200, behavior: 'smooth' })}
-				aria-label="Scroll right"
-			>
-				<svg 
-					width="16" 
-					height="16" 
-					viewBox="0 0 24 24" 
-					fill="none" 
-					stroke="currentColor" 
-					stroke-width="2"
-				>
-					<path d="m9 18 6-6-6-6"/>
-				</svg>
-			</button>
-		</div>
+		{/if}
 	{/if}
 </div>
-
-<style>
-
-
-	.thumbnail-bar {
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		background: var(--glass-bg-color);
-		backdrop-filter: blur(15px);
-		-webkit-backdrop-filter: blur(15px);
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.empty-thumbnails {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		color: rgba(255, 255, 255, 0.6);
-		text-align: center;
-		padding: 2rem;
-	}
-
-	.empty-icon {
-		margin-bottom: 0.5rem;
-		opacity: 0.5;
-	}
-
-	.empty-text {
-		font-size: 0.9rem;
-		margin: 0;
-	}
-
-	.thumbnails-scroll {
-		flex: 1;
-		display: flex;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		overflow-x: auto;
-		overflow-y: hidden;
-		cursor: grab;
-		scroll-behavior: smooth;
-	}
-
-	.thumbnails-scroll:active {
-		cursor: grabbing;
-	}
-
-	.thumbnail {
-		position: relative;
-		flex-shrink: 0;
-		width: 80px;
-		height: 80px;
-		border-radius: 8px;
-		overflow: hidden;
-		cursor: pointer;
-		background: rgba(255, 255, 255, 0.05);
-		border: 2px solid transparent;
-		transition: all 0.2s ease;
-	}
-
-	.thumbnail:hover {
-		background: rgba(255, 255, 255, 0.1);
-		transform: scale(1.05);
-	}
-
-	.thumbnail.selected {
-		background: rgba(59, 130, 246, 0.3);
-		border-color: rgba(59, 130, 246, 0.6);
-		transform: scale(1.1);
-	}
-
-	.thumbnail-image-container {
-		width: 100%;
-		height: 60px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-		border-radius: 6px 6px 0 0;
-		background: rgba(0, 0, 0, 0.2);
-	}
-
-	.thumbnail-image {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		user-select: none;
-		-webkit-user-drag: none;
-	}
-
-	.thumbnail-placeholder {
-		color: rgba(255, 255, 255, 0.4);
-	}
-
-	.thumbnail-info {
-		padding: 0.25rem;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		text-align: center;
-		height: 20px;
-		overflow: hidden;
-	}
-
-	.thumbnail-name {
-		font-size: 0.7rem;
-		font-weight: 500;
-		color: white;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 100%;
-		line-height: 1;
-	}
-
-	.thumbnail-size {
-		font-size: 0.6rem;
-		color: rgba(255, 255, 255, 0.6);
-		line-height: 1;
-		margin-top: 0.125rem;
-	}
-
-	.selection-indicator {
-		position: absolute;
-		top: 0.25rem;
-		right: 0.25rem;
-		width: 20px;
-		height: 20px;
-		background: rgba(59, 130, 246, 0.9);
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: white;
-	}
-
-	.thumbnail-index {
-		position: absolute;
-		top: 0.25rem;
-		left: 0.25rem;
-		background: rgba(0, 0, 0, 0.7);
-		color: white;
-		font-size: 0.6rem;
-		font-weight: 600;
-		padding: 0.125rem 0.25rem;
-		border-radius: 4px;
-		line-height: 1;
-	}
-
-	.scroll-indicators {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		position: relative;
-		padding: 0.5rem 0.75rem;
-		background: rgba(0, 0, 0, 0.3);
-		border-top: 1px solid rgba(255, 255, 255, 0.1);
-	}
-
-	.scroll-btn {
-		position: absolute;
-		top: 50%;
-		transform: translateY(-50%);
-		padding: 0.5rem;
-		border: none;
-		background: rgba(255, 255, 255, 0.1);
-		color: rgba(255, 255, 255, 0.8);
-		border-radius: 6px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.scroll-btn:hover {
-		background: rgba(255, 255, 255, 0.2);
-		color: white;
-	}
-
-	/* Position scroll buttons for mobile layout */
-	.scroll-left {
-		left: 0.75rem;
-	}
-
-	.scroll-right {
-		right: 0.75rem;
-	}
-
-	/* Desktop positioning for scroll-right button relative to toolbar */
-	@media (min-width: 769px) {
-		.scroll-right {
-			position: fixed;
-			bottom: 0.5rem;
-			right: calc(260px + 2rem); /* Default toolbar width (260px) + increased margin */
-			transition: right 0.3s ease;
-			z-index: 10;
-		}
-
-		.scroll-right.toolbar-collapsed {
-			right: calc(60px + 2rem); /* Collapsed toolbar width (60px) + increased margin */
-		}
-	}
-
-	.image-counter {
-		font-size: 0.8rem;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.8);
-		text-align: center;
-	}
-
-	/* Custom scrollbar */
-	.thumbnails-scroll::-webkit-scrollbar {
-		height: 4px;
-	}
-
-	.thumbnails-scroll::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 2px;
-	}
-
-	.thumbnails-scroll::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.3);
-		border-radius: 2px;
-	}
-
-	.thumbnails-scroll::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.5);
-	}
-
-	/* Mobile styles */
-	@media (max-width: 768px) {
-		.thumbnail {
-			width: 70px;
-			height: 70px;
-		}
-
-		.thumbnail-image-container {
-			height: 50px;
-		}
-
-		.thumbnails-scroll {
-			padding: 0.5rem;
-			gap: 0.375rem;
-			margin-top: -8px; /* Move up for better visibility */
-		}
-
-		.scroll-indicators {
-			padding: 0.375rem 0.5rem;
-		}
-
-		.image-counter {
-			font-size: 0.75rem;
-		}
-
-		.scroll-btn {
-			padding: 0.375rem;
-		}
-
-		.thumbnail-name {
-			font-size: 0.65rem;
-		}
-
-		.thumbnail-size {
-			font-size: 0.55rem;
-		}
-	}
-
-	/* Tablet styles */
-	@media (min-width: 769px) and (max-width: 1024px) {
-		.thumbnail {
-			width: 90px;
-			height: 90px;
-		}
-
-		.thumbnail-image-container {
-			height: 70px;
-		}
-	}
-
-	/* Large screens */
-	@media (min-width: 1400px) {
-		.thumbnail {
-			width: 100px;
-			height: 100px;
-		}
-
-		.thumbnail-image-container {
-			height: 80px;
-		}
-	}
-
-	/* High contrast mode */
-	@media (prefers-contrast: high) {
-		.thumbnail {
-			border: 2px solid rgba(255, 255, 255, 0.5);
-		}
-
-		.thumbnail.selected {
-			border-color: #3b82f6;
-		}
-
-		.scroll-indicators {
-			border-top-color: white;
-		}
-	}
-
-	/* Reduced motion */
-	@media (prefers-reduced-motion: reduce) {
-		.thumbnail {
-			transition: none;
-		}
-
-		.thumbnails-scroll {
-			scroll-behavior: auto;
-		}
-	}
-
-	/* Focus styles for accessibility */
-	.thumbnail:focus {
-		outline: 2px solid rgba(59, 130, 246, 0.8);
-		outline-offset: 2px;
-	}
-
-	.thumbnails-scroll:focus {
-		outline: 2px solid rgba(59, 130, 246, 0.8);
-		outline-offset: -2px;
-	}
-</style>

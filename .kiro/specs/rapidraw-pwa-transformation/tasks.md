@@ -196,229 +196,277 @@
   - Migrate React refs to Svelte bind:this syntax
   - _Requirements: 1.4, 1.5_
 
-## Phase 5: Image Processing and Color Grading Tests
+- [ ] 4.4 Implement image rating and flagging system
+  - Add rating (0-5 stars) and flagged properties to ImageFile interface
+  - Create StarRating.svelte component with touch-optimized star selection
+  - Build FlagToggle.svelte component with visual flag indicator
+  - Implement persistent storage for ratings and flags using IndexedDB
+  - Add rating and flag controls to image info displays
+  - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5_
 
-- [ ] 5. Write advanced color grading tests
+- [ ] 4.5 Create advanced filtering system
+  - Build FilterPanel.svelte component for FolderSidebar
+  - Implement star rating filter (show images with X stars or higher)
+  - Add flagged images filter (show only flagged images)
+  - Create filter combination logic and clear filters functionality
+  - Add visual indicators for active filters in the UI
+  - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5_
+
+## Phase 5: Mobile UI Optimization and CSS Architecture
+
+- [ ] 5. Implement mobile UI improvements and CSS separation
+  - Move component styles from inline <style> blocks to separate CSS files
+  - Hide image size information on mobile devices for better space utilization
+  - Remove scroll indicators from mobile thumbnail bar
+  - Hide mobile sidebar toggle when folder sidebar is visible
+  - Optimize touch targets and spacing for mobile interactions
+  - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 16.1, 16.2, 16.3, 16.4, 16.5_
+
+- [x] 5.1 Refactor FolderSidebar component
+  - Extract FolderSidebar styles to separate CSS file
+  - Add FilterPanel component between folder list and footer
+  - Implement star rating filter with 0-5 star selection
+  - Add flagged images filter toggle
+  - Create clear filters button for resetting all filters
+  - _Requirements: 14.1, 14.2, 14.3, 14.4, 14.5, 16.1, 16.2_
+
+- [x] 5.2 Refactor ThumbnailBar component
+  - Extract ThumbnailBar styles to separate CSS file
+  - Hide image size information on mobile devices
+  - Remove scroll indicators on mobile for cleaner interface
+  - Maintain desktop functionality while optimizing mobile experience
+  - _Requirements: 15.2, 15.3, 16.1, 16.2_
+
+- [x] 5.3 Update ImageViewer component
+  - Add star rating and flag controls next to image name
+  - Hide image size information on mobile devices
+  - Ensure touch-optimized controls for mobile users
+  - Maintain consistent styling with glassmorphism design
+  - _Requirements: 13.5, 15.1, 15.5_
+
+## Phase 6: Image Processing and Color Grading Tests
+
+- [ ] 6. Write advanced color grading tests
   - Create tests for HSL adjustment accuracy and performance
   - Write tests for interactive color wheel functionality
   - Build tests for color grading preset save/load operations
   - Create tests for LUT export in multiple formats
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 5.1 Write image editing workflow tests
+- [ ] 6.1 Write image editing workflow tests
   - Create end-to-end tests for complete image editing workflows
   - Write tests for crop tool with touch gesture support
   - Build tests for masking tools with brush and AI functionality
   - Create tests for real-time preview updates and performance
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 9.1_
 
-- [ ] 5.2 Implement advanced HSL color controls
+- [ ] 6.2 Implement advanced HSL color controls
   - Create HSLAdjustments.svelte with separate hue, saturation, lightness controls
   - Build interactive color range selectors for 8 color ranges
   - Implement real-time preview updates with smooth performance
   - Add touch-optimized color adjustment interfaces
   - _Requirements: 7.1, 7.2, 6.3_
 
-- [ ] 5.3 Build interactive color wheels
+- [ ] 6.3 Build interactive color wheels
   - Create ColorWheel.svelte component with touch gesture support
   - Implement shadow/midtone/highlight color wheel adjustments
   - Add precise color selection with touch and mouse input
   - Create visual feedback for color adjustments with smooth animations
   - _Requirements: 7.5, 6.3_
 
-- [ ] 5.4 Create color grading preset system
+- [ ] 6.4 Create color grading preset system
   - Build PresetManager.svelte for saving and organizing color grades
   - Implement preset thumbnail generation and preview
   - Create preset import/export functionality
   - Add preset tagging and search capabilities
   - _Requirements: 7.3, 7.4_
 
-- [ ] 5.5 Implement LUT export functionality
+- [ ] 6.5 Implement LUT export functionality
   - Build LUTExporter.svelte with format selection (CUBE, 3DL, CSP)
   - Implement industry-standard LUT resolution options (17x17x17, 33x33x33, 65x65x65)
   - Add LUT metadata and description fields
   - Create accurate color transformation to LUT format
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-## Phase 6: Touch Interface and Mobile Optimization
+## Phase 7: Touch Interface and Mobile Optimization
 
-- [ ] 6. Write comprehensive mobile interaction tests
+- [ ] 7. Write comprehensive mobile interaction tests
   - Create tests for touch gesture recognition accuracy
   - Write performance tests for mobile image processing
   - Build tests for memory management on mobile devices
   - Create tests for tablet-specific layout optimizations
   - _Requirements: 2.5, 2.6, 10.1, 10.2, 10.3, 10.4_
 
-- [ ] 6.1 Write touch-based editing tool tests
+- [ ] 7.1 Write touch-based editing tool tests
   - Create tests for touch-based crop tool functionality
   - Write tests for brush masking with pressure sensitivity
   - Build tests for touch-friendly curve editor
   - Create tests for precision input methods on mobile
   - _Requirements: 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 6.2 Implement comprehensive touch gesture system
+- [ ] 7.2 Implement comprehensive touch gesture system
   - Create TouchGestureManager class for gesture recognition
   - Implement pinch-to-zoom with smooth scaling and momentum
   - Add pan gestures with boundary constraints and elastic scrolling
   - Build tap, double-tap, and long-press gesture handlers
   - _Requirements: 2.6, 6.4, 6.5_
 
-- [ ] 6.3 Build touch-optimized image editing tools
+- [ ] 7.3 Build touch-optimized image editing tools
   - Create touch-based crop tool with corner handles and gesture support
   - Implement brush masking with pressure sensitivity where available
   - Build touch-friendly curve editor with drag-and-drop points
   - Add precision input methods for fine adjustments on mobile
   - _Requirements: 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 6.4 Optimize performance for mobile devices
+- [ ] 7.4 Optimize performance for mobile devices
   - Implement image tiling for processing large images on mobile
   - Add progressive image loading with low-resolution previews
   - Use Web Workers for background processing to maintain 60fps UI
   - Implement memory management strategies for mobile constraints
   - _Requirements: 10.1, 10.2, 10.4, 10.3_
 
-- [ ] 6.5 Create tablet-specific layout optimizations
+- [ ] 7.5 Create tablet-specific layout optimizations
   - Build TabletLayout.svelte that utilizes larger screen space effectively
   - Implement side-by-side panel layouts for tablet landscape mode
   - Add tablet-specific gesture shortcuts and multi-touch support
   - Create adaptive UI that scales appropriately for tablet displays
   - _Requirements: 2.5, 2.6_
 
-## Phase 7: Offline Functionality and Storage
+## Phase 8: Offline Functionality and Storage
 
-- [ ] 7. Write comprehensive offline functionality tests
+- [ ] 8. Write comprehensive offline functionality tests
   - Create tests for service worker caching strategies
   - Write tests for offline image processing capabilities
   - Build tests for local storage and data synchronization
   - Create tests for network state change handling
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-- [ ] 7.1 Write storage and persistence tests
+- [ ] 8.1 Write storage and persistence tests
   - Create tests for IndexedDB operations and data integrity
   - Write tests for image data compression and optimization
   - Build tests for preset and settings persistence
   - Create tests for cache management and cleanup
   - _Requirements: 11.2, 11.3_
 
-- [ ] 7.2 Implement comprehensive offline support
+- [ ] 8.2 Implement comprehensive offline support
   - Create service worker with intelligent caching strategies
   - Build offline image processing using cached WebAssembly modules
   - Implement local storage for edits with automatic sync when online
   - Add offline status detection and user notification system
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-- [ ] 7.3 Build IndexedDB storage system
+- [ ] 8.3 Build IndexedDB storage system
   - Create StorageManager class for IndexedDB operations
   - Implement image data storage with compression and optimization
   - Build preset and settings persistence with versioning
   - Add cache management with automatic cleanup of expired data
   - _Requirements: 11.2, 11.3_
 
-- [ ] 7.4 Create file system integration
+- [ ] 8.4 Create file system integration
   - Implement File System Access API for modern browsers
   - Add drag-and-drop file handling with progress indicators
   - Create file picker fallback for unsupported browsers
   - Build export functionality with save-to-device capabilities
   - _Requirements: 12.1, 12.2_
 
-## Phase 8: Advanced Features and Cross-Browser Compatibility
+## Phase 9: Advanced Features and Cross-Browser Compatibility
 
-- [ ] 8. Write cross-browser compatibility tests
+- [ ] 9. Write cross-browser compatibility tests
   - Create tests for iOS Safari WebKit limitations and workarounds
   - Write tests for Android Chrome feature compatibility
   - Build tests for feature detection and graceful degradation
   - Create tests for PWA installation across different platforms
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
 
-- [ ] 8.1 Write advanced feature tests
+- [ ] 9.1 Write advanced feature tests
   - Create tests for AI-powered masking functionality
   - Write tests for batch processing capabilities
   - Build tests for advanced export options and formats
   - Create tests for watermark and metadata embedding
   - _Requirements: 6.3, 8.1, 8.2, 10.4_
 
-- [ ] 8.2 Implement advanced masking tools
+- [ ] 9.2 Implement advanced masking tools
   - Port AI-powered masking functionality to WebAssembly
   - Create touch-based mask painting with brush size and opacity controls
   - Implement mask blending modes and layer management
   - Add mask import/export functionality
   - _Requirements: 6.3_
 
-- [ ] 8.3 Build batch processing capabilities
+- [ ] 9.3 Build batch processing capabilities
   - Create batch export functionality for multiple images
   - Implement preset application to image collections
   - Add progress tracking and cancellation for batch operations
   - Build queue management for background processing
   - _Requirements: 10.4_
 
-- [ ] 8.4 Add advanced export options
+- [ ] 9.4 Add advanced export options
   - Implement multiple export formats (JPEG, PNG, TIFF, WebP)
   - Create quality and compression settings with real-time preview
   - Add resize options with aspect ratio preservation
   - Build watermark and metadata embedding features
   - _Requirements: 8.1, 8.2_
 
-## Phase 9: Performance Optimization and Accessibility
+## Phase 10: Performance Optimization and Accessibility
 
-- [ ] 9. Write performance and accessibility tests
+- [ ] 10. Write performance and accessibility tests
   - Create performance benchmarks for image processing speed
   - Write accessibility tests for screen reader compatibility
   - Build tests for keyboard navigation and focus management
   - Create tests for high contrast mode and visual accessibility
   - _Requirements: 4.5, 10.1, 10.2, 10.3, 10.4, 10.5, 12.1, 12.2_
 
-- [ ] 9.1 Write analytics and monitoring tests
+- [ ] 10.1 Write analytics and monitoring tests
   - Create tests for privacy-focused analytics collection
   - Write tests for error boundary behavior and recovery
   - Build tests for performance monitoring accuracy
   - Create tests for user feedback collection system
   - _Requirements: 10.5_
 
-- [ ] 9.2 Optimize application performance
+- [ ] 10.2 Optimize application performance
   - Implement code splitting and lazy loading for faster initial load
   - Add image processing result caching with intelligent invalidation
   - Optimize WebAssembly module loading and initialization
   - Create performance monitoring and analytics integration
   - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
 
-- [ ] 9.3 Ensure comprehensive accessibility
+- [ ] 10.3 Ensure comprehensive accessibility
   - Add ARIA labels and roles for screen reader compatibility
   - Implement keyboard navigation for all interactive elements
   - Create high contrast mode support for visual accessibility
   - Add focus management and skip links for efficient navigation
   - _Requirements: 4.5, 12.1, 12.2_
 
-- [ ] 9.4 Build analytics and error reporting
+- [ ] 10.4 Build analytics and error reporting
   - Implement privacy-focused analytics for usage insights
   - Create error boundary components with graceful degradation
   - Add performance monitoring for WebAssembly processing times
   - Build user feedback collection system for continuous improvement
   - _Requirements: 10.5_
 
-## Phase 10: Final Integration and Deployment
+## Phase 11: Final Integration and Deployment
 
-- [ ] 10. Conduct comprehensive final testing
+- [ ] 11. Conduct comprehensive final testing
   - Run complete test suite across all supported browsers and devices
   - Perform load testing with large images and complex adjustments
   - Execute accessibility audits and compliance verification
   - Conduct security testing for client-side data handling
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
 
-- [ ] 10.1 Complete cross-browser compatibility verification
+- [ ] 11.1 Complete cross-browser compatibility verification
   - Test full functionality on iOS Safari with WebKit limitations
   - Verify Android Chrome compatibility with all features
   - Implement feature detection with appropriate fallbacks
   - Test PWA installation and functionality across platforms
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5_
 
-- [ ] 10.2 Finalize PWA deployment configuration
+- [ ] 11.2 Finalize PWA deployment configuration
   - Configure production build optimization for minimal bundle size
   - Set up CDN deployment for static assets and WebAssembly modules
   - Implement automatic updates with user notification system
   - Create deployment pipeline with staging and production environments
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 10.3 Conduct final performance and usability testing
+- [ ] 11.3 Conduct final performance and usability testing
   - Perform comprehensive performance testing on various mobile devices
   - Conduct usability testing with real users on mobile and tablet devices
   - Optimize based on performance metrics and user feedback

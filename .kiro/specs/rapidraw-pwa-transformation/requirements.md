@@ -150,3 +150,51 @@ This document outlines the requirements for transforming RapidRAW from a Tauri d
 3. WHEN WebAssembly is not supported THEN the application SHALL fall back to JavaScript implementations
 4. WHEN WebGPU is not available THEN the application SHALL use WebGL or Canvas fallbacks
 5. WHEN device capabilities vary THEN the application SHALL adapt its feature set accordingly
+
+### Requirement 13: Image Rating and Flagging System
+
+**User Story:** As a photographer, I want to rate my images with stars (0-5) and flag important ones, so that I can organize and quickly identify my best photos.
+
+#### Acceptance Criteria
+
+1. WHEN viewing an image THEN I SHALL be able to assign a star rating from 0 to 5 stars
+2. WHEN viewing an image THEN I SHALL be able to toggle a flag status on/off
+3. WHEN I rate an image THEN the rating SHALL be persistently stored and displayed
+4. WHEN I flag an image THEN the flag status SHALL be persistently stored and displayed
+5. WHEN using mobile devices THEN star and flag controls SHALL be touch-optimized with appropriate sizing
+
+### Requirement 14: Advanced Image Filtering System
+
+**User Story:** As a photographer, I want to filter my images by star rating and flag status, so that I can quickly find specific types of photos in my collection.
+
+#### Acceptance Criteria
+
+1. WHEN I select a star rating filter THEN only images with that rating or higher SHALL be displayed
+2. WHEN I select the flagged filter THEN only flagged images SHALL be displayed
+3. WHEN I combine filters THEN images SHALL match all selected criteria
+4. WHEN I clear filters THEN all images SHALL be displayed again
+5. WHEN filters are active THEN the UI SHALL clearly indicate which filters are applied
+
+### Requirement 15: Mobile-Optimized UI Improvements
+
+**User Story:** As a mobile user, I want a streamlined interface that maximizes screen real estate, so that I can focus on my images without UI clutter.
+
+#### Acceptance Criteria
+
+1. WHEN using mobile devices THEN image size information SHALL be hidden to save space
+2. WHEN viewing thumbnails on mobile THEN size information SHALL be hidden from thumbnail bar
+3. WHEN using mobile devices THEN scroll indicators SHALL be hidden to reduce visual clutter
+4. WHEN the folder sidebar is visible THEN the mobile sidebar toggle button SHALL be hidden
+5. WHEN on mobile THEN star rating and flag controls SHALL be prominently displayed next to image names
+
+### Requirement 16: CSS Architecture and Maintainability
+
+**User Story:** As a developer, I want well-organized CSS architecture with separation of concerns, so that the codebase is maintainable and scalable.
+
+#### Acceptance Criteria
+
+1. WHEN component styles exceed reasonable inline limits THEN they SHALL be moved to separate CSS files
+2. WHEN CSS is externalized THEN it SHALL maintain the same visual appearance and behavior
+3. WHEN CSS files are created THEN they SHALL follow consistent naming conventions
+4. WHEN styles are separated THEN they SHALL be properly imported and scoped to components
+5. WHEN CSS is refactored THEN responsive breakpoints and mobile optimizations SHALL be preserved

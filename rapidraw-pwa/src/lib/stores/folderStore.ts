@@ -13,24 +13,40 @@ export interface ImageFile {
 	path: string;
 	lastModified: number;
 	size: number;
+	rating: number; // 0-5 stars
+	flagged: boolean;
+}
+
+export interface FilterState {
+	minStarRating: number; // 0-5, shows images with this rating or higher
+	showFlagged: boolean; // true = only flagged, false = all
+	isActive: boolean; // true when any filters are applied
 }
 
 interface FolderState {
 	selectedFolders: FolderItem[];
 	currentFolder: FolderItem | null;
 	images: ImageFile[];
+	filteredImages: ImageFile[];
 	isLoading: boolean;
 	error: string | null;
 	hasPermission: boolean;
+	filterState: FilterState;
 }
 
 const initialState: FolderState = {
 	selectedFolders: [],
 	currentFolder: null,
 	images: [],
+	filteredImages: [],
 	isLoading: false,
 	error: null,
-	hasPermission: false
+	hasPermission: false,
+	filterState: {
+		minStarRating: 0,
+		showFlagged: false,
+		isActive: false
+	}
 };
 
 function createFolderStore() {
@@ -38,6 +54,63 @@ function createFolderStore() {
 
 	// Check if File System Access API is supported (SSR-safe)
 	const isSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+
+	// Rating and filtering helper functions
+	function loadImageRatings(): Map<string, { rating: number; flagged: boolean }> {
+		if (typeof window === 'undefined') return new Map();
+		
+		try {
+			const saved = localStorage.getItem('rapidraw-image-ratings');
+			if (saved) {
+				const data = JSON.parse(saved);
+				return new Map(Object.entries(data));
+			}
+		} catch (error) {
+			console.error('Failed to load image ratings:', error);
+		}
+		
+		return new Map();
+	}
+
+	function saveImageRatings(ratings: Map<string, { rating: number; flagged: boolean }>) {
+		if (typeof window === 'undefined') return;
+		
+		try {
+			const data = Object.fromEntries(ratings);
+			localStorage.setItem('rapidraw-image-ratings', JSON.stringify(data));
+		} catch (error) {
+			console.error('Failed to save image ratings:', error);
+		}
+	}
+
+	function applyFilters(images: ImageFile[], filterState: FilterState): ImageFile[] {
+		if (!filterState.isActive) return images;
+
+		return images.filter(image => {
+			// Star rating filter
+			if (filterState.minStarRating > 0 && image.rating < filterState.minStarRating) {
+				return false;
+			}
+
+			// Flag filter
+			if (filterState.showFlagged && !image.flagged) {
+				return false;
+			}
+
+			return true;
+		});
+	}
+
+	function updateFilterState(state: FolderState): FolderState {
+		const isActive = state.filterState.minStarRating > 0 || state.filterState.showFlagged;
+		const filteredImages = applyFilters(state.images, { ...state.filterState, isActive });
+		
+		return {
+			...state,
+			filterState: { ...state.filterState, isActive },
+			filteredImages
+		};
+	}
 
 	return {
 		subscribe,
@@ -127,6 +200,7 @@ function createFolderStore() {
 
 				const images: ImageFile[] = [];
 				const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff', 'image/bmp'];
+				const ratings = loadImageRatings();
 
 				for await (const [name, handle] of (folder.handle as any).entries()) {
 					if (handle.kind === 'file') {
@@ -138,14 +212,18 @@ function createFolderStore() {
 							
 							// Create thumbnail
 							const thumbnail = await folderStore.createThumbnail(file);
+							const imagePath = `${folder.path}/${name}`;
+							const ratingData = ratings.get(imagePath) || { rating: 0, flagged: false };
 							
 							images.push({
 								name,
 								handle,
-								path: `${folder.path}/${name}`,
+								path: imagePath,
 								thumbnail,
 								lastModified: file.lastModified,
-								size: file.size
+								size: file.size,
+								rating: ratingData.rating,
+								flagged: ratingData.flagged
 							});
 						}
 					}
@@ -154,7 +232,7 @@ function createFolderStore() {
 				// Sort images by name
 				images.sort((a, b) => a.name.localeCompare(b.name));
 
-				update(state => ({
+				update(state => updateFilterState({
 					...state,
 					images,
 					currentFolder: folder,
@@ -250,6 +328,58 @@ function createFolderStore() {
 			}
 		},
 
+		// Rating and flagging methods
+		setImageRating: (imagePath: string, rating: number) => {
+			const ratings = loadImageRatings();
+			const existing = ratings.get(imagePath) || { rating: 0, flagged: false };
+			ratings.set(imagePath, { ...existing, rating });
+			saveImageRatings(ratings);
+
+			update(state => {
+				const updatedImages = state.images.map(img => 
+					img.path === imagePath ? { ...img, rating } : img
+				);
+				return updateFilterState({ ...state, images: updatedImages });
+			});
+		},
+
+		toggleImageFlag: (imagePath: string) => {
+			const ratings = loadImageRatings();
+			const existing = ratings.get(imagePath) || { rating: 0, flagged: false };
+			const newFlagged = !existing.flagged;
+			ratings.set(imagePath, { ...existing, flagged: newFlagged });
+			saveImageRatings(ratings);
+
+			update(state => {
+				const updatedImages = state.images.map(img => 
+					img.path === imagePath ? { ...img, flagged: newFlagged } : img
+				);
+				return updateFilterState({ ...state, images: updatedImages });
+			});
+		},
+
+		// Filtering methods
+		setStarFilter: (minRating: number) => {
+			update(state => updateFilterState({
+				...state,
+				filterState: { ...state.filterState, minStarRating: minRating }
+			}));
+		},
+
+		setFlagFilter: (showFlagged: boolean) => {
+			update(state => updateFilterState({
+				...state,
+				filterState: { ...state.filterState, showFlagged }
+			}));
+		},
+
+		clearFilters: () => {
+			update(state => updateFilterState({
+				...state,
+				filterState: { minStarRating: 0, showFlagged: false, isActive: false }
+			}));
+		},
+
 		// Getters
 		get: () => get({ subscribe }),
 		isSupported: () => isSupported
@@ -266,7 +396,17 @@ export const hasSelectedFolder = derived(
 
 export const currentImages = derived(
 	folderStore,
+	($folderStore) => $folderStore.filteredImages
+);
+
+export const allImages = derived(
+	folderStore,
 	($folderStore) => $folderStore.images
+);
+
+export const filterState = derived(
+	folderStore,
+	($folderStore) => $folderStore.filterState
 );
 
 export const isLoadingImages = derived(
