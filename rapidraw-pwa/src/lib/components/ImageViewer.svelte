@@ -122,14 +122,17 @@
 
 	// Touch support for mobile
 	function handleTouchStart(event: TouchEvent) {
-		if (event.touches.length === 1 && scale > 1) {
-			// Single touch for panning
+		if (event.touches.length === 1) {
 			const touch = event.touches[0];
 			startX = touch.clientX;
 			startY = touch.clientY;
-			startTranslateX = translateX;
-			startTranslateY = translateY;
-			isDragging = true;
+			
+			if (scale > 1) {
+				// Single touch for panning when zoomed
+				startTranslateX = translateX;
+				startTranslateY = translateY;
+				isDragging = true;
+			}
 		} else if (event.touches.length === 2) {
 			// Two touches for pinch zoom
 			const touch1 = event.touches[0];
@@ -172,7 +175,27 @@
 		event.preventDefault();
 	}
 
-	function handleTouchEnd() {
+	function handleTouchEnd(event: TouchEvent) {
+		if (event.changedTouches.length === 1 && scale === 1) {
+			// Handle swipe navigation when not zoomed
+			const touch = event.changedTouches[0];
+			const deltaX = touch.clientX - startX;
+			const deltaY = touch.clientY - startY;
+			
+			// Check if it's a horizontal swipe (more horizontal than vertical movement)
+			const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50;
+			
+			if (isHorizontalSwipe) {
+				if (deltaX > 0) {
+					// Swipe right - go to previous image
+					handlePrevious();
+				} else {
+					// Swipe left - go to next image
+					handleNext();
+				}
+			}
+		}
+		
 		isDragging = false;
 		lastTouchDistance = 0;
 	}
@@ -262,8 +285,8 @@
 			{/if}
 		</div>
 
-		<!-- Navigation Controls -->
-		{#if showNavigation}
+		<!-- Navigation Controls - Hidden on mobile, users can swipe to navigate -->
+		{#if showNavigation && !$viewport.isMobile}
 			<button
 				class="nav-btn nav-prev glass-button touch-target"
 				onclick={handlePrevious}
@@ -635,8 +658,9 @@
 
 	/* Mobile styles */
 	@media (max-width: 768px) {
-		/* Hide zoom controls on mobile as fallback */
-		.zoom-controls {
+		/* Hide zoom controls and navigation buttons on mobile as fallback */
+		.zoom-controls,
+		.nav-btn {
 			display: none !important;
 		}
 
