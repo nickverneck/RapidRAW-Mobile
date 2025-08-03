@@ -1,7 +1,7 @@
 use std::fs;
-use std::io::Cursor;
+use std::io::{Cursor, self};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use image::{DynamicImage, GenericImageView, GrayImage};
@@ -9,23 +9,39 @@ use image::imageops::{self, FilterType};
 use ndarray::{Array, IxDyn};
 use ort::{Environment, Session, SessionBuilder, Value};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::Manager;
 use tauri::Emitter;
+use tokio::sync::Mutex as TokioMutex;
+use tokenizers::Tokenizer;
+
+use crate::file_management;
 
 const ENCODER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/vit_t_encoder.onnx?download=true";
 const DECODER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/vit_t_decoder.onnx?download=true";
 const ENCODER_FILENAME: &str = "vit_t_encoder.onnx";
 const DECODER_FILENAME: &str = "vit_t_decoder.onnx";
 const SAM_INPUT_SIZE: u32 = 1024;
+const ENCODER_SHA256: &str = "8b8168033ea6687bb55ba242222b67a301ac9da30fd5cbfd04dcebbb180ec2a8";
+const DECODER_SHA256: &str = "1b216fb3b8ceeee00a65f89670c01e4c0d823fcacec39dd9accc233f85341dc4";
 
 const U2NETP_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/u2net.onnx?download=true";
 const U2NETP_FILENAME: &str = "u2net.onnx";
 const U2NETP_INPUT_SIZE: u32 = 320;
+const U2NETP_SHA256: &str = "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491";
+
+const CLIP_MODEL_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/clip_model.onnx?download=true";
+const CLIP_MODEL_FILENAME: &str = "clip_model.onnx";
+const CLIP_TOKENIZER_URL: &str = "https://huggingface.co/CyberTimon/RapidRAW-Models/resolve/main/clip_tokenizer.json?download=true";
+const CLIP_TOKENIZER_FILENAME: &str = "clip_tokenizer.json";
+const CLIP_MODEL_SHA256: &str = "57879bb1c23cdeb350d23569dd251ed4b740a96d747c529e94a2bb8040ac5d00";
 
 pub struct AiModels {
     pub sam_encoder: Session,
     pub sam_decoder: Session,
     pub u2netp: Session,
+    pub clip_model: Option<Session>,
+    pub clip_tokenizer: Option<Tokenizer>,
 }
 
 #[derive(Clone)]
@@ -59,34 +75,130 @@ async fn download_model(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_or_init_ai_models(app_handle: &tauri::AppHandle) -> Result<Arc<AiModels>> {
+fn verify_sha256(path: &Path, expected_hash: &str) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    io::copy(&mut file, &mut hasher)?;
+    let hash = hasher.finalize();
+    let hex_hash = format!("{:x}", hash);
+    Ok(hex_hash == expected_hash)
+}
+
+async fn download_and_verify_model(
+    app_handle: &tauri::AppHandle,
+    models_dir: &Path,
+    filename: &str,
+    url: &str,
+    expected_hash: &str,
+    model_name: &str,
+) -> Result<()> {
+    let dest_path = models_dir.join(filename);
+    let is_valid = verify_sha256(&dest_path, expected_hash)?;
+
+    if !is_valid {
+        if dest_path.exists() {
+            println!("Model {} has incorrect hash. Re-downloading.", model_name);
+            fs::remove_file(&dest_path)?;
+        }
+        let _ = app_handle.emit("ai-model-download-start", model_name);
+        download_model(url, &dest_path).await?;
+        let _ = app_handle.emit("ai-model-download-finish", model_name);
+
+        if !verify_sha256(&dest_path, expected_hash)? {
+            return Err(anyhow::anyhow!("Failed to verify model {} after download. Hash mismatch.", model_name));
+        }
+    }
+    Ok(())
+}
+
+pub async fn get_or_init_ai_models(
+    app_handle: &tauri::AppHandle,
+    ai_state_mutex: &Mutex<Option<AiState>>,
+    ai_init_lock: &TokioMutex<()>,
+) -> Result<Arc<AiModels>> {
+    let settings = file_management::load_settings(app_handle.clone())
+        .map_err(|e| anyhow::anyhow!("Failed to load settings: {}", e))?;
+    let enable_tagging = settings.enable_ai_tagging.unwrap_or(false);
+
+    if let Some(ai_state) = ai_state_mutex.lock().unwrap().as_ref() {
+        if enable_tagging
+            && (ai_state.models.clip_model.is_none()
+                || ai_state.models.clip_tokenizer.is_none())
+        {
+            // tagging is enabled now, but models were loaded without it. re-initialize.
+        } else {
+            return Ok(ai_state.models.clone());
+        }
+    }
+
+    let _guard = ai_init_lock.lock().await;
+
+    if let Some(ai_state) = ai_state_mutex.lock().unwrap().as_ref() {
+        if enable_tagging
+            && (ai_state.models.clip_model.is_none()
+                || ai_state.models.clip_tokenizer.is_none())
+        {
+            // fall through
+        } else {
+            return Ok(ai_state.models.clone());
+        }
+    }
+
     let models_dir = get_models_dir(app_handle)?;
+
+    download_and_verify_model(app_handle, &models_dir, ENCODER_FILENAME, ENCODER_URL, ENCODER_SHA256, "SAM Encoder").await?;
+    download_and_verify_model(app_handle, &models_dir, DECODER_FILENAME, DECODER_URL, DECODER_SHA256, "SAM Decoder").await?;
+    download_and_verify_model(app_handle, &models_dir, U2NETP_FILENAME, U2NETP_URL, U2NETP_SHA256, "Foreground Model").await?;
+
+    let environment = Arc::new(Environment::builder().with_name("AI").build()?);
+    let mut clip_model = None;
+    let mut clip_tokenizer = None;
+
+    if enable_tagging {
+        download_and_verify_model(app_handle, &models_dir, CLIP_MODEL_FILENAME, CLIP_MODEL_URL, CLIP_MODEL_SHA256, "CLIP Model").await?;
+
+        let clip_tokenizer_path = models_dir.join(CLIP_TOKENIZER_FILENAME);
+        if !clip_tokenizer_path.exists() {
+            let _ = app_handle.emit("ai-model-download-start", "CLIP Tokenizer");
+            download_model(CLIP_TOKENIZER_URL, &clip_tokenizer_path).await?;
+            let _ = app_handle.emit("ai-model-download-finish", "CLIP Tokenizer");
+        }
+
+        let clip_model_path = models_dir.join(CLIP_MODEL_FILENAME);
+        clip_model =
+            Some(SessionBuilder::new(&environment)?.with_model_from_file(clip_model_path)?);
+        clip_tokenizer = Some(
+            Tokenizer::from_file(clip_tokenizer_path)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?,
+        );
+    }
+
     let encoder_path = models_dir.join(ENCODER_FILENAME);
     let decoder_path = models_dir.join(DECODER_FILENAME);
     let u2netp_path = models_dir.join(U2NETP_FILENAME);
 
-    if !encoder_path.exists() {
-        let _ = app_handle.emit("ai-model-download-start", "SAM Encoder");
-        download_model(ENCODER_URL, &encoder_path).await?;
-        let _ = app_handle.emit("ai-model-download-finish", "SAM Encoder");
-    }
-    if !decoder_path.exists() {
-        let _ = app_handle.emit("ai-model-download-start", "SAM Decoder");
-        download_model(DECODER_URL, &decoder_path).await?;
-        let _ = app_handle.emit("ai-model-download-finish", "SAM Decoder");
-    }
-    if !u2netp_path.exists() {
-        let _ = app_handle.emit("ai-model-download-start", "Foreground Model");
-        download_model(U2NETP_URL, &u2netp_path).await?;
-        let _ = app_handle.emit("ai-model-download-finish", "Foreground Model");
-    }
-
-    let environment = Arc::new(Environment::builder().with_name("AI").build()?);
     let sam_encoder = SessionBuilder::new(&environment)?.with_model_from_file(encoder_path)?;
     let sam_decoder = SessionBuilder::new(&environment)?.with_model_from_file(decoder_path)?;
     let u2netp = SessionBuilder::new(&environment)?.with_model_from_file(u2netp_path)?;
 
-    Ok(Arc::new(AiModels { sam_encoder, sam_decoder, u2netp }))
+    let models = Arc::new(AiModels {
+        sam_encoder,
+        sam_decoder,
+        u2netp,
+        clip_model,
+        clip_tokenizer,
+    });
+
+    let mut ai_state_lock = ai_state_mutex.lock().unwrap();
+    *ai_state_lock = Some(AiState {
+        models: models.clone(),
+        embeddings: None,
+    });
+
+    Ok(models)
 }
 
 pub fn generate_image_embeddings(
@@ -266,6 +378,8 @@ pub struct AiSubjectMaskParameters {
     pub flip_horizontal: Option<bool>,
     #[serde(default)]
     pub flip_vertical: Option<bool>,
+    #[serde(default)]
+    pub orientation_steps: Option<u8>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -279,4 +393,6 @@ pub struct AiForegroundMaskParameters {
     pub flip_horizontal: Option<bool>,
     #[serde(default)]
     pub flip_vertical: Option<bool>,
+    #[serde(default)]
+    pub orientation_steps: Option<u8>,
 }

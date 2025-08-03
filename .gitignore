@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# dynamic libraries
+# dynamic libraries downloaded by 'ort' crate at build time
 src-tauri/resources/libonnxruntime.so
 src-tauri/resources/libonnxruntime.dylib
 src-tauri/resources/onnxruntime.dll

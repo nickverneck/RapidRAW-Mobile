@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, forwardRef } from 'react';
+import { useState, useEffect, useRef, forwardRef, useMemo } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -10,13 +10,24 @@ import {
   Star as StarIcon,
   Check,
   SlidersHorizontal,
+  Loader2,
+  AlertTriangle,
+  FolderInput,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeGrid as Grid } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import Button from '../ui/Button';
 import SettingsPanel from './SettingsPanel';
-import { THEMES, DEFAULT_THEME_ID } from '../../themes';
+import { THEMES, DEFAULT_THEME_ID } from '../../utils/themes';
+
+const COLOR_LABELS = [
+  { name: 'red', color: '#ef4444' },
+  { name: 'yellow', color: '#facc15' },
+  { name: 'green', color: '#4ade80' },
+  { name: 'blue', color: '#60a5fa' },
+  { name: 'purple', color: '#a78bfa' },
+];
 
 const sortOptions = [
   { key: 'name', order: 'asc', label: 'File Name (A-Z)' },
@@ -53,6 +64,70 @@ const customOuterElement = forwardRef((props, ref) => (
 ));
 customOuterElement.displayName = 'CustomOuterElement';
 
+function ColorFilterOptions({ filterCriteria, setFilterCriteria }) {
+  const [lastClickedColor, setLastClickedColor] = useState(null);
+  const allColors = useMemo(() => [...COLOR_LABELS, { name: 'none', color: '#9ca3af' }], []);
+
+  const handleColorClick = (colorName, event) => {
+    const { ctrlKey, metaKey, shiftKey } = event;
+    const isCtrlPressed = ctrlKey || metaKey;
+    const currentColors = filterCriteria.colors || [];
+
+    if (shiftKey && lastClickedColor) {
+      const lastIndex = allColors.findIndex(c => c.name === lastClickedColor);
+      const currentIndex = allColors.findIndex(c => c.name === colorName);
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const range = allColors.slice(start, end + 1).map(c => c.name);
+        const baseSelection = isCtrlPressed ? currentColors : [lastClickedColor];
+        const newColors = Array.from(new Set([...baseSelection, ...range]));
+        setFilterCriteria(prev => ({ ...prev, colors: newColors }));
+      }
+    } else if (isCtrlPressed) {
+      const newColors = currentColors.includes(colorName)
+        ? currentColors.filter(c => c !== colorName)
+        : [...currentColors, colorName];
+      setFilterCriteria(prev => ({ ...prev, colors: newColors }));
+    } else {
+      const newColors = currentColors.length === 1 && currentColors[0] === colorName
+        ? []
+        : [colorName];
+      setFilterCriteria(prev => ({ ...prev, colors: newColors }));
+    }
+    setLastClickedColor(colorName);
+  };
+
+  return (
+    <div>
+      <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Filter by Color Label</div>
+      <div className="flex flex-wrap gap-3 px-3 py-2">
+        {allColors.map((color) => {
+          const isSelected = (filterCriteria.colors || []).includes(color.name);
+          const title = color.name === 'none' ? 'No Label' : color.name.charAt(0).toUpperCase() + color.name.slice(1);
+          return (
+            <button
+              key={color.name}
+              title={title}
+              onClick={(e) => handleColorClick(color.name, e)}
+              className="w-6 h-6 rounded-full focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-surface transition-transform hover:scale-110"
+              role="menuitem"
+            >
+              <div className="relative w-full h-full">
+                <div className="w-full h-full rounded-full" style={{ backgroundColor: color.color }}></div>
+                {isSelected && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-full">
+                    <Check size={14} className="text-white" />
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function DropdownMenu({ buttonContent, buttonTitle, children, contentClassName = "w-56" }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -134,46 +209,50 @@ function FilterOptions({ filterCriteria, setFilterCriteria }) {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Filter by Rating</div>
-        {ratingFilterOptions.map((option) => {
-          const isSelected = filterCriteria.rating === option.value;
-          return (
-            <button
-              key={option.value}
-              onClick={() => handleRatingFilterChange(option.value)}
-              className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'}`}
-              role="menuitem"
-            >
-              <span className="flex items-center gap-2">
-                {option.value > 0 && <StarIcon size={16} className="text-accent fill-accent" />}
-                <span>{option.label}</span>
-              </span>
-              {isSelected && <Check size={16} />}
-            </button>
-          );
-        })}
-      </div>
+    <>
+      <div className="space-y-4">
+        <div>
+          <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Filter by Rating</div>
+          {ratingFilterOptions.map((option) => {
+            const isSelected = filterCriteria.rating === option.value;
+            return (
+              <button
+                key={option.value}
+                onClick={() => handleRatingFilterChange(option.value)}
+                className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'}`}
+                role="menuitem"
+              >
+                <span className="flex items-center gap-2">
+                  {option.value > 0 && <StarIcon size={16} className="text-accent fill-accent" />}
+                  <span>{option.label}</span>
+                </span>
+                {isSelected && <Check size={16} />}
+              </button>
+            );
+          })}
+        </div>
 
-      <div>
-        <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Filter by File Type</div>
-        {rawStatusOptions.map((option) => {
-          const isSelected = (filterCriteria.rawStatus || 'all') === option.key;
-          return (
-            <button
-              key={option.key}
-              onClick={() => handleRawStatusChange(option.key)}
-              className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'}`}
-              role="menuitem"
-            >
-              <span>{option.label}</span>
-              {isSelected && <Check size={16} />}
-            </button>
-          );
-        })}
+        <div>
+          <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Filter by File Type</div>
+          {rawStatusOptions.map((option) => {
+            const isSelected = (filterCriteria.rawStatus || 'all') === option.key;
+            return (
+              <button
+                key={option.key}
+                onClick={() => handleRawStatusChange(option.key)}
+                className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'}`}
+                role="menuitem"
+              >
+                <span>{option.label}</span>
+                {isSelected && <Check size={16} />}
+              </button>
+            );
+          })}
+        </div>
       </div>
-    </div>
+      <div className="py-2"></div>
+      <ColorFilterOptions filterCriteria={filterCriteria} setFilterCriteria={setFilterCriteria} />
+    </>
   );
 }
 
@@ -208,7 +287,8 @@ function ViewOptionsDropdown({
   setSortCriteria,
 }) {
   const isFilterActive = filterCriteria.rating > 0 || 
-                        (filterCriteria.rawStatus && filterCriteria.rawStatus !== 'all')
+                        (filterCriteria.rawStatus && filterCriteria.rawStatus !== 'all') ||
+                        (filterCriteria.colors && filterCriteria.colors.length > 0);
 
   return (
     <DropdownMenu
@@ -236,8 +316,7 @@ function ViewOptionsDropdown({
   );
 }
 
-
-function Thumbnail({ path, data, onImageClick, onImageDoubleClick, isSelected, isActive, rating, onContextMenu }) {
+function Thumbnail({ path, data, onImageClick, onImageDoubleClick, isSelected, isActive, rating, onContextMenu, tags }) {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -245,6 +324,8 @@ function Thumbnail({ path, data, onImageClick, onImageDoubleClick, isSelected, i
   }, [data]);
 
   const ringClass = isActive ? 'ring-2 ring-accent' : isSelected ? 'ring-2 ring-gray-400' : 'hover:ring-2 hover:ring-hover-color';
+  const colorTag = tags?.find(t => t.startsWith('color:'))?.substring(6);
+  const colorLabel = COLOR_LABELS.find(c => c.name === colorTag);
 
   return (
     <div
@@ -261,12 +342,25 @@ function Thumbnail({ path, data, onImageClick, onImageDoubleClick, isSelected, i
           <ImageIcon className="text-text-secondary animate-pulse" />
         </div>
       )}
-      {rating > 0 && (
+      
+      {(colorLabel || rating > 0) && (
         <div className="absolute top-1.5 right-1.5 bg-bg-primary/50 rounded-full px-1.5 py-0.5 text-xs text-text-primary flex items-center gap-1 backdrop-blur-sm">
-          <span>{rating}</span>
-          <StarIcon size={12} className="text-accent fill-accent" />
+          {colorLabel && (
+            <div 
+              className="w-3 h-3 rounded-full ring-1 ring-black/20"
+              style={{ backgroundColor: colorLabel.color }}
+              title={`Color: ${colorLabel.name}`}
+            ></div>
+          )}
+          {rating > 0 && (
+            <>
+              <span>{rating}</span>
+              <StarIcon size={12} className="text-accent fill-accent" />
+            </>
+          )}
         </div>
       )}
+
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
         <p className="text-white text-xs truncate">{path.split(/[\\/]/).pop()}</p>
       </div>
@@ -293,6 +387,7 @@ const Cell = ({ columnIndex, rowIndex, style, data }) => {
           path={imageFile.path}
           data={thumbnails[imageFile.path]}
           rating={imageRatings?.[imageFile.path] || 0}
+          tags={imageFile.tags}
           onImageClick={onImageClick}
           onImageDoubleClick={onImageDoubleClick}
           isSelected={multiSelectedPaths.includes(imageFile.path)}
@@ -305,11 +400,11 @@ const Cell = ({ columnIndex, rowIndex, style, data }) => {
 };
 
 export default function MainLibrary({
-  imageList, onImageClick, onImageDoubleClick, onContextMenu, onEmptyAreaContextMenu, multiSelectedPaths, activePath, rootPath, currentFolderPath, onOpenFolder, thumbnails, imageRatings, appSettings, onContinueSession, onGoHome, onClearSelection, sortCriteria, setSortCriteria, filterCriteria, setFilterCriteria, onSettingsChange, onLibraryRefresh, theme,
+  imageList, onImageClick, onImageDoubleClick, onContextMenu, onEmptyAreaContextMenu, multiSelectedPaths, activePath, rootPath, currentFolderPath, onOpenFolder, thumbnails, imageRatings, appSettings, onContinueSession, onGoHome, onClearSelection, sortCriteria, setSortCriteria, filterCriteria, setFilterCriteria, onSettingsChange, onLibraryRefresh, theme, initialScrollOffset, onScroll, isIndexing, indexingProgress, searchQuery, setSearchQuery, aiModelDownloadStatus,
+  importState, thumbnailSize, onThumbnailSizeChange,
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const [appVersion, setAppVersion] = useState('');
-  const [thumbnailSize, setThumbnailSize] = useState('medium');
   const [supportedTypes, setSupportedTypes] = useState(null);
 
   useEffect(() => { getVersion().then(setAppVersion); }, []);
@@ -372,10 +467,47 @@ export default function MainLibrary({
           <h2 className="text-2xl font-bold text-primary">Library</h2>
           <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
         </div>
+
         <div className="flex items-center gap-3">
+          {importState.status === 'importing' && (
+            <div className="flex items-center gap-2 text-sm text-accent animate-pulse">
+              <FolderInput size={16} />
+              <span>
+                Importing... ({importState.progress.current}/{importState.progress.total})
+              </span>
+            </div>
+          )}
+          {importState.status === 'success' && (
+            <div className="flex items-center gap-2 text-sm text-green-400">
+              <Check size={16} />
+              <span>Import Complete!</span>
+            </div>
+          )}
+          {importState.status === 'error' && (
+            <div className="flex items-center gap-2 text-sm text-red-400">
+              <AlertTriangle size={16} />
+              <span>Import Failed!</span>
+            </div>
+          )}
+
+          <div className="relative w-full max-w-xs">
+            <input
+              type="text"
+              placeholder={isIndexing && indexingProgress.total > 0 ? `Indexing... (${indexingProgress.current}/${indexingProgress.total})` : isIndexing ? "Indexing images..." : "Search by tags..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={isIndexing}
+              className="w-full h-12 pl-4 pr-10 bg-surface text-text-primary placeholder-text-secondary border border-transparent rounded-md focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+            />
+            {isIndexing && (
+              <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                <Loader2 className="h-5 w-5 text-text-secondary animate-spin" />
+              </div>
+            )}
+          </div>
           <ViewOptionsDropdown
             thumbnailSize={thumbnailSize}
-            onSelectSize={setThumbnailSize}
+            onSelectSize={onThumbnailSizeChange}
             filterCriteria={filterCriteria}
             setFilterCriteria={setFilterCriteria}
             sortCriteria={sortCriteria}
@@ -385,8 +517,31 @@ export default function MainLibrary({
           <Button onClick={onGoHome} className="h-12 w-12 bg-surface text-text-primary shadow-none p-0 flex items-center justify-center" title="Go to Home Screen"><Home className="w-8 h-8" /></Button>
         </div>
       </header>
-      {imageList.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-text-secondary" onContextMenu={onEmptyAreaContextMenu}><p>No images found that match your filter.</p></div>
+      {searchQuery && !appSettings?.enableAiTagging ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-text-secondary" onContextMenu={onEmptyAreaContextMenu}>
+          <AlertTriangle className="h-12 w-12 text-secondary mb-4" />
+          <p className="text-lg font-semibold">Tagging Disabled</p>
+          <p className="text-sm mt-2">Enable automatic tagging in Settings to use search.</p>
+        </div>
+      ) : imageList.length === 0 && (isIndexing || aiModelDownloadStatus || importState.status === 'importing') ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-text-secondary" onContextMenu={onEmptyAreaContextMenu}>
+          <Loader2 className="h-12 w-12 text-secondary animate-spin mb-4" />
+          <p className="text-lg font-semibold">
+            {aiModelDownloadStatus ? `Downloading ${aiModelDownloadStatus}...` 
+             : (isIndexing && indexingProgress.total > 0) 
+               ? `Indexing images... (${indexingProgress.current}/${indexingProgress.total})`
+               : (importState.status === 'importing' && importState.progress.total > 0)
+                 ? `Importing images... (${importState.progress.current}/${importState.progress.total})`
+                 : "Processing images..."
+            }
+          </p>
+          <p className="text-sm mt-2">This may take a moment.</p>
+        </div>
+      ) : imageList.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-text-secondary" onContextMenu={onEmptyAreaContextMenu}>
+          <SlidersHorizontal className="h-12 w-12 text-secondary mb-4 text-text-secondary" />
+          <p className="text-text-secondary">No images found that match your filter.</p>
+        </div>
       ) : (
         <div className="flex-1 w-full h-full" onClick={onClearSelection} onContextMenu={onEmptyAreaContextMenu}>
           <AutoSizer>
@@ -413,6 +568,8 @@ export default function MainLibrary({
                   columnWidth={cellWidth}
                   rowHeight={cellHeight}
                   itemData={{ imageList, columnCount, thumbnails, imageRatings, onImageClick, onImageDoubleClick, multiSelectedPaths, activePath, onContextMenu }}
+                  initialScrollTop={initialScrollOffset}
+                  onScroll={onScroll}
                 >{Cell}</Grid>
               );
             }}

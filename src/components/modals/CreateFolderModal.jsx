@@ -79,7 +79,7 @@ export default function CreateFolderModal({ isOpen, onClose, onSave }) {
           <button
             onClick={handleSave}
             disabled={!name.trim()}
-            className="px-4 py-2 rounded-md bg-accent text-primary font-semibold hover:bg-accent-hover disabled:bg-gray-500 disabled:text-white disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 rounded-md bg-accent shadow-shiny text-button-text font-semibold hover:bg-accent-hover disabled:bg-gray-500 disabled:text-white disabled:cursor-not-allowed transition-colors"
           >
             Create
           </button>

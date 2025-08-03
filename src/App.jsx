@@ -3,10 +3,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir } from '@tauri-apps/api/path';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import debounce from 'lodash.debounce';
 import { centerCrop, makeAspectCrop } from 'react-image-crop';
 import clsx from 'clsx';
-import { Copy, ClipboardPaste, RotateCcw, Star, Trash2, Folder, Edit, Check, X, Undo, Redo, FolderPlus, FileEdit, CopyPlus, Aperture } from 'lucide-react';
+import { Copy, ClipboardPaste, RotateCcw, Star, Trash2, Folder, Edit, Check, X, Undo, Redo, FolderPlus, FileEdit, CopyPlus, Aperture, Tag, FolderInput } from 'lucide-react';
 import TitleBar from './window/TitleBar';
 import MainLibrary from './components/panel/MainLibrary';
 import FolderTree from './components/panel/FolderTree';
@@ -26,180 +27,29 @@ import { ContextMenuProvider, useContextMenu } from './context/ContextMenuContex
 import CreateFolderModal from './components/modals/CreateFolderModal';
 import RenameFolderModal from './components/modals/RenameFolderModal';
 import ConfirmModal from './components/modals/ConfirmModal';
-import { THEMES, DEFAULT_THEME_ID } from './themes';
-import { v4 as uuidv4 } from 'uuid';
+import ImportSettingsModal from './components/modals/ImportSettingsModal';
+import RenameFileModal from './components/modals/RenameFileModal';
+import { useHistoryState } from './hooks/useHistoryState';
+import Resizer from './components/ui/Resizer';
+import { INITIAL_ADJUSTMENTS, COPYABLE_ADJUSTMENT_KEYS, normalizeLoadedAdjustments } from './utils/adjustments';
+import { generatePaletteFromImage } from './utils/palette';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { THEMES, DEFAULT_THEME_ID } from './utils/themes';
 
 const DEBUG = false;
 
-export const INITIAL_MASK_ADJUSTMENTS = {
-  exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
-  saturation: 0, temperature: 0, tint: 0, vibrance: 0,
-  sharpness: 0, lumaNoiseReduction: 0, colorNoiseReduction: 0,
-  clarity: 0, dehaze: 0, structure: 0,
-  hsl: {
-    reds: { hue: 0, saturation: 0, luminance: 0 }, oranges: { hue: 0, saturation: 0, luminance: 0 },
-    yellows: { hue: 0, saturation: 0, luminance: 0 }, greens: { hue: 0, saturation: 0, luminance: 0 },
-    aquas: { hue: 0, saturation: 0, luminance: 0 }, blues: { hue: 0, saturation: 0, luminance: 0 },
-    purples: { hue: 0, saturation: 0, luminance: 0 }, magentas: { hue: 0, saturation: 0, luminance: 0 },
-  },
-  curves: {
-    luma: [{ x: 0, y: 0 }, { x: 255, y: 255 }], red: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
-    green: [{ x: 0, y: 0 }, { x: 255, y: 255 }], blue: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
-  },
-  sectionVisibility: {
-    basic: true,
-    curves: true,
-    color: true,
-    details: true,
-    effects: true,
-  },
-};
-
-export const INITIAL_MASK_CONTAINER = {
-  name: 'New Mask',
-  visible: true,
-  invert: false,
-  adjustments: INITIAL_MASK_ADJUSTMENTS,
-  subMasks: [],
-};
-
-export const INITIAL_ADJUSTMENTS = {
-  rating: 0,
-  exposure: 0, contrast: 0, highlights: 0, shadows: 0, whites: 0, blacks: 0,
-  saturation: 0, temperature: 0, tint: 0, vibrance: 0,
-  sharpness: 0, lumaNoiseReduction: 0, colorNoiseReduction: 0,
-  clarity: 0, dehaze: 0, structure: 0,
-  vignetteAmount: 0, vignetteMidpoint: 50, vignetteRoundness: 0, vignetteFeather: 50,
-  grainAmount: 0, grainSize: 25, grainRoughness: 50,
-  hsl: {
-    reds: { hue: 0, saturation: 0, luminance: 0 }, oranges: { hue: 0, saturation: 0, luminance: 0 },
-    yellows: { hue: 0, saturation: 0, luminance: 0 }, greens: { hue: 0, saturation: 0, luminance: 0 },
-    aquas: { hue: 0, saturation: 0, luminance: 0 }, blues: { hue: 0, saturation: 0, luminance: 0 },
-    purples: { hue: 0, saturation: 0, luminance: 0 }, magentas: { hue: 0, saturation: 0, luminance: 0 },
-  },
-  curves: {
-    luma: [{ x: 0, y: 0 }, { x: 255, y: 255 }], red: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
-    green: [{ x: 0, y: 0 }, { x: 255, y: 255 }], blue: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
-  },
-  crop: null, aspectRatio: null, rotation: 0, flipHorizontal: false, flipVertical: false, 
-  masks: [],
-  aiPatches: [],
-  sectionVisibility: {
-    basic: true,
-    curves: true,
-    color: true,
-    details: true,
-    effects: true,
-  },
-};
-
-const normalizeLoadedAdjustments = (loadedAdjustments) => {
-  if (!loadedAdjustments) return INITIAL_ADJUSTMENTS;
-
-  const normalizedMasks = (loadedAdjustments.masks || []).map(maskContainer => {
-    const containerAdjustments = maskContainer.adjustments || {};
-    const normalizedSubMasks = (maskContainer.subMasks || []).map(subMask => ({
-      visible: true,
-      mode: 'additive',
-      ...subMask,
-    }));
-
-    return {
-      ...INITIAL_MASK_CONTAINER,
-      id: maskContainer.id || uuidv4(),
-      ...maskContainer,
-      adjustments: {
-        ...INITIAL_MASK_ADJUSTMENTS,
-        ...containerAdjustments,
-        hsl: { ...INITIAL_MASK_ADJUSTMENTS.hsl, ...(containerAdjustments.hsl || {}) },
-        curves: { ...INITIAL_MASK_ADJUSTMENTS.curves, ...(containerAdjustments.curves || {}) },
-        sectionVisibility: {
-          ...INITIAL_MASK_ADJUSTMENTS.sectionVisibility,
-          ...(containerAdjustments.sectionVisibility || {})
-        },
-      },
-      subMasks: normalizedSubMasks,
-    };
-  });
-
-  const normalizedAiPatches = (loadedAdjustments.aiPatches || []).map(patch => ({
-    visible: true,
-    ...patch,
-  }));
-
-  return {
-    ...INITIAL_ADJUSTMENTS,
-    ...loadedAdjustments,
-    hsl: { ...INITIAL_ADJUSTMENTS.hsl, ...(loadedAdjustments.hsl || {}) },
-    curves: { ...INITIAL_ADJUSTMENTS.curves, ...(loadedAdjustments.curves || {}) },
-    masks: normalizedMasks,
-    aiPatches: normalizedAiPatches,
-    sectionVisibility: {
-      ...INITIAL_ADJUSTMENTS.sectionVisibility,
-      ...(loadedAdjustments.sectionVisibility || {})
-    },
-  };
-};
-
-
-export const COPYABLE_ADJUSTMENT_KEYS = [
-  'exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks',
-  'saturation', 'temperature', 'tint', 'vibrance',
-  'sharpness', 'lumaNoiseReduction', 'colorNoiseReduction',
-  'clarity', 'dehaze', 'structure',
-  'vignetteAmount', 'vignetteMidpoint', 'vignetteRoundness', 'vignetteFeather',
-  'grainAmount', 'grainSize', 'grainRoughness',
-  'hsl', 'curves', 'sectionVisibility',
+const COLOR_LABELS = [
+  { name: 'red', color: '#ef4444' },
+  { name: 'yellow', color: '#facc15' },
+  { name: 'green', color: '#4ade80' },
+  { name: 'blue', color: '#60a5fa' },
+  { name: 'purple', color: '#a78bfa' },
 ];
-
-export const ADJUSTMENT_SECTIONS = {
-  basic: ['exposure', 'contrast', 'highlights', 'shadows', 'whites', 'blacks'],
-  curves: ['curves'],
-  color: ['saturation', 'temperature', 'tint', 'vibrance', 'hsl'],
-  details: ['sharpness', 'lumaNoiseReduction', 'colorNoiseReduction'],
-  effects: [
-    'clarity', 'dehaze', 'structure',
-    'vignetteAmount', 'vignetteMidpoint', 'vignetteRoundness', 'vignetteFeather',
-    'grainAmount', 'grainSize', 'grainRoughness'
-  ],
-};
-
-const useHistoryState = (initialState) => {
-  const [history, setHistory] = useState([initialState]);
-  const [index, setIndex] = useState(0);
-  const state = useMemo(() => history[index], [history, index]);
-
-  const setState = useCallback((newState) => {
-    const resolvedState = typeof newState === 'function' ? newState(history[index]) : newState;
-    if (JSON.stringify(resolvedState) === JSON.stringify(history[index])) return;
-    const newHistory = history.slice(0, index + 1);
-    newHistory.push(resolvedState);
-    setHistory(newHistory);
-    setIndex(newHistory.length - 1);
-  }, [history, index]);
-
-  const undo = useCallback(() => { if (index > 0) setIndex(index - 1); }, [index]);
-  const redo = useCallback(() => { if (index < history.length - 1) setIndex(index + 1); }, [index, history.length]);
-  const resetHistory = useCallback((newInitialState) => { setHistory([newInitialState]); setIndex(0); }, []);
-  const canUndo = index > 0;
-  const canRedo = index < history.length - 1;
-
-  return { state, setState, undo, redo, canUndo, canRedo, resetHistory };
-};
-
-const Resizer = ({ onMouseDown, direction }) => (
-  <div
-    onMouseDown={onMouseDown}
-    className={clsx(
-      'flex-shrink-0 bg-transparent z-10',
-      { 'w-2 cursor-col-resize': direction === 'vertical', 'h-2 cursor-row-resize': direction === 'horizontal' }
-    )}
-  />
-);
 
 function App() {
   const [rootPath, setRootPath] = useState(null);
   const [appSettings, setAppSettings] = useState(null);
+  const [isWindowFullScreen, setIsWindowFullScreen] = useState(false);
   const [currentFolderPath, setCurrentFolderPath] = useState(null);
   const [expandedFolders, setExpandedFolders] = useState(new Set());
   const [folderTree, setFolderTree] = useState(null);
@@ -208,7 +58,8 @@ function App() {
   const [sortCriteria, setSortCriteria] = useState({ key: 'name', order: 'asc' });
   const [filterCriteria, setFilterCriteria] = useState({ 
     rating: 0, 
-    rawStatus: 'all'
+    rawStatus: 'all',
+    colors: [],
   });
   const [supportedTypes, setSupportedTypes] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -226,16 +77,21 @@ function App() {
   const [histogram, setHistogram] = useState(null);
   const [waveform, setWaveform] = useState(null);
   const [isWaveformVisible, setIsWaveformVisible] = useState(false);
-  const [isFilmstripVisible, setIsFilmstripVisible] = useState(true);
-  const [isFolderTreeVisible, setIsFolderTreeVisible] = useState(true);
+  const [uiVisibility, setUiVisibility] = useState({
+    folderTree: true,
+    filmstrip: true,
+  });
   const [isAdjusting, setIsAdjusting] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isFullScreenLoading, setIsFullScreenLoading] = useState(false);
   const [fullScreenUrl, setFullScreenUrl] = useState(null);
   const [theme, setTheme] = useState(DEFAULT_THEME_ID);
+  const [adaptivePalette, setAdaptivePalette] = useState(null);
   const [activeRightPanel, setActiveRightPanel] = useState('adjustments');
   const [activeMaskContainerId, setActiveMaskContainerId] = useState(null);
   const [activeMaskId, setActiveMaskId] = useState(null);
+  const [activeAiPatchContainerId, setActiveAiPatchContainerId] = useState(null);
+  const [activeAiSubMaskId, setActiveAiSubMaskId] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [renderedRightPanel, setRenderedRightPanel] = useState(activeRightPanel);
   const [collapsibleSectionsState, setCollapsibleSectionsState] = useState({ basic: true, curves: true, color: false, details: false, effects: false });
@@ -244,31 +100,45 @@ function App() {
   const [rightPanelWidth, setRightPanelWidth] = useState(320);
   const [bottomPanelHeight, setBottomPanelHeight] = useState(144);
   const [isResizing, setIsResizing] = useState(false);
+  const [thumbnailSize, setThumbnailSize] = useState('medium');
   const [copiedAdjustments, setCopiedAdjustments] = useState(null);
+  const [isStraightenActive, setIsStraightenActive] = useState(false);
   const [copiedFilePaths, setCopiedFilePaths] = useState([]);
   const [aiModelDownloadStatus, setAiModelDownloadStatus] = useState(null);
   const [copiedSectionAdjustments, setCopiedSectionAdjustments] = useState(null);
   const [copiedMask, setCopiedMask] = useState(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isPasted, setIsPasted] = useState(false);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [indexingProgress, setIndexingProgress] = useState({ current: 0, total: 0 });
+  const [searchQuery, setSearchQuery] = useState('');
   const [brushSettings, setBrushSettings] = useState({ size: 50, feather: 50, tool: 'brush' });
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
   const [isRenameFolderModalOpen, setIsRenameFolderModalOpen] = useState(false);
+  const [isRenameFileModalOpen, setIsRenameFileModalOpen] = useState(false);
+  const [renameTargetPaths, setRenameTargetPaths] = useState([]);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importTargetFolder, setImportTargetFolder] = useState(null);
+  const [importSourcePaths, setImportSourcePaths] = useState([]);
   const [folderActionTarget, setFolderActionTarget] = useState(null);
   const [confirmModalState, setConfirmModalState] = useState({ isOpen: false });
   const [customEscapeHandler, setCustomEscapeHandler] = useState(null);
   const [isGeneratingAiMask, setIsGeneratingAiMask] = useState(false);
   const [isComfyUiConnected, setIsComfyUiConnected] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [aiTool, setAiTool] = useState(null);
-  const [pendingAiAction, setPendingAiAction] = useState(null);
+  const [isMaskControlHovered, setIsMaskControlHovered] = useState(false);
   const { showContextMenu } = useContextMenu();
-  const imagePathList = useMemo(() => imageList.map(f => f.path), [imageList]);
-  const { thumbnails } = useThumbnails(imagePathList);
+  const [thumbnails, setThumbnails] = useState({});
+  useThumbnails(imageList, setThumbnails);
   const loaderTimeoutRef = useRef(null);
   const transformWrapperRef = useRef(null);
   const isProgrammaticZoom = useRef(false);
   const isInitialMount = useRef(true);
+  const currentFolderPathRef = useRef(currentFolderPath);
+  useEffect(() => {
+    currentFolderPathRef.current = currentFolderPath;
+  }, [currentFolderPath]);
+  const [libraryScrollOffset, setLibraryScrollOffset] = useState(0);
 
   const [exportState, setExportState] = useState({
     status: 'idle',
@@ -276,10 +146,21 @@ function App() {
     errorMessage: '',
   });
 
+  const [importState, setImportState] = useState({
+    status: 'idle',
+    progress: { current: 0, total: 0 },
+    path: '',
+    errorMessage: '',
+  });
+
   useEffect(() => { if (!isCopied) return; const timer = setTimeout(() => setIsCopied(false), 1000); return () => clearTimeout(timer); }, [isCopied]);
   useEffect(() => { if (!isPasted) return; const timer = setTimeout(() => setIsPasted(false), 1000); return () => clearTimeout(timer); }, [isPasted]);
 
   const debouncedSetHistory = useCallback(debounce((newAdjustments) => setHistoryAdjustments(newAdjustments), 300), [setHistoryAdjustments]);
+
+  const handleLibraryScroll = useCallback(({ scrollTop }) => {
+      setLibraryScrollOffset(scrollTop);
+  }, []);
 
   const setAdjustments = useCallback((value) => {
     setLiveAdjustments(prevAdjustments => {
@@ -289,7 +170,23 @@ function App() {
     });
   }, [debouncedSetHistory]);
 
+  const handleStraighten = useCallback((angleCorrection) => {
+    setAdjustments(prev => {
+      const newRotation = (prev.rotation || 0) + angleCorrection;
+      return { ...prev, rotation: newRotation, crop: null };
+    });
+    setIsStraightenActive(false);
+  }, [setAdjustments]);
+
   useEffect(() => { setLiveAdjustments(historyAdjustments); }, [historyAdjustments]);
+
+  useEffect(() => {
+    if (activeRightPanel !== 'masks' || !activeMaskContainerId) {
+      if (activeRightPanel !== 'ai' || !activeAiPatchContainerId) {
+        setIsMaskControlHovered(false);
+      }
+    }
+  }, [activeRightPanel, activeMaskContainerId, activeAiPatchContainerId]);
 
   const undo = useCallback(() => { if (canUndo) { undoAdjustments(); debouncedSetHistory.cancel(); } }, [canUndo, undoAdjustments, debouncedSetHistory]);
   const redo = useCallback(() => { if (canRedo) { redoAdjustments(); debouncedSetHistory.cancel(); } }, [canRedo, redoAdjustments, debouncedSetHistory]);
@@ -306,88 +203,82 @@ function App() {
     };
   }, []);
 
-  const handleAiMaskDrawingComplete = useCallback((maskDataBase64) => {
-    setPendingAiAction({ maskDataBase64 });
-    setActiveRightPanel('ai');
-    setRenderedRightPanel('ai');
-    setAiTool(null);
-  }, []);
-
   const updateSubMask = (subMaskId, updatedData) => {
     setAdjustments(prev => ({
       ...prev,
       masks: prev.masks.map(c => ({
         ...c,
         subMasks: c.subMasks.map(sm => sm.id === subMaskId ? { ...sm, ...updatedData } : sm)
+      })),
+      aiPatches: (prev.aiPatches || []).map(p => ({
+        ...p,
+        subMasks: p.subMasks.map(sm => sm.id === subMaskId ? { ...sm, ...updatedData } : sm)
       }))
     }));
   };
 
-  const handleGenerativeReplace = useCallback(async ({ maskDataBase64, prompt }) => {
+  const handleGenerativeReplace = useCallback(async (patchId, prompt) => {
     if (!selectedImage?.path || isGeneratingAi) return;
 
-    const tempId = uuidv4();
+    const patch = adjustments.aiPatches.find(p => p.id === patchId);
+    if (!patch) {
+      console.error("Could not find AI patch to generate for:", patchId);
+      return;
+    }
+
+    const patchDefinition = { ...patch, prompt };
 
     setAdjustments(prev => ({
       ...prev,
-      aiPatches: [
-        ...(prev.aiPatches || []),
-        { 
-          id: tempId, 
-          prompt,
-          visible: true,
-          isLoading: true,
-        }
-      ]
+      aiPatches: prev.aiPatches.map(p => p.id === patchId ? { ...p, isLoading: true, prompt } : p)
     }));
-
     setIsGeneratingAi(true);
-    setPendingAiAction(null);
 
     try {
-      const newPatchBase64 = await invoke('invoke_generative_replace', {
+      const newPatchBase64 = await invoke('invoke_generative_replace_with_mask_def', {
         path: selectedImage.path,
-        maskDataBase64,
-        prompt,
+        patchDefinition: patchDefinition,
         currentAdjustments: adjustments,
       });
 
       setAdjustments(prev => ({
         ...prev,
-        aiPatches: prev.aiPatches.map(p => 
-          p.id === tempId 
-            ? { 
-                ...p, 
+        aiPatches: prev.aiPatches.map(p =>
+          p.id === patchId
+            ? {
+                ...p,
                 patchDataBase64: newPatchBase64,
-                maskDataBase64,
                 isLoading: false,
-              } 
+                name: (prompt && prompt.trim()) ? prompt.trim() : p.name,
+              }
             : p
         )
       }));
+      setActiveAiPatchContainerId(null);
+      setActiveAiSubMaskId(null);
+
     } catch (err) {
       console.error("Generative replace failed:", err);
       setError(`AI Replace Failed: ${err}`);
       setAdjustments(prev => ({
         ...prev,
-        aiPatches: (prev.aiPatches || []).filter(p => p.id !== tempId)
+        aiPatches: prev.aiPatches.map(p => p.id === patchId ? { ...p, isLoading: false } : p)
       }));
     } finally {
       setIsGeneratingAi(false);
     }
-  }, [selectedImage?.path, isGeneratingAi, adjustments, setAdjustments]);
-
-  const handleResetAiEdits = useCallback(() => {
-    if (!adjustments?.aiPatches?.length > 0 || isGeneratingAi) return;
-    setAdjustments(prev => ({ ...prev, aiPatches: [] }));
-  }, [adjustments, isGeneratingAi, setAdjustments]);
+  }, [selectedImage?.path, isGeneratingAi, adjustments, setAdjustments, setActiveAiPatchContainerId, setActiveAiSubMaskId]);
 
   const handleDeleteAiPatch = useCallback((patchId) => {
     setAdjustments(prev => ({
       ...prev,
       aiPatches: (prev.aiPatches || []).filter(p => p.id !== patchId)
     }));
-  }, [setAdjustments]);
+    if (activeAiPatchContainerId === patchId) {
+      setActiveAiPatchContainerId(null);
+      setActiveAiSubMaskId(null);
+    }
+  }, [setAdjustments, activeAiPatchContainerId]);
 
   const handleToggleAiPatchVisibility = useCallback((patchId) => {
     setAdjustments(prev => ({
@@ -412,19 +303,10 @@ function App() {
         rotation: adjustments.rotation,
         flipHorizontal: adjustments.flipHorizontal,
         flipVertical: adjustments.flipVertical,
+        orientationSteps: adjustments.orientationSteps,
       });
 
-      setAdjustments(prev => ({
-        ...prev,
-        masks: prev.masks.map(container => ({
-          ...container,
-          subMasks: container.subMasks.map(sm =>
-            sm.id === subMaskId
-              ? { ...sm, parameters: newParameters }
-              : sm
-          )
-        }))
-      }));
+      updateSubMask(subMaskId, { parameters: newParameters });
 
     } catch (error) {
       console.error("Failed to generate AI subject mask:", error);
@@ -445,19 +327,10 @@ function App() {
         rotation: adjustments.rotation,
         flipHorizontal: adjustments.flipHorizontal,
         flipVertical: adjustments.flipVertical,
+        orientationSteps: adjustments.orientationSteps,
       });
 
-      setAdjustments(prev => ({
-        ...prev,
-        masks: prev.masks.map(container => ({
-          ...container,
-          subMasks: container.subMasks.map(sm =>
-            sm.id === subMaskId
-              ? { ...sm, parameters: newParameters }
-              : sm
-          )
-        }))
-      }));
+      updateSubMask(subMaskId, { parameters: newParameters });
 
     } catch (error) {
       console.error("Failed to generate AI foreground mask:", error);
@@ -490,10 +363,29 @@ function App() {
         }
       }
 
+      if (filterCriteria.colors && filterCriteria.colors.length > 0) {
+        const imageColor = (image.tags || [])
+          .find(tag => tag.startsWith('color:'))
+          ?.substring(6);
+
+        const hasMatchingColor = imageColor && filterCriteria.colors.includes(imageColor);
+        const matchesNone = !imageColor && filterCriteria.colors.includes('none');
+
+        if (!hasMatchingColor && !matchesNone) {
+          return false;
+        }
+      }
+
       return true;
     });
 
-    const list = [...filteredList];
+    const filteredBySearch = searchQuery.trim() === ''
+      ? filteredList
+      : filteredList.filter(image => 
+          image.tags && image.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+        );
+
+    const list = [...filteredBySearch];
     list.sort((a, b) => {
         const { key, order } = sortCriteria;
         let comparison = 0;
@@ -503,7 +395,7 @@ function App() {
         return order === 'asc' ? comparison : -comparison;
     });
     return list;
-  }, [imageList, sortCriteria, imageRatings, filterCriteria, supportedTypes]);
+  }, [imageList, sortCriteria, imageRatings, filterCriteria, supportedTypes, searchQuery]);
 
   const applyAdjustments = useCallback(debounce((currentAdjustments) => {
     if (!selectedImage?.isReady) return;
@@ -519,7 +411,7 @@ function App() {
   const debouncedGenerateUncroppedPreview = useCallback(debounce((currentAdjustments) => {
     if (!selectedImage?.isReady) return;
     invoke('generate_uncropped_preview', { jsAdjustments: currentAdjustments }).catch(err => console.error("Failed to generate uncropped preview:", err));
-  }, 100), [selectedImage?.isReady]);
+  }, 50), [selectedImage?.isReady]);
 
   const debouncedSave = useCallback(debounce((path, adjustmentsToSave) => {
     invoke('save_metadata_and_update_thumbnail', { path, adjustments: adjustmentsToSave }).catch(err => {
@@ -549,26 +441,43 @@ function App() {
     window.addEventListener('mouseup', stopDrag);
   }, []);
 
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    const checkFullscreen = async () => {
+      setIsWindowFullScreen(await appWindow.isFullscreen());
+    };
+    checkFullscreen();
+
+    const unlistenPromise = appWindow.onResized(checkFullscreen);
+
+    return () => {
+      unlistenPromise.then(unlisten => unlisten());
+    };
+  }, []);
+
   const handleRightPanelSelect = useCallback((panelId) => {
     if (panelId === activeRightPanel) {
       setActiveRightPanel(null);
-      setAiTool(null);
     } else {
       setActiveRightPanel(panelId);
       setRenderedRightPanel(panelId);
-      if (panelId !== 'ai') {
-        setAiTool(null);
-      }
     }
     setActiveMaskId(null);
+    setActiveAiSubMaskId(null);
   }, [activeRightPanel]);
 
   const handleSettingsChange = useCallback((newSettings) => {
-    if (newSettings.theme && newSettings.theme !== theme) {
-      setTheme(newSettings.theme);
-    }
-    setAppSettings(newSettings);
-    invoke('save_settings', { settings: newSettings }).catch(err => console.error("Failed to save settings:", err));
+      if (!newSettings) {
+        console.error("handleSettingsChange was called with null settings. Aborting save operation.");
+        return;
+      }
+      if (newSettings.theme && newSettings.theme !== theme) {
+        setTheme(newSettings.theme);
+      }
+      setAppSettings(newSettings);
+      invoke('save_settings', { settings: newSettings }).catch(err => {
+          console.error("Failed to save settings:", err)
+      });
   }, [theme]);
 
   useEffect(() => {
@@ -580,11 +489,18 @@ function App() {
           setFilterCriteria(prev => ({
             ...prev,
             ...settings.filterCriteria,
-            rawStatus: settings.filterCriteria.rawStatus || 'all'
+            rawStatus: settings.filterCriteria.rawStatus || 'all',
+            colors: settings.filterCriteria.colors || [],
           }));
         }
         if (settings?.theme) {
           setTheme(settings.theme);
+        }
+        if (settings?.uiVisibility) {
+          setUiVisibility(prev => ({ ...prev, ...settings.uiVisibility }));
+        }
+        if (settings?.thumbnailSize) {
+          setThumbnailSize(settings.thumbnailSize);
         }
       })
       .catch(err => {
@@ -593,6 +509,20 @@ function App() {
       })
       .finally(() => { isInitialMount.current = false; });
   }, []);
+
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    if (JSON.stringify(appSettings.uiVisibility) !== JSON.stringify(uiVisibility)) {
+        handleSettingsChange({ ...appSettings, uiVisibility });
+    }
+  }, [uiVisibility, appSettings, handleSettingsChange]);
+
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) return;
+    if (appSettings.thumbnailSize !== thumbnailSize) {
+        handleSettingsChange({ ...appSettings, thumbnailSize });
+    }
+  }, [thumbnailSize, appSettings, handleSettingsChange]);
 
   useEffect(() => {
     invoke('get_supported_file_types')
@@ -615,18 +545,40 @@ function App() {
   }, [filterCriteria, appSettings, handleSettingsChange]);
 
   useEffect(() => {
-    const root = document.documentElement;
-    const newThemeId = theme || DEFAULT_THEME_ID;
-    const selectedTheme = THEMES.find(t => t.id === newThemeId) || THEMES.find(t => t.id === DEFAULT_THEME_ID);
-
-    if (selectedTheme) {
-      Object.entries(selectedTheme.cssVariables).forEach(([key, value]) => {
-        root.style.setProperty(key, value);
-      });
-      
-      invoke('update_window_effect', { theme: newThemeId });
+    if (appSettings?.adaptiveEditorTheme && selectedImage && finalPreviewUrl) {
+      generatePaletteFromImage(finalPreviewUrl)
+        .then(setAdaptivePalette)
+        .catch(err => {
+          const darkTheme = THEMES.find(t => t.id === 'dark');
+          setAdaptivePalette(darkTheme ? darkTheme.cssVariables : null);
+        });
+    } else if (!appSettings?.adaptiveEditorTheme || !selectedImage) {
+      setAdaptivePalette(null);
     }
-  }, [theme]);
+  }, [appSettings?.adaptiveEditorTheme, selectedImage, finalPreviewUrl]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const currentThemeId = theme || DEFAULT_THEME_ID;
+    
+    const baseTheme = THEMES.find(t => t.id === currentThemeId) || THEMES.find(t => t.id === DEFAULT_THEME_ID);
+    if (!baseTheme) return;
+
+    let finalCssVariables = { ...baseTheme.cssVariables };
+    let effectThemeForWindow = baseTheme.id;
+
+    if (adaptivePalette) {
+        finalCssVariables = { ...finalCssVariables, ...adaptivePalette };
+    }
+
+    Object.entries(finalCssVariables).forEach(([key, value]) => {
+        root.style.setProperty(key, value);
+    });
+
+    const isLight = ['light', 'snow', 'arctic'].includes(effectThemeForWindow);
+    invoke('update_window_effect', { theme: isLight ? 'light' : 'dark' });
+
+  }, [theme, adaptivePalette]);
 
   const handleRefreshFolderTree = useCallback(async () => {
     if (!rootPath) return;
@@ -641,6 +593,8 @@ function App() {
 
   const handleSelectSubfolder = useCallback(async (path, isNewRoot = false) => {
     setIsViewLoading(true);
+    setSearchQuery('');
+    setLibraryScrollOffset(0);
     try {
       setCurrentFolderPath(path);
 
@@ -695,6 +649,9 @@ function App() {
         setUncroppedAdjustedPreviewUrl(null);
         setHistogram(null);
       }
+      invoke('start_background_indexing', { folderPath: path }).catch(err => {
+        console.error("Failed to start background indexing:", err);
+      });
     } catch (err) {
       console.error("Failed to load folder contents:", err);
       setError("Failed to load images from the selected folder.");
@@ -751,17 +708,19 @@ function App() {
     setIsWaveformVisible(false);
     setActiveMaskId(null);
     setActiveMaskContainerId(null);
-    setAiTool(null);
-    setPendingAiAction(null);
+    setActiveAiPatchContainerId(null);
+    setActiveAiSubMaskId(null);
     setLibraryActivePath(lastActivePath);
   }, [selectedImage?.path]);
 
-  const executeDelete = useCallback(async (pathsToDelete) => {
+  const executeDelete = useCallback(async (pathsToDelete, options = { includeAssociated: false }) => {
     if (!pathsToDelete || pathsToDelete.length === 0) return;
     try {
-        await invoke('delete_files_from_disk', { paths: pathsToDelete });
+        const command = options.includeAssociated ? 'delete_files_with_associated' : 'delete_files_from_disk';
+        await invoke(command, { paths: pathsToDelete });
+
         handleLibraryRefresh();
-        if (selectedImage && pathsToDelete.includes(selectedImage.path)) {
+        if (selectedImage && pathsToDelete.some(p => selectedImage.path.startsWith(p.substring(0, p.lastIndexOf('.'))))) {
             handleBackToLibrary();
         }
         setMultiSelectedPaths([]);
@@ -780,11 +739,11 @@ function App() {
     const isSingle = pathsToDelete.length === 1;
     setConfirmModalState({
         isOpen: true,
-        title: 'Confirm',
-        message: `Are you sure you want to permanently delete ${isSingle ? 'this image' : `${pathsToDelete.length} images`} from your disk? This action cannot be undone.`,
-        confirmText: 'Delete',
+        title: 'Confirm Delete',
+        message: `Are you sure you want to permanently delete ${isSingle ? 'this image' : `${pathsToDelete.length} images`}? This action cannot be undone. Right-click for more options (e.g., deleting associated RAW/JPEG files).`,
+        confirmText: 'Delete Selected Only',
         confirmVariant: 'destructive',
-        onConfirm: () => executeDelete(pathsToDelete)
+        onConfirm: () => executeDelete(pathsToDelete, { includeAssociated: false })
     });
   }, [multiSelectedPaths, executeDelete]);
 
@@ -828,20 +787,23 @@ function App() {
     setIsCopied(true);
   }, [selectedImage, adjustments, libraryActiveAdjustments]);
 
-  const handlePasteAdjustments = useCallback(() => {
+  const handlePasteAdjustments = useCallback((paths) => {
     if (!copiedAdjustments) return;
-    const pathsToUpdate = multiSelectedPaths.length > 0 ? multiSelectedPaths : (selectedImage ? [selectedImage.path] : []);
+    const pathsToUpdate = paths || (multiSelectedPaths.length > 0 ? multiSelectedPaths : (selectedImage ? [selectedImage.path] : []));
     if (pathsToUpdate.length === 0) return;
+    
     if (selectedImage && pathsToUpdate.includes(selectedImage.path)) {
-      setAdjustments(prev => ({ ...prev, ...copiedAdjustments }));
+      const newAdjustments = { ...adjustments, ...copiedAdjustments };
+      setAdjustments(newAdjustments);
     }
+
     invoke('apply_adjustments_to_paths', { paths: pathsToUpdate, adjustments: copiedAdjustments })
       .catch(err => {
         console.error("Failed to paste adjustments to multiple images:", err);
         setError(`Failed to paste adjustments: ${err}`);
       });
     setIsPasted(true);
-  }, [copiedAdjustments, multiSelectedPaths, selectedImage, setAdjustments]);
+  }, [copiedAdjustments, multiSelectedPaths, selectedImage, adjustments, setAdjustments]);
 
   const handleAutoAdjustments = async () => {
     if (!selectedImage) return;
@@ -862,8 +824,8 @@ function App() {
     }
   };
 
-  const handleRate = useCallback((newRating) => {
-    const pathsToRate = multiSelectedPaths.length > 0 ? multiSelectedPaths : (selectedImage ? [selectedImage.path] : []);
+  const handleRate = useCallback((newRating, paths) => {
+    const pathsToRate = paths || (multiSelectedPaths.length > 0 ? multiSelectedPaths : (selectedImage ? [selectedImage.path] : []));
     if (pathsToRate.length === 0) return;
 
     let currentRating = 0;
@@ -895,6 +857,36 @@ function App() {
         setError(`Failed to apply rating: ${err}`);
       });
   }, [multiSelectedPaths, selectedImage, libraryActivePath, adjustments.rating, libraryActiveAdjustments.rating, setAdjustments]);
+
+const handleSetColorLabel = useCallback(async (color, paths) => {
+    const pathsToUpdate = paths || (multiSelectedPaths.length > 0 ? multiSelectedPaths : (selectedImage ? [selectedImage.path] : []));
+    if (pathsToUpdate.length === 0) return;
+    const primaryPath = selectedImage?.path || libraryActivePath;
+    const primaryImage = imageList.find(img => img.path === primaryPath);
+    let currentColor = null;
+    if (primaryImage && primaryImage.tags) {
+      const colorTag = primaryImage.tags.find(tag => tag.startsWith('color:'));
+      if (colorTag) {
+        currentColor = colorTag.substring(6);
+      }
+    }
+    const finalColor = color !== null && color === currentColor ? null : color;
+    try {
+      await invoke('set_color_label_for_paths', { paths: pathsToUpdate, color: finalColor });
+      
+      setImageList(prevList => prevList.map(image => {
+        if (pathsToUpdate.includes(image.path)) {
+          const otherTags = (image.tags || []).filter(t => !t.startsWith('color:'));
+          const newTags = finalColor ? [...otherTags, `color:${finalColor}`] : otherTags;
+          return { ...image, tags: newTags };
+        }
+        return image;
+      }));
+    } catch (err) {
+      console.error("Failed to set color label:", err);
+      setError(`Failed to set color label: ${err}`);
+    }
+  }, [multiSelectedPaths, selectedImage, libraryActivePath, imageList]);
 
   const closeConfirmModal = () => setConfirmModalState({ ...confirmModalState, isOpen: false });
 
@@ -941,110 +933,51 @@ function App() {
     setShowOriginal(false);
     setActiveMaskId(null);
     setActiveMaskContainerId(null);
-    setAiTool(null);
-    setPendingAiAction(null);
+    setActiveAiPatchContainerId(null);
+    setActiveAiSubMaskId(null);
     if (transformWrapperRef.current) transformWrapperRef.current.resetTransform(0);
     setZoom(1);
     setIsLibraryExportPanelVisible(false);
   }, [selectedImage?.path, applyAdjustments, debouncedSave, thumbnails, resetAdjustmentsHistory]);
 
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      const isInputFocused = document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA';
-      if (isInputFocused) return;
-      const isCtrl = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
-
-      if (selectedImage) {
-        if (key === 'escape') {
-          event.preventDefault();
-          if (customEscapeHandler) {
-            customEscapeHandler();
-          } else if (aiTool) {
-            setAiTool(null);
-          } else if (activeMaskId) {
-            setActiveMaskId(null);
-          } else if (isFullScreen) {
-            handleToggleFullScreen();
-          } else {
-            handleBackToLibrary();
-          }
-          return;
-        }
-        if (key === ' ' && !isCtrl) {
-            event.preventDefault();
-            if (Math.abs(zoom - 2) < 0.01) {
-                handleZoomChange(1);
-            } else {
-                handleZoomChange(2);
-            }
-            return;
-        }
-        if (key === 'f' && !isCtrl) { event.preventDefault(); handleToggleFullScreen(); }
-        if (key === 'b' && !isCtrl) { event.preventDefault(); setShowOriginal(prev => !prev); }
-        if (key === 'r' && !isCtrl) { event.preventDefault(); handleRightPanelSelect('crop'); }
-        if (key === 'm' && !isCtrl) { event.preventDefault(); handleRightPanelSelect('masks'); }
-        if (key === 'i' && !isCtrl) { event.preventDefault(); handleRightPanelSelect('metadata'); }
-        if (key === 'e' && !isCtrl) { event.preventDefault(); handleRightPanelSelect('export'); }
-        if (key === 'w' && !isCtrl) { event.preventDefault(); setIsWaveformVisible(prev => !prev); }
-      }
-
-      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        if (isViewLoading) { event.preventDefault(); return; }
-        event.preventDefault();
-
-        if (selectedImage) {
-            if (key === 'arrowup' || key === 'arrowdown') {
-                const zoomStep = 0.25;
-                const newZoom = key === 'arrowup' ? zoom + zoomStep : zoom - zoomStep;
-                const minZoom = activeRightPanel === 'crop' ? 0.4 : 0.7;
-                handleZoomChange(Math.max(minZoom, Math.min(newZoom, 10)));
-            } else {
-                const isNext = key === 'arrowright';
-                const currentIndex = sortedImageList.findIndex(img => img.path === selectedImage.path);
-                if (currentIndex === -1) return;
-                let nextIndex = isNext ? currentIndex + 1 : currentIndex - 1;
-                if (nextIndex >= sortedImageList.length) nextIndex = 0;
-                if (nextIndex < 0) nextIndex = sortedImageList.length - 1;
-                const nextImage = sortedImageList[nextIndex];
-                if (nextImage) handleImageSelect(nextImage.path);
-            }
-        } else {
-            const isNext = key === 'arrowright' || key === 'arrowdown';
-            const activePath = libraryActivePath;
-            if (!activePath || sortedImageList.length === 0) return;
-            const currentIndex = sortedImageList.findIndex(img => img.path === activePath);
-            if (currentIndex === -1) return;
-            let nextIndex = isNext ? currentIndex + 1 : currentIndex - 1;
-            if (nextIndex >= sortedImageList.length) nextIndex = 0;
-            if (nextIndex < 0) nextIndex = sortedImageList.length - 1;
-            const nextImage = sortedImageList[nextIndex];
-            if (nextImage) {
-                setLibraryActivePath(nextImage.path);
-                setMultiSelectedPaths([nextImage.path]);
-            }
-        }
-      }
-
-      if (['0', '1', '2', '3', '4', '5'].includes(key) && !isCtrl) { event.preventDefault(); handleRate(parseInt(key, 10)); }
-      if (key === 'delete') { event.preventDefault(); handleDeleteSelected(); }
-
-      if (isCtrl) {
-        switch (key) {
-          case 'c': event.preventDefault(); if (event.shiftKey) { if (multiSelectedPaths.length > 0) { setCopiedFilePaths(multiSelectedPaths); setIsCopied(true); } } else handleCopyAdjustments(); break;
-          case 'v': event.preventDefault(); if (event.shiftKey) handlePasteFiles('copy'); else handlePasteAdjustments(); break;
-          case 'a': event.preventDefault(); if (sortedImageList.length > 0) { setMultiSelectedPaths(sortedImageList.map(f => f.path)); if (!selectedImage) setLibraryActivePath(sortedImageList[sortedImageList.length - 1].path); } break;
-          case 'z': if (selectedImage) { event.preventDefault(); undo(); } break;
-          case 'y': if (selectedImage) { event.preventDefault(); redo(); } break;
-          default: break;
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [ sortedImageList, selectedImage, undo, redo, isFullScreen, handleToggleFullScreen, handleBackToLibrary, handleRightPanelSelect, handleRate, handleDeleteSelected, handleCopyAdjustments, handlePasteAdjustments, multiSelectedPaths, copiedFilePaths, handlePasteFiles, libraryActivePath, handleImageSelect, zoom, handleZoomChange, customEscapeHandler, activeMaskId, aiTool ]);
+  useKeyboardShortcuts({
+    selectedImage,
+    isViewLoading,
+    sortedImageList,
+    multiSelectedPaths,
+    libraryActivePath,
+    zoom,
+    canUndo,
+    canRedo,
+    activeRightPanel,
+    isFullScreen,
+    activeMaskId,
+    customEscapeHandler,
+    copiedFilePaths,
+    handleImageSelect,
+    isStraightenActive,
+    setIsStraightenActive,
+    setLibraryActivePath,
+    setMultiSelectedPaths,
+    handleRate,
+    handleSetColorLabel,
+    handleDeleteSelected,
+    handleCopyAdjustments,
+    handlePasteAdjustments,
+    handlePasteFiles,
+    setCopiedFilePaths,
+    undo,
+    redo,
+    handleBackToLibrary,
+    handleToggleFullScreen,
+    setShowOriginal,
+    handleRightPanelSelect,
+    setIsWaveformVisible,
+    handleZoomChange,
+    setActiveMaskId,
+    activeAiSubMaskId,
+    setActiveAiSubMaskId,
+  });
 
   useEffect(() => {
     let isEffectActive = true;
@@ -1053,9 +986,41 @@ function App() {
       listen('preview-update-uncropped', (event) => { if (isEffectActive) setUncroppedAdjustedPreviewUrl(event.payload); }),
       listen('histogram-update', (event) => { if (isEffectActive) setHistogram(event.payload); }),
       listen('waveform-update', (event) => { if (isEffectActive) setWaveform(event.payload); }),
-      listen('thumbnail-generated', (event) => { if (isEffectActive) { const { path, rating } = event.payload; if (rating !== undefined) setImageRatings(prev => ({ ...prev, [path]: rating })); } }),
+      listen('thumbnail-generated', (event) => {
+        if (isEffectActive) {
+          const { path, data, rating } = event.payload;
+          if (data) {
+            setThumbnails(prev => ({ ...prev, [path]: data }));
+          }
+          if (rating !== undefined) {
+            setImageRatings(prev => ({ ...prev, [path]: rating }));
+          }
+        }
+      }),
       listen('ai-model-download-start', (event) => { if (isEffectActive) setAiModelDownloadStatus(event.payload); }),
       listen('ai-model-download-finish', () => { if (isEffectActive) setAiModelDownloadStatus(null); }),
+      listen('indexing-started', () => { 
+        if (isEffectActive) { 
+          setIsIndexing(true); 
+          setIndexingProgress({ current: 0, total: 0 });
+        } 
+      }),
+      listen('indexing-progress', (event) => {
+        if (isEffectActive) {
+          setIndexingProgress(event.payload);
+        }
+      }),
+      listen('indexing-finished', () => {
+        if (isEffectActive) {
+          setIsIndexing(false);
+          setIndexingProgress({ current: 0, total: 0 });
+          if (currentFolderPathRef.current) {
+            invoke('list_images_in_dir', { path: currentFolderPathRef.current })
+              .then(setImageList)
+              .catch(err => console.error("Failed to refresh after indexing:", err));
+          }
+        }
+      }),
       listen('batch-export-progress', (event) => {
         if (isEffectActive) {
           setExportState(prev => ({ ...prev, progress: event.payload }));
@@ -1080,6 +1045,34 @@ function App() {
           setExportState(prev => ({ ...prev, status: 'cancelled' }));
         }
       }),
+      listen('import-start', (event) => {
+        if (isEffectActive) {
+          setImportState({ status: 'importing', progress: { current: 0, total: event.payload.total }, path: '', errorMessage: '' });
+        }
+      }),
+      listen('import-progress', (event) => {
+        if (isEffectActive) {
+          setImportState(prev => ({ ...prev, progress: { current: event.payload.current, total: event.payload.total }, path: event.payload.path }));
+        }
+      }),
+      listen('import-complete', () => {
+        if (isEffectActive) {
+          setImportState(prev => ({ ...prev, status: 'success' }));
+          handleRefreshFolderTree();
+          if (currentFolderPathRef.current) {
+            handleSelectSubfolder(currentFolderPathRef.current, false);
+          }
+        }
+      }),
+      listen('import-error', (event) => {
+        if (isEffectActive) {
+          setImportState(prev => ({
+            ...prev,
+            status: 'error',
+            errorMessage: typeof event.payload === 'string' ? event.payload : 'An unknown import error occurred.'
+          }));
+        }
+      }),
     ];
     return () => { isEffectActive = false; listeners.forEach(p => p.then(unlisten => unlisten())); if (loaderTimeoutRef.current) clearTimeout(loaderTimeoutRef.current); };
   }, []);
@@ -1092,6 +1085,15 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [exportState.status]);
+
+  useEffect(() => {
+    if (['success', 'error'].includes(importState.status)) {
+      const timer = setTimeout(() => {
+        setImportState({ status: 'idle', progress: { current: 0, total: 0 }, path: '', errorMessage: '' });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [importState.status]);
 
   useEffect(() => {
     if (libraryActivePath) {
@@ -1119,15 +1121,6 @@ function App() {
     if (activeRightPanel === 'crop' && selectedImage?.isReady) debouncedGenerateUncroppedPreview(adjustments);
     return () => debouncedGenerateUncroppedPreview.cancel();
   }, [adjustments, activeRightPanel, selectedImage?.isReady, debouncedGenerateUncroppedPreview]);
-
-  useEffect(() => {
-    if (adjustments.aspectRatio !== null && adjustments.crop === null && selectedImage?.width && selectedImage?.height) {
-      const { width: imgWidth, height: imgHeight } = selectedImage;
-      const newPercentCrop = centerCrop(makeAspectCrop({ unit: '%', width: 100 }, adjustments.aspectRatio, imgWidth, imgHeight), imgWidth, imgHeight);
-      const newPixelCrop = { x: Math.round((newPercentCrop.x / 100) * imgWidth), y: Math.round((newPercentCrop.y / 100) * imgHeight), width: Math.round((newPercentCrop.width / 100) * imgWidth), height: Math.round((newPercentCrop.height / 100) * imgHeight) };
-      setAdjustments(prev => ({ ...prev, crop: newPixelCrop }));
-    }
-  }, [adjustments.aspectRatio, adjustments.crop, selectedImage?.width, selectedImage?.height, setAdjustments]);
 
   const handleOpenFolder = async () => {
     try {
@@ -1271,12 +1264,115 @@ function App() {
     else { setMultiSelectedPaths([]); setLibraryActivePath(null); }
   };
 
-  const handleResetAdjustments = () => {
-    if (multiSelectedPaths.length === 0) return;
-    invoke('reset_adjustments_for_paths', { paths: multiSelectedPaths })
-      .then(() => { if (multiSelectedPaths.includes(libraryActivePath)) setLibraryActiveAdjustments(prev => ({ ...INITIAL_ADJUSTMENTS, rating: prev.rating })); })
-      .catch(err => { console.error("Failed to reset adjustments:", err); setError(`Failed to reset adjustments: ${err}`); });
+  const handleRenameFiles = useCallback(async (paths) => {
+    if (paths && paths.length > 0) {
+      setRenameTargetPaths(paths);
+      setIsRenameFileModalOpen(true);
+    }
+  }, []);
+
+  const handleSaveRename = useCallback(async (nameTemplate) => {
+    if (renameTargetPaths.length > 0 && nameTemplate) {
+      try {
+        const newPaths = await invoke('rename_files', {
+          paths: renameTargetPaths,
+          nameTemplate,
+        });
+
+        handleLibraryRefresh();
+
+        if (selectedImage && renameTargetPaths.includes(selectedImage.path)) {
+          const oldPathIndex = renameTargetPaths.indexOf(selectedImage.path);
+          if (newPaths[oldPathIndex]) {
+            handleImageSelect(newPaths[oldPathIndex]);
+          } else {
+            handleBackToLibrary();
+          }
+        }
+        if (libraryActivePath && renameTargetPaths.includes(libraryActivePath)) {
+          const oldPathIndex = renameTargetPaths.indexOf(libraryActivePath);
+          if (newPaths[oldPathIndex]) {
+            setLibraryActivePath(newPaths[oldPathIndex]);
+          } else {
+            setLibraryActivePath(null);
+          }
+        }
+        setMultiSelectedPaths(newPaths);
+
+      } catch (err) {
+        setError(`Failed to rename files: ${err}`);
+      }
+    }
+    setRenameTargetPaths([]);
+  }, [renameTargetPaths, handleLibraryRefresh, selectedImage, libraryActivePath, handleImageSelect, handleBackToLibrary]);
+
+  const handleStartImport = async (settings) => {
+    if (importSourcePaths.length > 0 && importTargetFolder) {
+      invoke('import_files', {
+        sourcePaths: importSourcePaths,
+        destinationFolder: importTargetFolder,
+        settings: settings,
+      }).catch(err => {
+        console.error("Failed to start import:", err);
+        setImportState({ status: 'error', errorMessage: `Failed to start import: ${err}` });
+      });
+    }
   };
+
+  const handleResetAdjustments = useCallback((paths) => {
+    const pathsToReset = paths || multiSelectedPaths;
+    if (pathsToReset.length === 0) return;
+    
+    invoke('reset_adjustments_for_paths', { paths: pathsToReset })
+      .then(() => { 
+        if (pathsToReset.includes(libraryActivePath)) {
+          setLibraryActiveAdjustments(prev => ({ ...INITIAL_ADJUSTMENTS, rating: prev.rating }));
+        }
+        if (selectedImage && pathsToReset.includes(selectedImage.path)) {
+          setAdjustments(prev => ({ ...INITIAL_ADJUSTMENTS, rating: prev.rating, aiPatches: [] }));
+        }
+      })
+      .catch(err => { 
+        console.error("Failed to reset adjustments:", err); 
+        setError(`Failed to reset adjustments: ${err}`); 
+      });
+  }, [multiSelectedPaths, libraryActivePath, selectedImage, setAdjustments]);
+
+  const handleImportClick = useCallback(async (targetPath) => {
+
+    try {
+      const allImageExtensions = [...supportedTypes.nonRaw, ...supportedTypes.raw];
+      const selected = await open({
+        multiple: true,
+        title: 'Select files to import',
+        filters: [
+          {
+            name: 'All Supported Images',
+            extensions: allImageExtensions,
+          },
+          {
+            name: 'RAW Images',
+            extensions: supportedTypes.raw,
+          },
+          {
+            name: 'Standard Images (JPEG, PNG, etc.)',
+            extensions: supportedTypes.nonRaw,
+          },
+          {
+            name: 'All Files',
+            extensions: ['*']
+          }
+        ]
+      });
+      if (Array.isArray(selected) && selected.length > 0) {
+        setImportSourcePaths(selected);
+        setImportTargetFolder(targetPath);
+        setIsImportModalOpen(true);
+      }
+    } catch (err) {
+      console.error("Failed to open file dialog for import:", err);
+    }
+  }, [supportedTypes]);
 
   const handleEditorContextMenu = (event) => {
     event.preventDefault(); event.stopPropagation();
@@ -1285,10 +1381,22 @@ function App() {
       { label: 'Redo', icon: Redo, onClick: redo, disabled: !canRedo },
       { type: 'separator' },
       { label: 'Copy Adjustments', icon: Copy, onClick: handleCopyAdjustments },
-      { label: 'Paste Adjustments', icon: ClipboardPaste, onClick: handlePasteAdjustments, disabled: copiedAdjustments === null },
+      { label: 'Paste Adjustments', icon: ClipboardPaste, onClick: () => handlePasteAdjustments(), disabled: copiedAdjustments === null },
       { type: 'separator' },
       { label: 'Auto Adjust', icon: Aperture, onClick: handleAutoAdjustments },
       { label: 'Set Rating', icon: Star, submenu: [0, 1, 2, 3, 4, 5].map(rating => ({ label: rating === 0 ? 'No Rating' : `${rating} Star${rating !== 1 ? 's' : ''}`, onClick: () => handleRate(rating) })) },
+      { 
+        label: 'Set Color Label', 
+        icon: Tag, 
+        submenu: [
+          { label: 'No Label', onClick: () => handleSetColorLabel(null) },
+          ...COLOR_LABELS.map(label => ({
+            label: label.name.charAt(0).toUpperCase() + label.name.slice(1),
+            color: label.color,
+            onClick: () => handleSetColorLabel(label.name)
+          }))
+        ]
+      },
       { type: 'separator' },
       { label: 'Reset Adjustments', icon: RotateCcw, onClick: () => setAdjustments(prev => ({ ...INITIAL_ADJUSTMENTS, rating: prev.rating, aiPatches: [] })) },
     ];
@@ -1296,14 +1404,22 @@ function App() {
   };
 
   const handleThumbnailContextMenu = (event, path) => {
-    event.preventDefault(); event.stopPropagation();
+    event.preventDefault();
+    event.stopPropagation();
+
     const isTargetInSelection = multiSelectedPaths.includes(path);
-    let finalSelection = [];
+    let finalSelection;
+
     if (!isTargetInSelection) {
       finalSelection = [path];
       setMultiSelectedPaths([path]);
-      if (!selectedImage) setLibraryActivePath(path);
-    } else finalSelection = multiSelectedPaths;
+      if (!selectedImage) {
+        setLibraryActivePath(path);
+      }
+    } else {
+      finalSelection = multiSelectedPaths;
+    }
+
     const selectionCount = finalSelection.length;
     const isSingleSelection = selectionCount === 1;
     const isEditingThisImage = selectedImage?.path === path;
@@ -1312,6 +1428,7 @@ function App() {
     const deleteLabel = isSingleSelection ? 'Delete Image' : `Delete ${selectionCount} Images`;
     const copyLabel = isSingleSelection ? 'Copy Image' : `Copy ${selectionCount} Images`;
     const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust ${selectionCount} Images`;
+    const renameLabel = isSingleSelection ? 'Rename File' : `Rename ${selectionCount} Files`;
 
     const handleApplyAutoAdjustmentsToSelection = () => {
       if (finalSelection.length === 0) return;
@@ -1353,28 +1470,43 @@ function App() {
           } catch (err) { console.error("Failed to load metadata for copy:", err); setError(`Failed to copy adjustments: ${err}`); }
         },
       },
-      { label: pasteLabel, icon: ClipboardPaste, disabled: copiedAdjustments === null, onClick: handlePasteAdjustments },
+      { label: pasteLabel, icon: ClipboardPaste, disabled: copiedAdjustments === null, onClick: () => handlePasteAdjustments(finalSelection) },
       { label: autoAdjustLabel, icon: Aperture, onClick: handleApplyAutoAdjustmentsToSelection },
       { type: 'separator' },
       { label: copyLabel, icon: Copy, onClick: () => { setCopiedFilePaths(finalSelection); setIsCopied(true); } },
       { label: 'Duplicate Image', icon: CopyPlus, disabled: !isSingleSelection, onClick: async () => { try { await invoke('duplicate_file', { path: finalSelection[0] }); handleLibraryRefresh(); } catch (err) { console.error("Failed to duplicate file:", err); setError(`Failed to duplicate file: ${err}`); } } },
+      { label: renameLabel, icon: FileEdit, onClick: () => handleRenameFiles(finalSelection) },
       { type: 'separator' },
-      { label: 'Set Rating', icon: Star, submenu: [0, 1, 2, 3, 4, 5].map(rating => ({ label: rating === 0 ? 'No Rating' : `${rating} Star${rating !== 1 ? 's' : ''}`, onClick: () => handleRate(rating) })) },
+      { label: 'Set Rating', icon: Star, submenu: [0, 1, 2, 3, 4, 5].map(rating => ({ label: rating === 0 ? 'No Rating' : `${rating} Star${rating !== 1 ? 's' : ''}`, onClick: () => handleRate(rating, finalSelection) })) },
+      { 
+        label: 'Set Color Label', 
+        icon: Tag, 
+        submenu: [
+          { label: 'No Label', onClick: () => handleSetColorLabel(null, finalSelection) },
+          ...COLOR_LABELS.map(label => ({
+            label: label.name.charAt(0).toUpperCase() + label.name.slice(1),
+            color: label.color,
+            onClick: () => handleSetColorLabel(label.name, finalSelection)
+          }))
+        ]
+      },
       { type: 'separator' },
       { label: 'Show in File Explorer', icon: Folder, disabled: !isSingleSelection, onClick: () => { invoke('show_in_finder', { path: finalSelection[0] }).catch(err => setError(`Could not show file in explorer: ${err}`)); } },
-      { label: resetLabel, icon: RotateCcw, onClick: () => {
-          if (finalSelection.length === 0) return;
-          invoke('reset_adjustments_for_paths', { paths: finalSelection })
-            .then(() => {
-              if (finalSelection.includes(libraryActivePath)) setLibraryActiveAdjustments(prev => ({ ...INITIAL_ADJUSTMENTS, rating: prev.rating }));
-              if (selectedImage && finalSelection.includes(selectedImage.path)) setAdjustments(prev => ({ ...INITIAL_ADJUSTMENTS, rating: prev.rating, aiPatches: [] }));
-            })
-            .catch(err => { console.error("Failed to reset adjustments:", err); setError(`Failed to reset adjustments: ${err}`); });
-        },
-      },
+      { label: resetLabel, icon: RotateCcw, onClick: () => handleResetAdjustments(finalSelection) },
       { label: deleteLabel, icon: Trash2, isDestructive: true, submenu: [
           { label: 'Cancel', icon: X, onClick: () => {} },
-          { label: `Delete ${isSingleSelection ? '' : `${selectionCount} Images`}`, icon: Check, isDestructive: true, onClick: () => executeDelete(finalSelection) },
+          {
+            label: 'Delete Selected Only',
+            icon: Check,
+            isDestructive: true,
+            onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+          },
+          {
+            label: 'Delete + Associated (RAW/JPEG)',
+            icon: Check,
+            isDestructive: true,
+            onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
+          },
         ],
       },
     ];
@@ -1414,6 +1546,7 @@ function App() {
     const numCopied = copiedFilePaths.length;
     const copyPastedLabel = numCopied === 1 ? 'Copy image here' : `Copy ${numCopied} images here`;
     const movePastedLabel = numCopied === 1 ? 'Move image here' : `Move ${numCopied} images here`;
+
     const options = [
       { label: 'New Folder', icon: FolderPlus, onClick: () => { setFolderActionTarget(targetPath); setIsCreateFolderModalOpen(true); } },
       { label: 'Rename Folder', icon: FileEdit, disabled: isRoot, onClick: () => { setFolderActionTarget(targetPath); setIsRenameFolderModalOpen(true); } },
@@ -1423,6 +1556,7 @@ function App() {
           { label: movePastedLabel, onClick: async () => { try { await invoke('move_files', { sourcePaths: copiedFilePaths, destinationFolder: targetPath }); setCopiedFilePaths([]); setMultiSelectedPaths([]); handleRefreshFolderTree(); handleLibraryRefresh(); } catch (err) { setError(`Failed to move files: ${err}`); } } },
         ],
       },
+      { label: 'Import Images', icon: FolderInput, onClick: () => handleImportClick(targetPath) },
       { type: 'separator' },
       { label: 'Show in File Explorer', icon: Folder, onClick: () => invoke('show_in_finder', { path: targetPath }).catch(err => setError(`Could not show folder: ${err}`)) },
       ...(path ? [{ label: 'Delete Folder', icon: Trash2, isDestructive: true, disabled: isRoot, submenu: [
@@ -1443,12 +1577,14 @@ function App() {
     const numCopied = copiedFilePaths.length;
     const copyPastedLabel = numCopied === 1 ? 'Copy image here' : `Copy ${numCopied} images here`;
     const movePastedLabel = numCopied === 1 ? 'Move image here' : `Move ${numCopied} images here`;
+
     const options = [
       { label: 'Paste', icon: ClipboardPaste, disabled: copiedFilePaths.length === 0, submenu: [
           { label: copyPastedLabel, onClick: async () => { try { await invoke('copy_files', { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath }); handleLibraryRefresh(); } catch (err) { setError(`Failed to copy files: ${err}`); } } },
           { label: movePastedLabel, onClick: async () => { try { await invoke('move_files', { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath }); setCopiedFilePaths([]); setMultiSelectedPaths([]); handleRefreshFolderTree(); handleLibraryRefresh(); } catch (err) { setError(`Failed to move files: ${err}`); } } },
         ],
       },
+      { label: 'Import Images', icon: FolderInput, onClick: () => handleImportClick(currentFolderPath) },
     ];
     showContextMenu(event.clientX, event.clientY, options);
   };
@@ -1482,6 +1618,9 @@ function App() {
               activeMaskId={activeMaskId}
               activeMaskContainerId={activeMaskContainerId}
               onSelectMask={setActiveMaskId}
+              activeAiPatchContainerId={activeAiPatchContainerId}
+              activeAiSubMaskId={activeAiSubMaskId}
+              onSelectAiSubMask={setActiveAiSubMaskId}
               updateSubMask={updateSubMask}
               transformWrapperRef={transformWrapperRef}
               onZoomed={handleUserTransform}
@@ -1491,10 +1630,11 @@ function App() {
               onRedo={redo}
               canUndo={canUndo}
               canRedo={canRedo}
+              isStraightenActive={isStraightenActive}
+              onStraighten={handleStraighten}
               brushSettings={brushSettings}
               onGenerateAiMask={handleGenerateAiMask}
-              aiTool={aiTool}
-              onAiMaskDrawingComplete={handleAiMaskDrawingComplete}
+              isMaskControlHovered={isMaskControlHovered}
             />
             <Resizer onMouseDown={createResizeHandler(setBottomPanelHeight, bottomPanelHeight)} direction="horizontal" />
             <BottomBar
@@ -1503,13 +1643,13 @@ function App() {
               isRatingDisabled={!selectedImage}
               onCopy={handleCopyAdjustments}
               isCopyDisabled={!selectedImage}
-              onPaste={handlePasteAdjustments}
+              onPaste={() => handlePasteAdjustments()}
               isCopied={isCopied}
               isPasted={isPasted}
               isPasteDisabled={copiedAdjustments === null}
               zoom={zoom}
               onZoomChange={handleZoomChange}
-              minZoom={activeRightPanel === 'crop' ? 0.4 : 0.7}
+              minZoom={0.7}
               maxZoom={10}
               imageList={sortedImageList}
               selectedImage={selectedImage}
@@ -1518,8 +1658,8 @@ function App() {
               multiSelectedPaths={multiSelectedPaths}
               thumbnails={thumbnails}
               imageRatings={imageRatings}
-              isFilmstripVisible={isFilmstripVisible}
-              setIsFilmstripVisible={setIsFilmstripVisible}
+              isFilmstripVisible={uiVisibility.filmstrip}
+              setIsFilmstripVisible={(value) => setUiVisibility(prev => ({ ...prev, filmstrip: value }))}
               isLoading={isViewLoading}
               onClearSelection={handleClearSelection}
               filmstripHeight={bottomPanelHeight}
@@ -1536,7 +1676,7 @@ function App() {
               <div style={{ width: `${rightPanelWidth}px` }} className="h-full">
                 {renderedRightPanel === 'adjustments' && <Controls theme={theme} adjustments={adjustments} setAdjustments={setAdjustments} selectedImage={selectedImage} histogram={histogram} collapsibleState={collapsibleSectionsState} setCollapsibleState={setCollapsibleSectionsState} copiedSectionAdjustments={copiedSectionAdjustments} setCopiedSectionAdjustments={setCopiedSectionAdjustments} handleAutoAdjustments={handleAutoAdjustments} />}
                 {renderedRightPanel === 'metadata' && <MetadataPanel selectedImage={selectedImage} />}
-                {renderedRightPanel === 'crop' && <CropPanel selectedImage={selectedImage} adjustments={adjustments} setAdjustments={setAdjustments} />}
+                {renderedRightPanel === 'crop' && <CropPanel selectedImage={selectedImage} adjustments={adjustments} setAdjustments={setAdjustments} isStraightenActive={isStraightenActive} setIsStraightenActive={setIsStraightenActive} />}
                 {renderedRightPanel === 'masks' && <MasksPanel 
                   adjustments={adjustments} 
                   setAdjustments={setAdjustments} 
@@ -1554,22 +1694,29 @@ function App() {
                   isGeneratingAiMask={isGeneratingAiMask} 
                   aiModelDownloadStatus={aiModelDownloadStatus} 
                   onGenerateAiForegroundMask={handleGenerateAiForegroundMask} 
+                  setIsMaskControlHovered={setIsMaskControlHovered}
                 />}
                 {renderedRightPanel === 'presets' && <PresetsPanel adjustments={adjustments} setAdjustments={setAdjustments} selectedImage={selectedImage} activePanel={activeRightPanel} />}
                 {renderedRightPanel === 'export' && <ExportPanel selectedImage={selectedImage} adjustments={adjustments} multiSelectedPaths={multiSelectedPaths} exportState={exportState} setExportState={setExportState} />}
                 {renderedRightPanel === 'ai' && <AIPanel 
-                  selectedImage={selectedImage} 
-                  adjustments={adjustments} 
-                  isComfyUiConnected={isComfyUiConnected} 
-                  isGeneratingAi={isGeneratingAi} 
-                  onGenerativeReplace={handleGenerativeReplace} 
-                  onResetAiEdits={handleResetAiEdits} 
-                  aiTool={aiTool} 
-                  setAiTool={setAiTool}
-                  pendingAiAction={pendingAiAction}
-                  setPendingAiAction={setPendingAiAction}
+                  adjustments={adjustments}
+                  setAdjustments={setAdjustments}
+                  selectedImage={selectedImage}
+                  isComfyUiConnected={isComfyUiConnected}
+                  isGeneratingAi={isGeneratingAi}
+                  onGenerativeReplace={handleGenerativeReplace}
                   onDeletePatch={handleDeleteAiPatch}
                   onTogglePatchVisibility={handleToggleAiPatchVisibility}
+                  activePatchContainerId={activeAiPatchContainerId}
+                  onSelectPatchContainer={setActiveAiPatchContainerId}
+                  activeSubMaskId={activeAiSubMaskId}
+                  onSelectSubMask={setActiveAiSubMaskId}
+                  brushSettings={brushSettings}
+                  setBrushSettings={setBrushSettings}
+                  isGeneratingAiMask={isGeneratingAiMask}
+                  aiModelDownloadStatus={aiModelDownloadStatus}
+                  onGenerateAiForegroundMask={handleGenerateAiForegroundMask}
+                  setCustomEscapeHandler={setCustomEscapeHandler}
                 />}
               </div>
             </div>
@@ -1607,8 +1754,18 @@ function App() {
             filterCriteria={filterCriteria}
             setFilterCriteria={setFilterCriteria}
             onSettingsChange={handleSettingsChange}
+            isIndexing={isIndexing}
+            indexingProgress={indexingProgress}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
             onLibraryRefresh={handleLibraryRefresh}
             theme={theme}
+            initialScrollOffset={libraryScrollOffset}
+            onScroll={handleLibraryScroll}
+            aiModelDownloadStatus={aiModelDownloadStatus}
+            importState={importState}
+            thumbnailSize={thumbnailSize}
+            onThumbnailSizeChange={setThumbnailSize}
           />
           {rootPath && <BottomBar
             isLibraryView={true}
@@ -1617,11 +1774,11 @@ function App() {
             isRatingDisabled={multiSelectedPaths.length === 0}
             onCopy={handleCopyAdjustments}
             isCopyDisabled={multiSelectedPaths.length !== 1}
-            onPaste={handlePasteAdjustments}
+            onPaste={() => handlePasteAdjustments()}
             isCopied={isCopied}
             isPasted={isPasted}
             isPasteDisabled={copiedAdjustments === null || multiSelectedPaths.length === 0}
-            onReset={handleResetAdjustments}
+            onReset={() => handleResetAdjustments()}
             isResetDisabled={multiSelectedPaths.length === 0}
             onExportClick={() => setIsLibraryExportPanelVisible(prev => !prev)}
             isExportDisabled={multiSelectedPaths.length === 0}
@@ -1633,12 +1790,12 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen bg-bg-primary font-sans text-text-primary overflow-hidden select-none">
-      { appSettings?.decorations || <TitleBar /> }
+      { appSettings?.decorations || (!isWindowFullScreen && <TitleBar />) }
       <div className={clsx(
         "flex-1 flex flex-col min-h-0",
         [
           rootPath && "p-2 gap-2",
-          !appSettings?.decorations && rootPath && "pt-12",
+          !appSettings?.decorations && rootPath && !isWindowFullScreen && "pt-12",
         ]
       )}>
         {error && (
@@ -1655,9 +1812,9 @@ function App() {
                 onFolderSelect={handleSelectSubfolder}
                 selectedPath={currentFolderPath}
                 isLoading={isTreeLoading}
-                isVisible={isFolderTreeVisible}
-                setIsVisible={setIsFolderTreeVisible}
-                style={{ width: isFolderTreeVisible ? `${leftPanelWidth}px` : '32px' }}
+                isVisible={uiVisibility.folderTree}
+                setIsVisible={(value) => setUiVisibility(prev => ({ ...prev, folderTree: value }))}
+                style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
                 isResizing={isResizing}
                 onContextMenu={handleFolderTreeContextMenu}
                 expandedFolders={expandedFolders}
@@ -1669,7 +1826,13 @@ function App() {
           <div className="flex-1 flex flex-col min-w-0">
             {renderMainView()}
           </div>
-          <div className={clsx('flex-shrink-0 overflow-hidden', !isResizing && 'transition-all duration-300 ease-in-out', isLibraryExportPanelVisible ? 'w-80 ml-2' : 'w-0')}>
+          {!selectedImage && isLibraryExportPanelVisible && (
+            <Resizer onMouseDown={createResizeHandler(setRightPanelWidth, rightPanelWidth)} direction="vertical" />
+          )}
+          <div 
+            className={clsx('flex-shrink-0 overflow-hidden', !isResizing && 'transition-all duration-300 ease-in-out')}
+            style={{ width: isLibraryExportPanelVisible ? `${rightPanelWidth}px` : '0px' }}
+          >
             <LibraryExportPanel
               isVisible={isLibraryExportPanelVisible}
               onClose={() => setIsLibraryExportPanelVisible(false)}
@@ -1691,9 +1854,21 @@ function App() {
         onSave={handleRenameFolder}
         currentName={folderActionTarget ? folderActionTarget.split(/[\\/]/).pop() : ''}
       />
+      <RenameFileModal
+        isOpen={isRenameFileModalOpen}
+        onClose={() => setIsRenameFileModalOpen(false)}
+        onSave={handleSaveRename}
+        filesToRename={renameTargetPaths}
+      />
       <ConfirmModal
         {...confirmModalState}
         onClose={closeConfirmModal}
+      />
+      <ImportSettingsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSave={handleStartImport}
+        fileCount={importSourcePaths.length}
       />
     </div>
   );

@@ -16,6 +16,8 @@ pub struct ImageMetadata {
     pub version: u32,
     pub rating: u8,
     pub adjustments: Value,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
 }
 
 impl Default for ImageMetadata {
@@ -24,6 +26,7 @@ impl Default for ImageMetadata {
             version: 1,
             rating: 0,
             adjustments: Value::Null,
+            tags: None,
         }
     }
 }
@@ -46,6 +49,15 @@ pub fn apply_orientation(image: DynamicImage, orientation: Orientation) -> Dynam
         Orientation::Rotate90 => image.rotate90(),
         Orientation::Transverse => image.rotate90().fliph(),
         Orientation::Rotate270 => image.rotate270(),
+    }
+}
+
+pub fn apply_coarse_rotation(image: DynamicImage, orientation_steps: u8) -> DynamicImage {
+    match orientation_steps {
+        1 => image.rotate90(),
+        2 => image.rotate180(),
+        3 => image.rotate270(),
+        _ => image,
     }
 }
 
@@ -134,6 +146,15 @@ pub struct HslColor {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
 #[repr(C)]
+pub struct ColorGradeSettings {
+    pub hue: f32,
+    pub saturation: f32,
+    pub luminance: f32,
+    _pad: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
+#[repr(C)]
 pub struct GlobalAdjustments {
     pub exposure: f32,
     pub contrast: f32,
@@ -159,7 +180,24 @@ pub struct GlobalAdjustments {
     pub grain_amount: f32,
     pub grain_size: f32,
     pub grain_roughness: f32,
-    _pad1: f32,
+
+    pub enable_negative_conversion: u32,
+    pub film_base_r: f32,
+    pub film_base_g: f32,
+    pub film_base_b: f32,
+    pub negative_red_balance: f32,
+    pub negative_green_balance: f32,
+    pub negative_blue_balance: f32,
+    _pad_neg1: f32,
+    _pad_neg2: f32,
+
+    pub color_grading_shadows: ColorGradeSettings,
+    pub color_grading_midtones: ColorGradeSettings,
+    pub color_grading_highlights: ColorGradeSettings,
+    pub color_grading_blending: f32,
+    pub color_grading_balance: f32,
+    _pad2: f32,
+    _pad3: f32,
 
     pub hsl: [HslColor; 8],
     pub luma_curve: [Point; 16],
@@ -198,6 +236,14 @@ pub struct MaskAdjustments {
     _pad3: f32,
     _pad4: f32,
 
+    pub color_grading_shadows: ColorGradeSettings,
+    pub color_grading_midtones: ColorGradeSettings,
+    pub color_grading_highlights: ColorGradeSettings,
+    pub color_grading_blending: f32,
+    pub color_grading_balance: f32,
+    _pad5: f32,
+    _pad6: f32,
+
     pub hsl: [HslColor; 8],
     pub luma_curve: [Point; 16],
     pub red_curve: [Point; 16],
@@ -217,7 +263,7 @@ pub struct AllAdjustments {
     pub mask_count: u32,
     pub tile_offset_x: u32,
     pub tile_offset_y: u32,
-    _pad1: u32,
+    pub mask_atlas_cols: u32,
 }
 
 struct AdjustmentScales {
@@ -250,26 +296,31 @@ struct AdjustmentScales {
     hsl_hue_multiplier: f32,
     hsl_saturation: f32,
     hsl_luminance: f32,
+
+    color_grading_saturation: f32,
+    color_grading_luminance: f32,
+    color_grading_blending: f32,
+    color_grading_balance: f32,
 }
 
 const SCALES: AdjustmentScales = AdjustmentScales {
-    exposure: 25.0,
+    exposure: 1.0,
     contrast: 100.0,
     highlights: 100.0,
-    shadows: 500.0,
+    shadows: 200.0,
     whites: 30.0,
-    blacks: 50.0,
-    saturation: 80.0,
-    temperature: 30.0,
-    tint: 200.0,
-    vibrance: 80.0,
+    blacks: 60.0,
+    saturation: 100.0,
+    temperature: 25.0,
+    tint: 100.0,
+    vibrance: 100.0,
     
     sharpness: 40.0,
     luma_noise_reduction: 100.0,
     color_noise_reduction: 100.0,
-    clarity: 100.0,
+    clarity: 75.0,
     dehaze: 750.0,
-    structure: 100.0,
+    structure: 75.0,
 
     vignette_amount: 100.0,
     vignette_midpoint: 100.0,
@@ -282,6 +333,11 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     hsl_hue_multiplier: 0.3,
     hsl_saturation: 100.0,
     hsl_luminance: 100.0,
+
+    color_grading_saturation: 500.0,
+    color_grading_luminance: 500.0,
+    color_grading_blending: 100.0,
+    color_grading_balance: 200.0,
 };
 
 fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
@@ -303,6 +359,18 @@ fn parse_hsl_adjustments(js_hsl: &serde_json::Value) -> [HslColor; 8] {
         }
     }
     hsl_array
+}
+
+fn parse_color_grade_settings(js_cg: &serde_json::Value) -> ColorGradeSettings {
+    if js_cg.is_null() {
+        return ColorGradeSettings::default();
+    }
+    ColorGradeSettings {
+        hue: js_cg["h"].as_f64().unwrap_or(0.0) as f32,
+        saturation: js_cg["s"].as_f64().unwrap_or(0.0) as f32 / SCALES.color_grading_saturation,
+        luminance: js_cg["lum"].as_f64().unwrap_or(0.0) as f32 / SCALES.color_grading_luminance,
+        _pad: 0.0,
+    }
 }
 
 fn convert_points_to_aligned(frontend_points: Vec<serde_json::Value>) -> [Point; 16] {
@@ -342,6 +410,19 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
     let green_points: Vec<serde_json::Value> = if is_visible("curves") { curves_obj["green"].as_array().cloned().unwrap_or_default() } else { Vec::new() };
     let blue_points: Vec<serde_json::Value> = if is_visible("curves") { curves_obj["blue"].as_array().cloned().unwrap_or_default() } else { Vec::new() };
 
+    let cg_obj = js_adjustments.get("colorGrading").cloned().unwrap_or_default();
+
+    let neg_conv_enabled = js_adjustments["enableNegativeConversion"].as_bool().unwrap_or(false);
+    let film_base_hex = js_adjustments["filmBaseColor"].as_str().unwrap_or("#ff8800");
+    let film_base_rgb = if film_base_hex.starts_with('#') && film_base_hex.len() == 7 {
+        let r = u8::from_str_radix(&film_base_hex[1..3], 16).unwrap_or(255) as f32 / 255.0;
+        let g = u8::from_str_radix(&film_base_hex[3..5], 16).unwrap_or(136) as f32 / 255.0;
+        let b = u8::from_str_radix(&film_base_hex[5..7], 16).unwrap_or(0) as f32 / 255.0;
+        [r, g, b]
+    } else {
+        [1.0, 0.53, 0.0] // Default orange
+    };
+
     GlobalAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure, None),
         contrast: get_val("basic", "contrast", SCALES.contrast, None),
@@ -369,7 +450,24 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
         grain_amount: get_val("effects", "grainAmount", SCALES.grain_amount, None),
         grain_size: get_val("effects", "grainSize", SCALES.grain_size, Some(25.0)),
         grain_roughness: get_val("effects", "grainRoughness", SCALES.grain_roughness, Some(50.0)),
-        _pad1: 0.0,
+        
+        enable_negative_conversion: if neg_conv_enabled { 1 } else { 0 },
+        film_base_r: film_base_rgb[0],
+        film_base_g: film_base_rgb[1],
+        film_base_b: film_base_rgb[2],
+        negative_red_balance: js_adjustments["negativeRedBalance"].as_f64().unwrap_or(0.0) as f32 / 100.0,
+        negative_green_balance: js_adjustments["negativeGreenBalance"].as_f64().unwrap_or(0.0) as f32 / 100.0,
+        negative_blue_balance: js_adjustments["negativeBlueBalance"].as_f64().unwrap_or(0.0) as f32 / 100.0,
+        _pad_neg1: 0.0,
+        _pad_neg2: 0.0,
+
+        color_grading_shadows: if is_visible("color") { parse_color_grade_settings(&cg_obj["shadows"]) } else { ColorGradeSettings::default() },
+        color_grading_midtones: if is_visible("color") { parse_color_grade_settings(&cg_obj["midtones"]) } else { ColorGradeSettings::default() },
+        color_grading_highlights: if is_visible("color") { parse_color_grade_settings(&cg_obj["highlights"]) } else { ColorGradeSettings::default() },
+        color_grading_blending: if is_visible("color") { cg_obj["blending"].as_f64().unwrap_or(50.0) as f32 / SCALES.color_grading_blending } else { 0.5 },
+        color_grading_balance: if is_visible("color") { cg_obj["balance"].as_f64().unwrap_or(0.0) as f32 / SCALES.color_grading_balance } else { 0.0 },
+        _pad2: 0.0,
+        _pad3: 0.0,
 
         hsl: if is_visible("color") { parse_hsl_adjustments(&js_adjustments.get("hsl").cloned().unwrap_or_default()) } else { [HslColor::default(); 8] },
         luma_curve: convert_points_to_aligned(luma_points.clone()),
@@ -409,6 +507,7 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
     let red_points: Vec<serde_json::Value> = if is_visible("curves") { curves_obj["red"].as_array().cloned().unwrap_or_default() } else { Vec::new() };
     let green_points: Vec<serde_json::Value> = if is_visible("curves") { curves_obj["green"].as_array().cloned().unwrap_or_default() } else { Vec::new() };
     let blue_points: Vec<serde_json::Value> = if is_visible("curves") { curves_obj["blue"].as_array().cloned().unwrap_or_default() } else { Vec::new() };
+    let cg_obj = adj.get("colorGrading").cloned().unwrap_or_default();
 
     MaskAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure),
@@ -432,6 +531,14 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         structure: get_val("effects", "structure", SCALES.structure),
         
         _pad1: 0.0, _pad2: 0.0, _pad3: 0.0, _pad4: 0.0,
+
+        color_grading_shadows: if is_visible("color") { parse_color_grade_settings(&cg_obj["shadows"]) } else { ColorGradeSettings::default() },
+        color_grading_midtones: if is_visible("color") { parse_color_grade_settings(&cg_obj["midtones"]) } else { ColorGradeSettings::default() },
+        color_grading_highlights: if is_visible("color") { parse_color_grade_settings(&cg_obj["highlights"]) } else { ColorGradeSettings::default() },
+        color_grading_blending: if is_visible("color") { cg_obj["blending"].as_f64().unwrap_or(50.0) as f32 / SCALES.color_grading_blending } else { 0.5 },
+        color_grading_balance: if is_visible("color") { cg_obj["balance"].as_f64().unwrap_or(0.0) as f32 / SCALES.color_grading_balance } else { 0.0 },
+        _pad5: 0.0,
+        _pad6: 0.0,
 
         hsl: if is_visible("color") { parse_hsl_adjustments(&adj.get("hsl").cloned().unwrap_or_default()) } else { [HslColor::default(); 8] },
         luma_curve: convert_points_to_aligned(luma_points.clone()),
@@ -465,7 +572,7 @@ pub fn get_all_adjustments_from_json(js_adjustments: &serde_json::Value) -> AllA
         mask_count,
         tile_offset_x: 0,
         tile_offset_y: 0,
-        _pad1: 0,
+        mask_atlas_cols: 1,
     }
 }
 
@@ -828,7 +935,7 @@ pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
     println!("Vignette: center_luma={:.3}, edge_luma={:.3}", avg_center_luma, avg_edge_luma);
     println!("---------------------------------");
     println!("Calculated Values (pre-clamp):");
-    println!("  Exposure: {:.2}, Contrast: {:.2}", exposure, contrast);
+    println!("  Exposure: {:.2}, Contrast: {:.2}", exposure / 20.0, contrast);
     println!("  Highlights: {:.2}, Shadows: {:.2}", highlights, shadows);
     println!("  Temperature: {:.2}, Tint: {:.2}", temperature, tint);
     println!("  Vibrance: {:.2}, Dehaze: {:.2}", vibrancy, dehaze);
@@ -836,7 +943,7 @@ pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
     println!("---------------------------------\n");
 
     AutoAdjustmentResults {
-        exposure: exposure.clamp(-100.0, 100.0),
+        exposure: (exposure / 20.0).clamp(-5.0, 5.0),
         contrast: contrast.clamp(0.0, 100.0),
         highlights: highlights.clamp(-100.0, 0.0),
         shadows: shadows.clamp(0.0, 100.0),

@@ -133,6 +133,7 @@ function MenuItem({ option, index, isSubmenuItem = false, hideContextMenu }) {
       >
         <div className="flex items-center gap-3">
           {option.icon && <option.icon size={16} />}
+          {option.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: option.color }}></div>}
           <span>{option.label}</span>
         </div>
         {option.submenu && <ChevronRight size={16} />}

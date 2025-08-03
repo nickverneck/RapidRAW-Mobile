@@ -2,6 +2,14 @@ import { useEffect, useRef } from 'react';
 import { Image as ImageIcon, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const COLOR_LABELS = [
+  { name: 'red', color: '#ef4444' },
+  { name: 'yellow', color: '#facc15' },
+  { name: 'green', color: '#4ade80' },
+  { name: 'blue', color: '#60a5fa' },
+  { name: 'purple', color: '#a78bfa' },
+];
+
 export default function Filmstrip({ 
   imageList, 
   selectedImage, 
@@ -69,6 +77,8 @@ export default function Filmstrip({
             const isSelected = multiSelectedPaths.includes(path);
             const thumbData = thumbnails[path];
             const rating = imageRatings?.[path] || 0;
+            const colorTag = imageFile.tags?.find(t => t.startsWith('color:'))?.substring(6);
+            const colorLabel = COLOR_LABELS.find(c => c.name === colorTag);
             
             const ringClass = isActive
               ? 'ring-2 ring-accent'
@@ -101,10 +111,22 @@ export default function Filmstrip({
                     <ImageIcon size={24} className="text-text-secondary animate-pulse" />
                   </div>
                 )}
-                {rating > 0 && (
+                
+                {(colorLabel || rating > 0) && (
                   <div className="absolute top-1 right-1 bg-primary rounded-full px-1.5 py-0.5 text-xs text-white flex items-center gap-1 backdrop-blur-sm">
-                    <span>{rating}</span>
-                    <Star size={10} className="fill-white text-white" />
+                    {colorLabel && (
+                      <div 
+                        className="w-3 h-3 rounded-full ring-1 ring-black/20"
+                        style={{ backgroundColor: colorLabel.color }}
+                        title={`Color: ${colorLabel.name}`}
+                      ></div>
+                    )}
+                    {rating > 0 && (
+                      <>
+                        <span>{rating}</span>
+                        <Star size={10} className="fill-white text-white" />
+                      </>
+                    )}
                   </div>
                 )}
               </motion.div>

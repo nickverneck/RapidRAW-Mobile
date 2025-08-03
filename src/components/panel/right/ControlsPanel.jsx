@@ -5,7 +5,7 @@ import ColorPanel from '../../adjustments/Color';
 import DetailsPanel from '../../adjustments/Details';
 import EffectsPanel from '../../adjustments/Effects';
 import CollapsibleSection from '../../ui/CollapsibleSection';
-import { INITIAL_ADJUSTMENTS, ADJUSTMENT_SECTIONS } from '../../../App';
+import { INITIAL_ADJUSTMENTS, ADJUSTMENT_SECTIONS } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 
 export default function Controls({

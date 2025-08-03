@@ -9,11 +9,15 @@
     "start": "tauri dev"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/utilities": "^3.2.2",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.2.2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-os": "^2.3.0",
     "@tauri-apps/plugin-process": "^2.3.0",
+    "@uiw/color-convert": "^2.7.1",
+    "@uiw/react-color-wheel": "^2.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.18.1",
     "konva": "^9.3.20",

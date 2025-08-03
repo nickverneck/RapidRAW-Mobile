@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { Save, CheckCircle, XCircle, Loader, X, Ban } from 'lucide-react';
@@ -8,6 +8,16 @@ const FILE_FORMATS = [
   { id: 'jpeg', name: 'JPEG', extensions: ['jpg', 'jpeg'] },
   { id: 'png', name: 'PNG', extensions: ['png'] },
   { id: 'tiff', name: 'TIFF', extensions: ['tiff'] },
+];
+
+const FILENAME_VARIABLES = [
+  '{original_filename}',
+  '{sequence}',
+  '{YYYY}',
+  '{MM}',
+  '{DD}',
+  '{hh}',
+  '{mm}',
 ];
 
 function Section({ title, children }) {
@@ -28,6 +38,10 @@ export default function LibraryExportPanel({ multiSelectedPaths, onClose, isVisi
   const [resizeMode, setResizeMode] = useState('longEdge');
   const [resizeValue, setResizeValue] = useState(2048);
   const [dontEnlarge, setDontEnlarge] = useState(true);
+  const [keepMetadata, setKeepMetadata] = useState(true);
+  const [stripGps, setStripGps] = useState(true);
+  const [filenameTemplate, setFilenameTemplate] = useState('{original_filename}_edited');
+  const filenameInputRef = useRef(null);
 
   const { status, progress, errorMessage } = exportState;
   const isExporting = status === 'exporting';
@@ -40,14 +54,41 @@ export default function LibraryExportPanel({ multiSelectedPaths, onClose, isVisi
     }
   }, [multiSelectedPaths, isVisible, isExporting, setExportState]);
 
+  const handleVariableClick = (variable) => {
+    if (!filenameInputRef.current) return;
+
+    const input = filenameInputRef.current;
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const currentValue = input.value;
+
+    const newValue = currentValue.substring(0, start) + variable + currentValue.substring(end);
+    setFilenameTemplate(newValue);
+
+    setTimeout(() => {
+      input.focus();
+      const newCursorPos = start + variable.length;
+      input.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
   const handleExport = async () => {
     if (numImages === 0 || isExporting) return;
 
     setExportState({ status: 'exporting', progress: { current: 0, total: numImages }, errorMessage: '' });
 
+    let finalFilenameTemplate = filenameTemplate;
+    if (numImages > 1 && !filenameTemplate.includes('{sequence}') && !filenameTemplate.includes('{original_filename}')) {
+      finalFilenameTemplate = `${filenameTemplate}_{sequence}`;
+      setFilenameTemplate(finalFilenameTemplate);
+    }
+
     const exportSettings = {
       jpegQuality: parseInt(jpegQuality, 10),
       resize: enableResize ? { mode: resizeMode, value: parseInt(resizeValue, 10), dontEnlarge } : null,
+      keepMetadata,
+      stripGps,
+      filenameTemplate: finalFilenameTemplate,
     };
 
     try {
@@ -129,6 +170,29 @@ export default function LibraryExportPanel({ multiSelectedPaths, onClose, isVisi
               )}
             </Section>
 
+            <Section title="File Naming">
+              <input
+                ref={filenameInputRef}
+                type="text"
+                value={filenameTemplate}
+                onChange={(e) => setFilenameTemplate(e.target.value)}
+                disabled={isExporting}
+                className="w-full bg-bg-primary border border-surface rounded-md p-2 text-sm text-text-primary focus:ring-accent focus:border-accent"
+              />
+              <div className="flex flex-wrap gap-2 mt-2">
+                {FILENAME_VARIABLES.map(variable => (
+                  <button
+                    key={variable}
+                    onClick={() => handleVariableClick(variable)}
+                    disabled={isExporting}
+                    className="px-2 py-1 bg-surface text-text-secondary text-xs rounded-md hover:bg-card-active transition-colors disabled:opacity-50"
+                  >
+                    {variable}
+                  </button>
+                ))}
+              </div>
+            </Section>
+
             <Section title="Image Sizing">
               <Switch
                 label="Resize to Fit"
@@ -163,6 +227,25 @@ export default function LibraryExportPanel({ multiSelectedPaths, onClose, isVisi
                     label="Don't Enlarge"
                     checked={dontEnlarge}
                     onChange={setDontEnlarge}
+                    disabled={isExporting}
+                  />
+                </div>
+              )}
+            </Section>
+
+            <Section title="Metadata">
+              <Switch
+                label="Keep Original Metadata"
+                checked={keepMetadata}
+                onChange={setKeepMetadata}
+                disabled={isExporting}
+              />
+              {keepMetadata && (
+                <div className="pl-2 border-l-2 border-surface">
+                  <Switch
+                    label="Remove GPS Data"
+                    checked={stripGps}
+                    onChange={setStripGps}
                     disabled={isExporting}
                   />
                 </div>

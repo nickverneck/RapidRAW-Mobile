@@ -4,9 +4,22 @@ use std::io;
 use std::path::Path;
 
 fn are_files_different(path1: &Path, path2: &Path) -> io::Result<bool> {
-    let bytes1 = fs::read(path1)?;
-    let bytes2 = fs::read(path2)?;
-    Ok(bytes1 != bytes2)
+    let hash1 = hash_file(path1)?;
+    let hash2 = hash_file(path2)?;
+    Ok(hash1 != hash2)
+}
+
+fn hash_file(path: &Path) -> io::Result<String> {
+    use sha2::{Digest, Sha256};
+    if !path.exists() {
+        return Ok("".to_string());
+    }
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    io::copy(&mut file, &mut hasher)?;
+    let hash = hasher.finalize();
+    let hex_hash = format!("{:x}", hash);
+    Ok(hex_hash)
 }
 
 fn main() {
@@ -17,12 +30,9 @@ fn main() {
         .unwrap();
 
     let lib_name = {
-        #[cfg(target_os = "windows")]
-        { "onnxruntime.dll" }
-        #[cfg(target_os = "linux")]
-        { "libonnxruntime.so" }
-        #[cfg(target_os = "macos")]
-        { "libonnxruntime.dylib" }
+        #[cfg(target_os = "windows")] { "onnxruntime.dll" }
+        #[cfg(target_os = "linux")] { "libonnxruntime.so" }
+        #[cfg(target_os = "macos")] { "libonnxruntime.dylib" }
     };
 
     let source_path = cargo_target_dir.join(lib_name);

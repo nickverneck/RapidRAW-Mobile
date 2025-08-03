@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-function formatLabel(str) {
+function formatExifTag(str) {
   if (!str) return '';
   return str
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -20,26 +20,57 @@ function parseDms(dmsString) {
 function MetadataItem({ label, value }) {
   return (
     <div className="grid grid-cols-3 gap-2 text-xs py-1.5 px-2 rounded odd:bg-bg-primary">
-      <p className="font-semibold text-text-primary col-span-1 break-words">{formatLabel(label)}</p>
-      <p className="text-text-secondary col-span-2 break-words truncate" title={value}>{value}</p>
+      <p className="font-semibold text-text-primary col-span-1 break-words">{label}</p>
+      <p className="text-text-secondary col-span-2 break-words truncate" title={String(value)}>{String(value)}</p>
     </div>
   );
 }
 
+const KEY_CAMERA_SETTINGS_MAP = {
+  FNumber: {
+    label: 'F Number',
+    format: (value) => `${value}`,
+  },
+  ExposureTime: {
+    label: 'Shutter Speed',
+    format: (value) => `${value}`,
+  },
+  PhotographicSensitivity: {
+    label: 'ISO',
+  },
+  FocalLength: {
+    label: 'Focal Distance',
+    format: (value) => String(value).endsWith('mm') ? value : `${value} mm`,
+  },
+  LensModel: {
+    label: 'Lens',
+    format: (value) => String(value).replace(/"/g, ''),
+  },
+};
+
+const KEY_SETTINGS_ORDER = ['FNumber', 'ExposureTime', 'PhotographicSensitivity', 'FocalLength', 'LensModel'];
+
 export default function MetadataPanel({ selectedImage }) {
-  const { keyInfo, gpsData, otherExifEntries } = useMemo(() => {
+  const { keyCameraSettings, gpsData, otherExifEntries } = useMemo(() => {
     const exif = selectedImage?.exif || {};
 
-    const keyInfoKeys = ['FNumber', 'ExposureTime', 'ShutterSpeedValue', 'PhotographicSensitivity', 'FocalLength', 'LensModel'];
+    const keyCameraSettings = KEY_SETTINGS_ORDER
+      .map(key => {
+        const value = exif[key];
+        if (value === undefined || value === null) {
+          return null;
+        }
+        const config = KEY_CAMERA_SETTINGS_MAP[key];
+        const formattedValue = config.format ? config.format(value) : value;
+        return {
+          key: key,
+          label: config.label,
+          value: formattedValue,
+        };
+      })
+      .filter(Boolean);
+
     const gpsKeys = ['GPSLatitude', 'GPSLatitudeRef', 'GPSLongitude', 'GPSLongitudeRef', 'GPSAltitude', 'GPSAltitudeRef'];
-
-    const keyInfo = {};
-    keyInfoKeys.forEach(key => {
-      if (exif[key]) {
-        keyInfo[key] = exif[key];
-      }
-    });
-
     const latStr = exif.GPSLatitude;
     const latRef = exif.GPSLatitudeRef;
     const lonStr = exif.GPSLongitude;
@@ -56,12 +87,11 @@ export default function MetadataPanel({ selectedImage }) {
     }
 
     const otherExifEntries = Object.entries(exif)
-      .filter(([key]) => !keyInfoKeys.includes(key) && !gpsKeys.includes(key));
+      .filter(([key]) => !KEY_SETTINGS_ORDER.includes(key) && !gpsKeys.includes(key));
 
-    return { keyInfo, gpsData, otherExifEntries };
+    return { keyCameraSettings, gpsData, otherExifEntries };
   }, [selectedImage?.exif]);
 
-  const hasKeyInfo = Object.keys(keyInfo).length > 0;
   const hasGps = gpsData.lat !== null && gpsData.lon !== null;
 
   return (
@@ -80,12 +110,12 @@ export default function MetadataPanel({ selectedImage }) {
               </div>
             </div>
 
-            {hasKeyInfo && (
+            {keyCameraSettings.length > 0 && (
               <div>
                 <h3 className="text-base font-bold text-text-primary mb-2 border-b border-surface pb-1">Key Camera Settings</h3>
                 <div className="flex flex-col gap-1">
-                  {Object.entries(keyInfo).map(([tag, value]) => (
-                    <MetadataItem key={tag} label={tag} value={value} />
+                  {keyCameraSettings.map((item) => (
+                    <MetadataItem key={item.key} label={item.label} value={item.value} />
                   ))}
                 </div>
               </div>
@@ -129,7 +159,7 @@ export default function MetadataPanel({ selectedImage }) {
                 <h3 className="text-base font-bold text-text-primary mb-2 border-b border-surface pb-1">All EXIF Data</h3>
                 <div className="flex flex-col gap-1">
                   {otherExifEntries.map(([tag, value]) => (
-                    <MetadataItem key={tag} label={tag} value={value} />
+                    <MetadataItem key={tag} label={formatExifTag(tag)} value={value} />
                   ))}
                 </div>
               </div>

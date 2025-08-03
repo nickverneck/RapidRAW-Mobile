@@ -15,12 +15,18 @@ on:
       release-id:
         required: false
         type: string
+      asset-prefix:
+        required: false
+        type: string
       asset-name-pattern:
         required: false
         type: string
       upload-artifacts:
         required: false
         type: boolean
+      repository:
+        required: false
+        type: string
       ref:
         required: false
         type: string
@@ -35,7 +41,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          filter: tree:0
+          fetch-tags: true
 
       - name: Determine Version
         id: determine-version
@@ -48,20 +58,30 @@ jobs:
             APP_VERSION="${REF#refs/tags/v}"
             echo "Release version determined from tag: $APP_VERSION"
           else
-            APP_VERSION="0.0.0-${{ github.run_number }}"
-            echo "CI version determined from run number: $APP_VERSION"
+            if [[ "${{ inputs.platform }}" == windows* ]]; then
+              DESCRIBE="$(git describe --tags --always --abbrev=0)"
+              APP_VERSION="${DESCRIBE#v}"
+              echo "CI version determined from 'git describe': $APP_VERSION"
+            else
+              DESCRIBE="$(git describe --tags --always)"
+              APP_VERSION="${DESCRIBE#v}"
+              echo "CI version determined from 'git describe': $APP_VERSION"
+            fi
           fi
           
           echo "version=${APP_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        if: startsWith(inputs.platform, 'macos')
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ''
+        if: startsWith(inputs.platform, 'macos') || startsWith(inputs.platform, 'windows')
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ inputs.platform }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -102,22 +122,26 @@ jobs:
         if: ${{ inputs.release-id != '' }}
         run: |
           platform="${{ inputs.platform }}"
-          replacement="${platform%-*}"
-          replacement="$(echo ${replacement} | sed -E 's/\.//g')"
+          replacement="$(echo ${platform} | sed -E 's/-latest//')"
           patched_platform=$(echo '${{ inputs.asset-name-pattern }}' | sed -E "s/\[platform\]/${replacement}/")
+          if [[ -n "${{ inputs.asset-prefix }}" ]]; then
+            patched_platform="${{ inputs.asset-prefix }}_${patched_platform}"
+          fi
           echo "platform=${patched_platform}" >> $GITHUB_OUTPUT
 
       - id: tauri-build
         name: Build with tauri-action
-        # FIXME set this back to a release major version, ex. v0
+        # FIXME set this back to a release major version, ex. v0 . This is a commit from the `dev` branch which includes PR
+        # https://github.com/tauri-apps/tauri-action/pull/1099 , adding the assetNamePattern feature.
         uses: tauri-apps/tauri-action@cf3eb9b18add8548a40584695215c80ab7274f31
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NO_STRIP: ${{ startsWith(inputs.platform, 'ubuntu') }}
         with:
-          args: ${{ inputs.build-args }} ${{ inputs.target != '' && '--target' || ''  }} ${{ inputs.target }}
+          args: --verbose ${{ inputs.build-args }} ${{ inputs.target != '' && '--target' || ''  }} ${{ inputs.target }}
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
           releaseId: ${{ inputs.release-id }}
+          retryAttempts: 3
 
       - name: Setup gh actions artifact client
         if: ${{ inputs.release-id == '' }}
@@ -127,18 +151,25 @@ jobs:
         shell: bash
         if: ${{ startsWith(inputs.platform, 'windows') && inputs.release-id == '' }}
         run: |
-          find src-tauri/target/release/bundle -name "*.exe" | while read -r file; do
-            name=$(basename "$file")
-            echo "Uploading $name, file: $file"
-            # TODO zip the file before upload
-            gh-actions-artifact-client.js upload "${name}" --retentionDays=7 < "$file"
+          for d in src-tauri/target/${{ inputs.target || 'release' }}/bundle src-tauri/target/${{ inputs.target || 'release' }}/release/bundle ; do
+            echo "Scanning ${d} for artifacts to upload..."
+            if [ ! -d "${d}" ]; then
+              echo "${d} doesn't exist, skipping"
+              continue
+            fi
+            find "${d}" -name "*.exe" | while read -r file; do
+              name="${{ inputs.asset-prefix }}_${{ inputs.platform }}_$(basename "$file")"
+              echo "Uploading ${name}, file: ${file}"
+              # TODO zip the file before upload
+              gh-actions-artifact-client.js upload "${name}" --retentionDays=7 < "$file"
+            done
           done
 
       - name: Upload binaries (Linux/macOS)
         if: ${{ !startsWith(inputs.platform, 'windows') && inputs.release-id == '' }}
         run: |
           find src-tauri/target/${{ inputs.target || 'release' }} -type f -name "*.rpm" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.dmg" | while read -r file; do
-            name=$(basename "$file")
+            name="${{ inputs.asset-prefix }}_${{ inputs.platform }}_$(basename "$file")"
             echo "Uploading $name, file: $file"
             zip -j - "$file" | gh-actions-artifact-client.js upload "${name}" --retentionDays=7
           done

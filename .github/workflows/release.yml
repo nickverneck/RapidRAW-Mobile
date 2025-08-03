@@ -10,27 +10,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
-            args: ''
-            target: aarch64-apple-darwin
-          - platform: 'macos-latest'
-            args: ''
-            target: x86_64-apple-darwin
-          - platform: 'ubuntu-22.04'
-            args: '--bundles deb,rpm'
-            target: ''
-          - platform: 'ubuntu-22.04-arm'
-            args: '--bundles deb,rpm'
-            target: ''
-          - platform: 'ubuntu-24.04'
-            args: '--bundles appimage'
-            target: ''
-          - platform: 'ubuntu-24.04-arm'
-            args: '--bundles appimage'
-            target: ''
           - platform: 'windows-latest'
-            args: '--bundles nsis'
+            builds-args: '--bundles nsis'
             target: ''
+            asset-prefix: '01'
+          - platform: 'windows-11-arm'
+            builds-args: '--bundles nsis'
+            target: 'aarch64-pc-windows-msvc'
+            asset-prefix: '01'
+          - platform: 'macos-13'
+            target: aarch64-apple-darwin
+            asset-prefix: '02'
+          - platform: 'macos-13'
+            target: x86_64-apple-darwin
+            asset-prefix: '02'
+          - platform: 'ubuntu-22.04'
+            target: ''
+            asset-prefix: '03'
+          - platform: 'ubuntu-22.04-arm'
+            target: ''
+            asset-prefix: '03'
+          - platform: 'ubuntu-24.04'
+            target: ''
+            asset-prefix: '03'
+          - platform: 'ubuntu-24.04-arm'
+            target: ''
+            asset-prefix: '03'
     uses: ./.github/workflows/build.yml
     with:
       release-id: ${{ github.event.release.id }}
@@ -38,7 +43,7 @@ jobs:
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
       asset-name-pattern: "[name]_v[version]_[platform]_[arch][ext]"
-      ref: ${{ github.ref }}
+      asset-prefix: ${{ matrix.asset-prefix }}
     secrets: inherit
     permissions:
       contents: write

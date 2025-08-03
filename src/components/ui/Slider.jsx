@@ -3,10 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 /**
- * A reusable slider component with a clickable reset icon and an interactive handle.
- * The slider's thumb animates with an "ease-in-out" effect when the value is set programmatically.
- * The numeric value can be clicked to manually input a precise value.
- * Double-clicking the label, value, or slider track will also reset the value.
+ * A reusable slider component...
  *
  * @param {string} label - The text label for the slider.
  * @param {number|string} value - The current value of the slider.
@@ -14,15 +11,22 @@ import React, { useState, useEffect, useRef } from 'react';
  * @param {number|string} min - The minimum value of the slider.
  * @param {number|string} max - The maximum value of the slider.
  * @param {number|string} step - The increment step of the slider.
- * @param {number} [defaultValue=0] - The value to reset to on icon click or double-click. Defaults to 0.
+ * @param {number} [defaultValue=0] - The value to reset to.
+ * @param {function} [onDragStateChange] - Optional callback to report dragging state to a parent.
  */
-const Slider = ({ label, value, onChange, min, max, step, defaultValue = 0 }) => {
+const Slider = ({ label, value, onChange, min, max, step, defaultValue = 0, onDragStateChange = () => {} }) => {
   const [displayValue, setDisplayValue] = useState(Number(value));
   const [isDragging, setIsDragging] = useState(false);
   const animationFrameRef = useRef();
   const [isEditing, setIsEditing] = useState(false);
   const [inputValue, setInputValue] = useState(String(value));
   const inputRef = useRef(null);
+  const [isLabelHovered, setIsLabelHovered] = useState(false);
+  const containerRef = useRef(null);
+  
+  useEffect(() => {
+    onDragStateChange(isDragging);
+  }, [isDragging, onDragStateChange]);
 
   useEffect(() => {
     const handleDragEndGlobal = () => {
@@ -144,47 +148,53 @@ const Slider = ({ label, value, onChange, min, max, step, defaultValue = 0 }) =>
     }
   };
 
+  const handleRangeKeyDown = (e) => {
+    if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+      e.target.blur();
+      return;
+    }
+
+    const globalKeys = [' ', 'ArrowUp', 'ArrowDown', 'f'];
+
+    if (globalKeys.includes(e.key)) {
+      e.target.blur();
+    }
+  };
+
   const stepStr = String(step);
   const decimalPlaces = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
   
   const numericValue = isNaN(Number(value)) ? 0 : Number(value);
 
-  const ResetIcon = () => (
-    <svg 
-      width="14" 
-      height="14" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-      className="text-text-secondary hover:text-text-primary transition-colors duration-150"
-    >
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
-  );
-
   return (
-    <div className="mb-2 group">
+    <div 
+      ref={containerRef}
+      className="mb-2"
+    >
       <div className="flex justify-between items-center mb-1">
-        <div 
-          className="flex items-center gap-2 cursor-pointer"
-          onDoubleClick={handleReset}
-          title={`Double-click to reset ${label.toLowerCase()}`}
+        <div
+          className={`grid ${typeof label === 'string' ? 'cursor-pointer' : ''}`}
+          onMouseEnter={typeof label === 'string' ? () => setIsLabelHovered(true) : undefined}
+          onMouseLeave={typeof label === 'string' ? () => setIsLabelHovered(false) : undefined}
+          onClick={typeof label === 'string' ? handleReset : undefined}
+          onDoubleClick={typeof label === 'string' ? handleReset : undefined}
+          title={typeof label === 'string' && label ? `Click or double-click to reset ${label.toLowerCase()} to ${defaultValue}` : ''}
         >
-          <label className="text-sm font-medium text-text-secondary select-none">{label}</label>
-          <button
-            onClick={handleReset}
-            className="p-0.5 rounded hover:bg-card-active transition-all duration-200 cursor-pointer opacity-0 group-hover:opacity-100 active:scale-95"
-            title={`Reset to ${defaultValue}`}
-            type="button"
+          <span
+            className={`col-start-1 row-start-1 text-sm font-medium text-text-secondary select-none transition-opacity duration-200 ease-in-out ${isLabelHovered && typeof label === 'string' ? 'opacity-0' : 'opacity-100'}`}
+            aria-hidden={isLabelHovered && typeof label === 'string'}
           >
-            <ResetIcon />
-          </button>
+            {label}
+          </span>
+
+          {typeof label === 'string' && (
+            <span
+              className={`col-start-1 row-start-1 text-sm font-medium text-text-primary select-none transition-opacity duration-200 ease-in-out pointer-events-none ${isLabelHovered ? 'opacity-100' : 'opacity-0'}`}
+              aria-hidden={!isLabelHovered}
+            >
+              Reset
+            </span>
+          )}
         </div>
         <div className="w-12 text-right">
           {isEditing ? (
@@ -207,7 +217,7 @@ const Slider = ({ label, value, onChange, min, max, step, defaultValue = 0 }) =>
               onDoubleClick={handleReset}
               title={`Click to edit, double-click to reset to ${defaultValue}`}
             >
-              {numericValue.toFixed(decimalPlaces)}
+              {label === 'Exposure' && numericValue === 0 ? '0' : numericValue.toFixed(decimalPlaces)}
             </span>
           )}
         </div>
@@ -224,6 +234,7 @@ const Slider = ({ label, value, onChange, min, max, step, defaultValue = 0 }) =>
         onTouchStart={handleDragStart}
         onTouchEnd={handleDragEnd}
         onDoubleClick={handleReset}
+        onKeyDown={handleRangeKeyDown}
         className={`w-full h-1.5 bg-card-active rounded-full appearance-none cursor-pointer slider-input ${isDragging ? 'slider-thumb-active' : ''}`}
       />
     </div>

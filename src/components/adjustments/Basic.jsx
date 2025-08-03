@@ -2,7 +2,7 @@ import Slider from '../ui/Slider';
 
 export default function BasicAdjustments({ adjustments, setAdjustments }) {
   const handleAdjustmentChange = (key, value) => {
-    const numericValue = parseInt(value, 10);
+    const numericValue = parseFloat(value);
     setAdjustments(prev => ({ ...prev, [key]: numericValue }));
   };
 
@@ -12,9 +12,9 @@ export default function BasicAdjustments({ adjustments, setAdjustments }) {
         label="Exposure"
         value={adjustments.exposure}
         onChange={(e) => handleAdjustmentChange('exposure', e.target.value)}
-        min="-100"
-        max="100"
-        step="1"
+        min="-5"
+        max="5"
+        step="0.01"
       />
       <Slider
         label="Contrast"

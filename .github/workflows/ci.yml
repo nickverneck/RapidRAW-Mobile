@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
 
 jobs:
   build:
@@ -12,17 +11,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'macos-latest'
-            target: ''
-          - platform: 'ubuntu-latest'
-            target: ''
           - platform: 'windows-latest'
+            builds-args: '--bundles nsis'
             target: ''
-
+            asset-prefix: '01'
+          - platform: 'windows-11-arm'
+            builds-args: '--bundles nsis'
+            target: 'aarch64-pc-windows-msvc'
+            asset-prefix: '01'
+          - platform: 'macos-13'
+            target: aarch64-apple-darwin
+            asset-prefix: '02'
+          - platform: 'macos-13'
+            target: x86_64-apple-darwin
+            asset-prefix: '02'
+          - platform: 'ubuntu-22.04'
+            target: ''
+            asset-prefix: '03'
+          - platform: 'ubuntu-22.04-arm'
+            target: ''
+            asset-prefix: '03'
+          - platform: 'ubuntu-24.04'
+            target: ''
+            asset-prefix: '03'
+          - platform: 'ubuntu-24.04-arm'
+            target: ''
+            asset-prefix: '03'
     uses: ./.github/workflows/build.yml
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
+      build-args: ${{ matrix.args }}
+      asset-prefix: ${{ matrix.asset-prefix }}
     secrets: inherit
     permissions:
       contents: write

@@ -15,7 +15,7 @@ import ColorPanel from '../../adjustments/Color';
 import DetailsPanel from '../../adjustments/Details';
 import EffectsPanel from '../../adjustments/Effects';
 
-import { INITIAL_MASK_ADJUSTMENTS, ADJUSTMENT_SECTIONS } from '../../../App';
+import { INITIAL_MASK_ADJUSTMENTS, ADJUSTMENT_SECTIONS } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 
 const MASK_TYPES = [
@@ -34,7 +34,7 @@ function formatMaskTypeName(type) {
 }
 
 const SUB_MASK_CONFIG = {
-  radial: { parameters: [{ key: 'feather', label: 'Feather', min: 0, max: 100, step: 1, multiplier: 100 }] },
+  radial: { parameters: [{ key: 'feather', label: 'Feather', min: 0, max: 100, step: 1, multiplier: 100, defaultValue: 50 }] },
   brush: { showBrushTools: true },
   linear: { parameters: [] },
   color: { parameters: [] },
@@ -45,8 +45,8 @@ const SUB_MASK_CONFIG = {
 
 const BrushTools = ({ settings, onSettingsChange }) => (
   <div className="space-y-4 pt-4 border-t border-surface mt-4">
-    <Slider label="Brush Size" value={settings.size} onChange={(e) => onSettingsChange(s => ({ ...s, size: Number(e.target.value) }))} min="1" max="200" step="1" />
-    <Slider label="Brush Feather" value={settings.feather} onChange={(e) => onSettingsChange(s => ({ ...s, feather: Number(e.target.value) }))} min="0" max="100" step="1" />
+    <Slider label="Brush Size" value={settings.size} onChange={(e) => onSettingsChange(s => ({ ...s, size: Number(e.target.value) }))} min="1" max="200" step="1" defaultValue="100" />
+    <Slider label="Brush Feather" value={settings.feather} onChange={(e) => onSettingsChange(s => ({ ...s, feather: Number(e.target.value) }))} min="0" max="100" step="1" defaultValue="50" />
     <div className="grid grid-cols-2 gap-2 pt-2">
       <button onClick={() => onSettingsChange(s => ({ ...s, tool: 'brush' }))} className={`p-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 ${settings.tool === 'brush' ? 'text-primary bg-surface' : 'bg-surface text-text-secondary hover:bg-card-active'}`}>Brush</button>
       <button onClick={() => onSettingsChange(s => ({ ...s, tool: 'eraser' }))} className={`p-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 ${settings.tool === 'eraser' ? 'text-primary bg-surface' : 'bg-surface text-text-secondary hover:bg-card-active'}`}>Eraser</button>
@@ -57,7 +57,8 @@ const BrushTools = ({ settings, onSettingsChange }) => (
 export default function MaskControls({
   editingMask, activeSubMask, updateMask, updateSubMask,
   brushSettings, setBrushSettings, histogram, isGeneratingAiMask, aiModelDownloadStatus,
-  setAdjustments, selectedImage, onSelectMask, activeMaskId, onGenerateAiForegroundMask
+  setAdjustments, selectedImage, onSelectMask, activeMaskId, onGenerateAiForegroundMask,
+  setIsMaskControlHovered
 }) {
   const { showContextMenu } = useContextMenu();
   const [isSettingsSectionOpen, setSettingsSectionOpen] = useState(true);
@@ -271,6 +272,15 @@ export default function MaskControls({
         <CollapsibleSection title="Mask Properties" isOpen={isSettingsSectionOpen} onToggle={() => setSettingsSectionOpen(prev => !prev)} isContentVisible={true} canToggleVisibility={false}>
           <div className="space-y-4">
             <Switch label="Invert Mask" checked={!!editingMask.invert} onChange={(checked) => handleMaskPropertyChange('invert', checked)} />
+            <Slider
+              label="Mask Transparency"
+              value={editingMask.opacity ?? 100}
+              onChange={(e) => handleMaskPropertyChange('opacity', Number(e.target.value))}
+              min="0"
+              max="100"
+              step="1"
+              defaultValue="100"
+            />
             {activeSubMask && (
               <>
                 {isAiMask && (
@@ -280,7 +290,7 @@ export default function MaskControls({
                   </>
                 )}
                 {subMaskConfig.parameters?.map(param => (
-                  <Slider key={param.key} label={param.label} value={(activeSubMask.parameters[param.key] || 0) * (param.multiplier || 1)} onChange={(e) => handleSubMaskParameterChange(param.key, parseFloat(e.target.value) / (param.multiplier || 1))} min={param.min} max={param.max} step={param.step} />
+                  <Slider key={param.key} label={param.label} value={(activeSubMask.parameters[param.key] || 0) * (param.multiplier || 1)} onChange={(e) => handleSubMaskParameterChange(param.key, parseFloat(e.target.value) / (param.multiplier || 1))} min={param.min} max={param.max} step={param.step} defaultValue={param.defaultValue} />
                 ))}
                 {subMaskConfig.showBrushTools && brushSettings && setBrushSettings && (
                   <BrushTools settings={brushSettings} onSettingsChange={setBrushSettings} />
@@ -290,15 +300,21 @@ export default function MaskControls({
           </div>
         </CollapsibleSection>
 
-        {Object.keys(ADJUSTMENT_SECTIONS).map(sectionName => {
-          const SectionComponent = { basic: BasicAdjustments, curves: CurveGraph, color: ColorPanel, details: DetailsPanel, effects: EffectsPanel }[sectionName];
-          const title = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
-          return (
-            <CollapsibleSection key={sectionName} title={title} isOpen={collapsibleState[sectionName]} onToggle={() => handleToggleSection(sectionName)} onContextMenu={(e) => handleSectionContextMenu(e, sectionName)} isContentVisible={sectionVisibility[sectionName]} onToggleVisibility={() => handleToggleVisibility(sectionName)}>
-              <SectionComponent adjustments={editingMask.adjustments} setAdjustments={setMaskContainerAdjustments} histogram={histogram} isForMask={sectionName === 'effects'} />
-            </CollapsibleSection>
-          );
-        })}
+        <div
+          className="flex flex-col gap-2"
+          onMouseEnter={() => setIsMaskControlHovered(true)}
+          onMouseLeave={() => setIsMaskControlHovered(false)}
+        >
+          {Object.keys(ADJUSTMENT_SECTIONS).map(sectionName => {
+            const SectionComponent = { basic: BasicAdjustments, curves: CurveGraph, color: ColorPanel, details: DetailsPanel, effects: EffectsPanel }[sectionName];
+            const title = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+            return (
+              <CollapsibleSection key={sectionName} title={title} isOpen={collapsibleState[sectionName]} onToggle={() => handleToggleSection(sectionName)} onContextMenu={(e) => handleSectionContextMenu(e, sectionName)} isContentVisible={sectionVisibility[sectionName]} onToggleVisibility={() => handleToggleVisibility(sectionName)}>
+                <SectionComponent adjustments={editingMask.adjustments} setAdjustments={setMaskContainerAdjustments} histogram={histogram} isForMask={sectionName === 'effects'} />
+              </CollapsibleSection>
+            );
+          })}
+        </div>
       </div>
     </>
   );

@@ -80,7 +80,7 @@ export default function RenameFolderModal({ isOpen, onClose, onSave, currentName
           <button
             onClick={handleSave}
             disabled={!name.trim() || name.trim() === currentName}
-            className="px-4 py-2 rounded-md bg-accent text-primary font-semibold hover:bg-accent-hover disabled:bg-gray-500 disabled:text-white disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 rounded-md bg-accent shadow-shiny text-button-text font-semibold hover:bg-accent-hover disabled:bg-gray-500 disabled:text-white disabled:cursor-not-allowed transition-colors"
           >
             Save
           </button>

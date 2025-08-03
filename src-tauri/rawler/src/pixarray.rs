@@ -361,6 +361,19 @@ where
     );
     Self::new_with(output, area.d.w, area.d.h)
   }
+
+  pub fn make_padded(&self, padding: usize) -> Self {
+    let new_w = self.width + padding * 2;
+    let new_h = self.height + padding * 2;
+    let mut padded = Self::new(new_w, new_h);
+
+    for y in 0..self.height {
+      for x in 0..self.width {
+        *padded.at_mut(y + padding, x + padding) = *self.at(y, x);
+      }
+    }
+    padded
+  }
 }
 
 impl<T, const N: usize> Default for Color2D<T, N>
