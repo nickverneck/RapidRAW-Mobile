@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { getRawProcessor, detectRawFormat, isRawFile, type RawMetadata } from '$lib/wasm/raw-processing-wrapper';
+import { getRawProcessor, detectRawFormat, isRawFile, tryExtractJpegPreview, type RawMetadata } from '$lib/wasm/raw-processing-wrapper';
 
 // Types
 export interface ImageMetadata {
@@ -282,33 +282,75 @@ const imageStore = {
       if (isRawImage) {
         // Process RAW file
         const rawFormat = detectRawFormat(file.name);
-        const rawProcessor = await getRawProcessor();
+        const { getRawProcessor, tryExtractJpegPreview } = await import('$lib/wasm/raw-processing-wrapper');
         const rawData = new Uint8Array(arrayBuffer);
         
-        // Extract RAW metadata
-        const rawMetadata = await rawProcessor.getMetadata(rawData);
+        console.log('🎯 Processing RAW file in image store');
         
-        // Decode RAW to get image data for thumbnail and display
-        processedData = await rawProcessor.decodeRaw(rawData, rawFormat!);
-        
-        metadata = {
-          width: rawMetadata.width,
-          height: rawMetadata.height,
-          camera: rawMetadata.camera_make,
-          lens: rawMetadata.lens_model,
-          iso: rawMetadata.iso,
-          aperture: rawMetadata.aperture,
-          shutterSpeed: rawMetadata.shutter_speed,
-          focalLength: rawMetadata.focal_length,
-          dateTime: rawMetadata.timestamp,
-          colorSpace: rawMetadata.color_space,
-          isRaw: true,
-          rawFormat,
-          rawMetadata
-        };
-        
-        // Generate thumbnail from processed RAW data
-        thumbnail = await generateThumbnailFromImageData(processedData, rawMetadata.width, rawMetadata.height);
+        // PRIORITY 1: Try rawloader for actual RAW processing (for full resolution)
+        const rawProcessor = await getRawProcessor();
+        try {
+          // Extract RAW metadata
+          const rawMetadata = await rawProcessor.getMetadata(rawData);
+          
+          // Decode RAW to get full resolution image data
+          processedData = await rawProcessor.decodeRaw(rawData, rawFormat!);
+          
+          console.log('✅ Successfully processed RAW with rawloader in image store');
+          
+          metadata = {
+            width: rawMetadata.width,
+            height: rawMetadata.height,
+            camera: rawMetadata.camera_make,
+            lens: rawMetadata.lens_model,
+            iso: rawMetadata.iso,
+            aperture: rawMetadata.aperture,
+            shutterSpeed: rawMetadata.shutter_speed,
+            focalLength: rawMetadata.focal_length,
+            dateTime: rawMetadata.timestamp,
+            colorSpace: rawMetadata.color_space,
+            isRaw: true,
+            rawFormat,
+            rawMetadata
+          };
+          
+          // For thumbnail, try JPEG preview first (memory efficient)
+          const jpegPreview = tryExtractJpegPreview(rawData);
+          if (jpegPreview) {
+            console.log('🖼️ Using JPEG preview for thumbnail (memory efficient)');
+            const jpegBlob = new Blob([jpegPreview], { type: 'image/jpeg' });
+            const jpegFile = new File([jpegBlob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+            thumbnail = await generateThumbnail(jpegFile);
+          } else {
+            console.log('🖼️ No JPEG preview, generating thumbnail from RAW data');
+            thumbnail = await generateThumbnailFromImageData(processedData, rawMetadata.width, rawMetadata.height);
+          }
+        } catch (rawProcessingError) {
+          console.warn('⚠️ rawloader failed in image store, falling back to JPEG preview:', rawProcessingError);
+          
+          // FALLBACK: Use JPEG preview if rawloader fails
+          const jpegPreview = tryExtractJpegPreview(rawData);
+          if (jpegPreview) {
+            console.log('📸 Using JPEG preview as fallback in image store');
+            
+            // Create a blob from the JPEG preview and extract metadata from it
+            const jpegBlob = new Blob([jpegPreview], { type: 'image/jpeg' });
+            const jpegFile = new File([jpegBlob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+            
+            // Extract metadata from the JPEG preview
+            metadata = await extractMetadata(jpegFile, jpegPreview.buffer);
+            metadata.isRaw = true;
+            metadata.rawFormat = rawFormat;
+            
+            // Generate thumbnail from the JPEG preview
+            thumbnail = await generateThumbnail(jpegFile);
+            
+            // Store the JPEG preview as processed data
+            processedData = jpegPreview;
+          } else {
+            throw new Error('Both rawloader and JPEG preview extraction failed');
+          }
+        }
       } else {
         // Process regular image file
         metadata = await extractMetadata(file, arrayBuffer);
@@ -590,6 +632,24 @@ const imageStore = {
 
   clearError(): void {
     error.set(null);
+  },
+
+  // Helper function to get full resolution URL for RAW images
+  getFullResolutionUrl(imageId: string): string | null {
+    const currentImages = get(images);
+    const image = currentImages.find(img => img.id === imageId);
+    
+    if (!image || !image.metadata.isRaw) {
+      return null;
+    }
+    
+    // If we have processed JPEG data, create a blob URL from it
+    if (image.processedData) {
+      const blob = new Blob([image.processedData], { type: 'image/jpeg' });
+      return URL.createObjectURL(blob);
+    }
+    
+    return null;
   }
 };
 

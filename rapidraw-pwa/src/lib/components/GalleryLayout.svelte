@@ -51,6 +51,10 @@
 		selectedImage.set(image);
 	}
 
+	function handleSidebarToggle() {
+		sidebarCollapsed.update(collapsed => !collapsed);
+	}
+
 	function handlePreviousImage() {
 		const images = $currentImages;
 		const current = $selectedImage;
@@ -149,6 +153,7 @@
 		<Toolbar 
 			selectedImage={$selectedImage}
 			mobile={$isMobile}
+			on:toggleSidebar={handleSidebarToggle}
 		/>
 	</div>
 

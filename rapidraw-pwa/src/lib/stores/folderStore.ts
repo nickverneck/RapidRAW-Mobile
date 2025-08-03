@@ -215,8 +215,18 @@ function createFolderStore() {
 							/\.(jpe?g|png|webp|tiff?|bmp)$/i.test(name) ||
 							rawExtensions.test(name)) {
 							
+							console.log(`📁 Processing file: ${name}, type: ${file.type}, isRAW: ${rawExtensions.test(name)}`);
+							
 							// Create thumbnail
-							const thumbnail = await folderStore.createThumbnail(file);
+							let thumbnail: string;
+							try {
+								thumbnail = await folderStore.createThumbnail(file);
+								console.log(`🖼️ Thumbnail created for ${name}: SUCCESS`);
+							} catch (error) {
+								console.error(`❌ Thumbnail creation failed for ${name}:`, error);
+								// Use a fallback placeholder thumbnail
+								thumbnail = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjNDQ0Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiPlJBVzwvdGV4dD4KPC9zdmc+';
+							}
 							const imagePath = `${folder.path}/${name}`;
 							const ratingData = ratings.get(imagePath) || { rating: 0, flagged: false };
 							const isRawFile = rawExtensions.test(name);
@@ -246,12 +256,18 @@ function createFolderStore() {
 								isRaw: isRawFile,
 								rawFormat
 							});
+							
+							console.log(`✅ Added ${name} to images array (total: ${images.length})`);
 						}
 					}
 				}
 
 				// Sort images by name
 				images.sort((a, b) => a.name.localeCompare(b.name));
+
+				console.log(`📊 Final image count: ${images.length}`);
+				console.log(`📊 RAW files: ${images.filter(img => img.isRaw).length}`);
+				console.log(`📊 Regular files: ${images.filter(img => !img.isRaw).length}`);
 
 				update(state => updateFilterState({
 					...state,
@@ -287,10 +303,12 @@ function createFolderStore() {
 					const arrayBuffer = await file.arrayBuffer();
 					const rawData = new Uint8Array(arrayBuffer);
 					
-					// First, try to extract embedded JPEG preview for thumbnail
+					console.log('🖼️ Creating thumbnail - JPEG preview is fine for memory efficiency');
+					
+					// PRIORITY 1 for thumbnails: Extract JPEG preview (saves memory)
 					const jpegPreview = tryExtractJpegPreview(rawData);
 					if (jpegPreview) {
-						console.log('📸 Using extracted JPEG preview for thumbnail');
+						console.log('✅ Using extracted JPEG preview for thumbnail');
 						const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
 						const url = URL.createObjectURL(blob);
 						
@@ -338,7 +356,9 @@ function createFolderStore() {
 						});
 					}
 					
-					// Fallback to WASM processing
+					console.log('⚠️ No JPEG preview found for thumbnail, falling back to rawloader');
+					
+					// FALLBACK for thumbnails: Use rawloader if no JPEG preview
 					const rawProcessor = await getRawProcessor();
 					const metadata = await rawProcessor.getMetadata(rawData);
 					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
@@ -481,7 +501,10 @@ function createFolderStore() {
 
 		// Generate full resolution URL for RAW files
 		generateFullResolutionUrl: async (imageFile: ImageFile): Promise<string> => {
+			console.log(`🎯 generateFullResolutionUrl called for: ${imageFile.name}, isRaw: ${imageFile.isRaw}`);
+			
 			if (!imageFile.isRaw || imageFile.fullResolutionUrl) {
+				console.log(`↩️ Returning existing URL or thumbnail for ${imageFile.name}`);
 				return imageFile.fullResolutionUrl || imageFile.thumbnail || '';
 			}
 
@@ -498,70 +521,83 @@ function createFolderStore() {
 				const arrayBuffer = await file.arrayBuffer();
 				const rawData = new Uint8Array(arrayBuffer);
 				
-				// First, try to extract embedded JPEG preview
-				const jpegPreview = tryExtractJpegPreview(rawData);
-				if (jpegPreview) {
-					console.log('📸 Using extracted JPEG preview for full resolution');
-					const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
-					const url = URL.createObjectURL(blob);
-					
-					// Update the image file with the full resolution URL
-					update(state => ({
-						...state,
-						images: state.images.map(img => 
-							img.path === imageFile.path 
-								? { ...img, fullResolutionUrl: url }
-								: img
-						)
-					}));
-					
-					return url;
-				}
+				console.log('🎯 Generating FULL RESOLUTION for image viewer - prioritizing rawloader');
 				
-				// Fallback to WASM processing
+				// PRIORITY 1: Try rawloader for actual RAW processing
 				const rawProcessor = await getRawProcessor();
-				const metadata = await rawProcessor.getMetadata(rawData);
-				const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
-				
-				// Create a canvas with the processed data
-				const canvas = document.createElement('canvas');
-				const ctx = canvas.getContext('2d');
-				
-				if (!ctx) {
-					throw new Error('Failed to get canvas context');
+				try {
+					const metadata = await rawProcessor.getMetadata(rawData);
+					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
+					
+					console.log('✅ Successfully processed RAW with rawloader for full resolution');
+					
+					// Create a canvas with the processed RAW data
+					const canvas = document.createElement('canvas');
+					const ctx = canvas.getContext('2d');
+					
+					if (!ctx) {
+						throw new Error('Failed to get canvas context');
+					}
+					
+					canvas.width = metadata.width;
+					canvas.height = metadata.height;
+					
+					// Create ImageData from the processed RAW data
+					const imageData = new ImageData(new Uint8ClampedArray(processedData), metadata.width, metadata.height);
+					ctx.putImageData(imageData, 0, 0);
+					
+					// Convert to blob URL
+					return new Promise<string>((resolve, reject) => {
+						canvas.toBlob((blob) => {
+							if (blob) {
+								const url = URL.createObjectURL(blob);
+								
+								// Update the image file with the full resolution URL
+								update(state => ({
+									...state,
+									images: state.images.map(img => 
+										img.path === imageFile.path 
+											? { ...img, fullResolutionUrl: url }
+											: img
+									)
+								}));
+								
+								console.log('🎯 Full resolution RAW processing complete');
+								resolve(url);
+							} else {
+								reject(new Error('Failed to create blob from canvas'));
+							}
+						}, 'image/jpeg', 0.95);
+					});
+				} catch (rawProcessingError) {
+					console.warn('⚠️ rawloader failed for full resolution, falling back to JPEG preview:', rawProcessingError);
+					
+					// FALLBACK: Use JPEG preview only if rawloader fails
+					const jpegPreview = tryExtractJpegPreview(rawData);
+					if (jpegPreview) {
+						console.log('📸 Using JPEG preview as fallback for full resolution');
+						const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
+						const url = URL.createObjectURL(blob);
+						
+						// Update the image file with the full resolution URL
+						update(state => ({
+							...state,
+							images: state.images.map(img => 
+								img.path === imageFile.path 
+									? { ...img, fullResolutionUrl: url }
+									: img
+							)
+						}));
+						
+						return url;
+					} else {
+						throw new Error('Both rawloader and JPEG preview extraction failed');
+					}
 				}
-				
-				canvas.width = metadata.width;
-				canvas.height = metadata.height;
-				
-				// Create ImageData from the processed RAW data
-				const imageData = new ImageData(new Uint8ClampedArray(processedData), metadata.width, metadata.height);
-				ctx.putImageData(imageData, 0, 0);
-				
-				// Convert to blob URL
-				return new Promise<string>((resolve, reject) => {
-					canvas.toBlob((blob) => {
-						if (blob) {
-							const url = URL.createObjectURL(blob);
-							
-							// Update the image file with the full resolution URL
-							update(state => ({
-								...state,
-								images: state.images.map(img => 
-									img.path === imageFile.path 
-										? { ...img, fullResolutionUrl: url }
-										: img
-								)
-							}));
-							
-							resolve(url);
-						} else {
-							reject(new Error('Failed to create blob from canvas'));
-						}
-					}, 'image/jpeg', 0.95);
-				});
 			} catch (error) {
-				console.error('Failed to generate full resolution URL for RAW file:', error);
+				console.error('❌ Failed to generate full resolution URL for RAW file:', error);
+				console.error('❌ Error details:', error);
+				console.log('🔄 Falling back to thumbnail for display');
 				return imageFile.thumbnail || '';
 			}
 		},

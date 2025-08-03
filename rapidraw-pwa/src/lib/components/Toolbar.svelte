@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { writable } from 'svelte/store';
+	import { createEventDispatcher } from 'svelte';
 	import type { ImageFile } from '$lib/stores/folderStore';
 	import uiStore from '$lib/stores/uiStore';
 	import ToolbarButton from './ui/ToolbarButton.svelte';
@@ -10,6 +11,8 @@
 	}
 
 	let { selectedImage, mobile = false }: Props = $props();
+
+	const dispatch = createEventDispatcher();
 
 	// Toolbar state
 	const activePanel = writable<string | null>(null);
@@ -91,6 +94,11 @@
 		}
 	}
 
+	function handleFolderToggle() {
+		// Dispatch event to parent (GalleryLayout) to toggle sidebar
+		dispatch('toggleSidebar');
+	}
+
 	function getIconSvg(iconName: string): string {
 		const icons: Record<string, string> = {
 			info: '<circle cx="12" cy="12" r="10"/><path d="m9 9 3-3 3 3"/><path d="m9 15 3 3 3-3"/>',
@@ -132,13 +140,33 @@
 					<span>Back</span>
 				</button>
 			{:else if !$toolbarCollapsed}
-				<h3 class="toolbar-title">
+				<div class="toolbar-title-container">
+					<h3 class="toolbar-title">
+						{#if mobile}
+							Tools
+						{:else}
+							Editing Tools
+						{/if}
+					</h3>
 					{#if mobile}
-						Tools
-					{:else}
-						Editing Tools
+						<button 
+							class="folder-toggle-btn glass-button touch-target"
+							onclick={handleFolderToggle}
+							aria-label="Toggle folder sidebar"
+						>
+							<svg 
+								width="20" 
+								height="20" 
+								viewBox="0 0 24 24" 
+								fill="none" 
+								stroke="currentColor" 
+								stroke-width="2"
+							>
+								<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+							</svg>
+						</button>
 					{/if}
-				</h3>
+				</div>
 			{/if}
 			
 			{#if !mobile}
@@ -297,11 +325,35 @@
 		justify-content: space-between;
 	}
 
+	.toolbar-title-container {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+	}
+
 	.toolbar-title {
 		font-size: 1.1rem;
 		font-weight: 600;
 		color: white;
 		margin: 0;
+	}
+
+	.folder-toggle-btn {
+		padding: 0.5rem;
+		border: none;
+		background: rgba(255, 255, 255, 0.1);
+		color: white;
+		border-radius: 6px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s ease;
+	}
+
+	.folder-toggle-btn:hover {
+		background: rgba(255, 255, 255, 0.2);
+		transform: translateY(-1px);
 	}
 
 	.collapse-btn {
