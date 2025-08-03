@@ -18,6 +18,13 @@ export interface NavigationState {
   breadcrumbs: Array<{ label: string; href: string }>;
 }
 
+export interface MobileToolState {
+  isToolActive: boolean;
+  activeTool: string | null;
+  hiddenElements: Set<string>;
+  animationState: 'idle' | 'hiding' | 'showing';
+}
+
 export interface ModalState {
   isOpen: boolean;
   type: string | null;
@@ -75,6 +82,13 @@ const defaultNavigation: NavigationState = {
   breadcrumbs: []
 };
 
+const defaultMobileToolState: MobileToolState = {
+  isToolActive: false,
+  activeTool: null,
+  hiddenElements: new Set(),
+  animationState: 'idle'
+};
+
 // Store state
 const viewport = writable<ViewportInfo>(defaultViewport);
 const navigation = writable<NavigationState>(defaultNavigation);
@@ -84,6 +98,7 @@ const preferences = writable<UIPreferences>(defaultPreferences);
 const isLoading = writable(false);
 const keyboardShortcuts = writable<KeyboardShortcuts>({});
 const toolbarCollapsed = writable(false);
+const mobileToolState = writable<MobileToolState>(defaultMobileToolState);
 
 // Derived stores
 const breakpoint = derived(viewport, ($viewport) => {
@@ -185,6 +200,7 @@ const uiStore = {
   isLoading,
   keyboardShortcuts,
   toolbarCollapsed,
+  mobileToolState,
   breakpoint,
   layoutType,
   effectiveTheme,
@@ -409,6 +425,67 @@ const uiStore = {
       };
       (navigator as any).hapticFeedback(feedbackTypes[intensity]);
     }
+  },
+
+  // Mobile tool state actions
+  async activateMobileTool(toolId: string): Promise<void> {
+    const currentViewport = get(viewport);
+    if (!currentViewport.isMobile) return;
+
+    mobileToolState.update(state => ({
+      ...state,
+      isToolActive: true,
+      activeTool: toolId,
+      animationState: 'hiding'
+    }));
+
+    // Add elements to hide
+    const elementsToHide = ['thumbnail-container', 'image-info', 'tool-buttons'];
+    mobileToolState.update(state => ({
+      ...state,
+      hiddenElements: new Set(elementsToHide)
+    }));
+
+    // Simulate animation completion
+    setTimeout(() => {
+      mobileToolState.update(state => ({
+        ...state,
+        animationState: 'idle'
+      }));
+    }, 300);
+  },
+
+  async deactivateMobileTool(): Promise<void> {
+    const currentViewport = get(viewport);
+    if (!currentViewport.isMobile) return;
+
+    mobileToolState.update(state => ({
+      ...state,
+      animationState: 'showing'
+    }));
+
+    // Simulate animation completion
+    setTimeout(() => {
+      mobileToolState.update(state => ({
+        ...state,
+        isToolActive: false,
+        activeTool: null,
+        hiddenElements: new Set(),
+        animationState: 'idle'
+      }));
+    }, 300);
+  },
+
+  isMobileToolActive(): boolean {
+    return get(mobileToolState).isToolActive;
+  },
+
+  getMobileActiveTool(): string | null {
+    return get(mobileToolState).activeTool;
+  },
+
+  isMobileElementHidden(elementId: string): boolean {
+    return get(mobileToolState).hiddenElements.has(elementId);
   },
 
   // Responsive helpers

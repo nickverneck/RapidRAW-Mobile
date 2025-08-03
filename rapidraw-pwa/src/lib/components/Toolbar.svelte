@@ -13,7 +13,7 @@
 
 	// Toolbar state
 	const activePanel = writable<string | null>(null);
-	const { toolbarCollapsed } = uiStore;
+	const { toolbarCollapsed, mobileToolState, viewport } = uiStore;
 
 	// Tool panels
 	const tools = [
@@ -61,8 +61,27 @@
 		}
 	];
 
-	function handleToolSelect(toolId: string) {
-		activePanel.update(current => current === toolId ? null : toolId);
+	async function handleToolSelect(toolId: string) {
+		const isClosing = $activePanel === toolId;
+		
+		if (isClosing) {
+			activePanel.set(null);
+			if ($viewport.isMobile) {
+				await uiStore.deactivateMobileTool();
+			}
+		} else {
+			activePanel.set(toolId);
+			if ($viewport.isMobile) {
+				await uiStore.activateMobileTool(toolId);
+			}
+		}
+	}
+
+	async function handleBackButton() {
+		activePanel.set(null);
+		if ($viewport.isMobile) {
+			await uiStore.deactivateMobileTool();
+		}
 	}
 
 	function toggleCollapse() {
@@ -93,7 +112,26 @@
 	<!-- Toolbar Header -->
 	<div class="toolbar-header">
 		<div class="header-content">
-			{#if !$toolbarCollapsed}
+			{#if mobile && $mobileToolState.isToolActive}
+				<!-- Mobile back button when tool is active -->
+				<button 
+					class="back-btn glass-button touch-target"
+					onclick={handleBackButton}
+					aria-label="Back to main interface"
+				>
+					<svg 
+						width="20" 
+						height="20" 
+						viewBox="0 0 24 24" 
+						fill="none" 
+						stroke="currentColor" 
+						stroke-width="2"
+					>
+						{@html getIconSvg('chevronLeft')}
+					</svg>
+					<span>Back</span>
+				</button>
+			{:else if !$toolbarCollapsed}
 				<h3 class="toolbar-title">
 					{#if mobile}
 						Tools
@@ -106,7 +144,7 @@
 			{#if !mobile}
 				<button 
 					class="collapse-btn glass-button touch-target"
-					on:click={toggleCollapse}
+					onclick={toggleCollapse}
 					aria-label={$toolbarCollapsed ? 'Expand toolbar' : 'Collapse toolbar'}
 				>
 					<svg 
@@ -125,7 +163,11 @@
 	</div>
 
 	<!-- Tool Buttons -->
-	<div class="tool-buttons" class:mobile-grid={mobile}>
+	<div 
+		class="tool-buttons" 
+		class:mobile-grid={mobile}
+		class:mobile-tool-hidden={mobile && $mobileToolState.isToolActive}
+	>
 		{#each tools as tool (tool.id)}
 			<ToolbarButton 
 				{tool}
@@ -275,6 +317,26 @@
 		color: white;
 	}
 
+	.back-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		border: none;
+		background: rgba(255, 255, 255, 0.1);
+		color: rgba(255, 255, 255, 0.9);
+		border-radius: 6px;
+		font-size: 0.9rem;
+		font-weight: 500;
+		transition: all 0.2s ease;
+	}
+
+	.back-btn:hover {
+		background: rgba(255, 255, 255, 0.2);
+		color: white;
+		transform: translateX(-2px);
+	}
+
 	.tool-buttons {
 		flex-shrink: 0;
 		display: flex;
@@ -284,6 +346,17 @@
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		overflow: visible;
+		transform: translateY(0);
+		opacity: 1;
+		max-height: none;
+	}
+
+	.tool-buttons.mobile-tool-hidden {
+		transform: translateY(-20px);
+		opacity: 0;
+		max-height: 0;
+		padding: 0 1rem;
+		pointer-events: none;
 	}
 
 	.tool-buttons.mobile-grid {

@@ -198,3 +198,18 @@ This document outlines the requirements for transforming RapidRAW from a Tauri d
 3. WHEN CSS files are created THEN they SHALL follow consistent naming conventions
 4. WHEN styles are separated THEN they SHALL be properly imported and scoped to components
 5. WHEN CSS is refactored THEN responsive breakpoints and mobile optimizations SHALL be preserved
+
+### Requirement 17: Mobile Tool Interface Optimization
+
+**User Story:** As a mobile user, I want the interface to automatically hide unnecessary elements when I open editing tools, so that I have maximum screen space to view and edit my images.
+
+#### Acceptance Criteria
+
+1. WHEN I open any editing tool on mobile THEN the thumbnail container SHALL be hidden with smooth animation
+2. WHEN I open any editing tool on mobile THEN the image info panel SHALL be hidden with smooth animation
+3. WHEN I open any editing tool on mobile THEN the tool buttons SHALL be hidden with smooth animation
+4. WHEN I open any editing tool on mobile THEN a back button SHALL appear to return to the main interface
+5. WHEN I click the back button THEN all hidden elements SHALL reappear with smooth animation
+6. WHEN tools are opened on mobile THEN the transition animations SHALL be smooth and performant (60fps)
+7. WHEN I switch between different tools on mobile THEN the hidden state SHALL be maintained until I use the back button
+8. WHEN using desktop or tablet devices THEN this behavior SHALL NOT apply and all elements SHALL remain visible

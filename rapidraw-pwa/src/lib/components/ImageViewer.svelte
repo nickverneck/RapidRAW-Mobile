@@ -14,7 +14,7 @@
 	let { image, showNavigation = false }: Props = $props();
 
 	const dispatch = createEventDispatcher();
-	const { toolbarCollapsed, viewport } = uiStore;
+	const { toolbarCollapsed, viewport, mobileToolState } = uiStore;
 
 	let imageElement: HTMLImageElement;
 	let containerElement: HTMLElement;
@@ -126,7 +126,7 @@
 			const touch = event.touches[0];
 			startX = touch.clientX;
 			startY = touch.clientY;
-			
+
 			if (scale > 1) {
 				// Single touch for panning when zoomed
 				startTranslateX = translateX;
@@ -181,10 +181,10 @@
 			const touch = event.changedTouches[0];
 			const deltaX = touch.clientX - startX;
 			const deltaY = touch.clientY - startY;
-			
+
 			// Check if it's a horizontal swipe (more horizontal than vertical movement)
 			const isHorizontalSwipe = Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50;
-			
+
 			if (isHorizontalSwipe) {
 				if (deltaX > 0) {
 					// Swipe right - go to previous image
@@ -195,7 +195,7 @@
 				}
 			}
 		}
-		
+
 		isDragging = false;
 		lastTouchDistance = 0;
 	}
@@ -392,7 +392,10 @@
 		</div>
 
 		<!-- Image Info -->
-		<div class="image-info glass-panel">
+		<div
+			class="image-info glass-panel"
+			class:mobile-tool-hidden={$viewport.isMobile && $mobileToolState.isToolActive}
+		>
 			<div class="image-header">
 				<h3 class="image-name">{image.name}</h3>
 				<div class="image-controls">
@@ -616,6 +619,15 @@
 		border-radius: 8px;
 		z-index: 10;
 		max-width: 350px;
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		transform: translateY(0);
+		opacity: 1;
+	}
+
+	.image-info.mobile-tool-hidden {
+		transform: translateY(-100%);
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	.image-header {

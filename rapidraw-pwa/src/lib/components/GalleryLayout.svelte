@@ -3,7 +3,7 @@
 	import { writable } from 'svelte/store';
 	import { onMount } from 'svelte';
 	import uiStore from '$lib/stores/uiStore';
-	const { toolbarCollapsed } = uiStore;
+	const { toolbarCollapsed, mobileToolState, viewport } = uiStore;
 	import FolderSidebar from './FolderSidebar.svelte';
 	import ImageViewer from './ImageViewer.svelte';
 	import ThumbnailBar from './ThumbnailBar.svelte';
@@ -132,7 +132,10 @@
 		</div>
 
 		<!-- Bottom Section: Thumbnails -->
-		<div class="thumbnails-container">
+		<div 
+			class="thumbnails-container" 
+			class:mobile-hidden={$viewport.isMobile && $mobileToolState.isToolActive}
+		>
 			<ThumbnailBar 
 				images={$currentImages}
 				selectedImage={$selectedImage}
@@ -222,6 +225,15 @@
 		background: rgba(0, 0, 0, 0.2);
 		backdrop-filter: blur(10px);
 		-webkit-backdrop-filter: blur(10px);
+		transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		transform: translateY(0);
+		opacity: 1;
+	}
+
+	.thumbnails-container.mobile-hidden {
+		transform: translateY(100%);
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	.toolbar-container {
