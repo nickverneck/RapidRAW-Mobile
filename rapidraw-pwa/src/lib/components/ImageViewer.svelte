@@ -25,8 +25,9 @@
 	let translateY = $state(0);
 	let isDragging = $state(false);
 	let lastTouchDistance = $state(0);
+	let fullResolutionSrc = $state<string>('');
 
-	// Reset transform when image changes
+	// Reset transform when image changes and load full resolution for RAW files
 	$effect(() => {
 		if (image) {
 			scale = 1;
@@ -34,15 +35,35 @@
 			translateY = 0;
 			isLoading = true;
 			hasError = false;
+
+			// Load full resolution URL for RAW files
+			if (image.isRaw && !image.fullResolutionUrl) {
+				console.log(`🖼️ ImageViewer: Loading full resolution for RAW file: ${image.name}`);
+				folderStore
+					.generateFullResolutionUrl(image)
+					.then((url) => {
+						console.log(`✅ ImageViewer: Got full resolution URL: ${url ? 'SUCCESS' : 'EMPTY'}`);
+						fullResolutionSrc = url;
+					})
+					.catch((error) => {
+						console.error('❌ ImageViewer: Failed to load full resolution RAW image:', error);
+						fullResolutionSrc = image.thumbnail || '';
+					});
+			} else {
+				console.log(`🖼️ ImageViewer: Using existing URL or thumbnail for: ${image.name}`);
+				fullResolutionSrc = image.fullResolutionUrl || image.thumbnail || '';
+			}
 		}
 	});
 
 	function handleImageLoad() {
+		console.log(`✅ ImageViewer: Image loaded successfully`);
 		isLoading = false;
 		hasError = false;
 	}
 
 	function handleImageError() {
+		console.error(`❌ ImageViewer: Image failed to load. URL: ${fullResolutionSrc}`);
 		isLoading = false;
 		hasError = true;
 	}
@@ -275,7 +296,7 @@
 			{:else}
 				<img
 					bind:this={imageElement}
-					src={image.thumbnail}
+					src={fullResolutionSrc}
 					alt={image.name}
 					class="main-image"
 					onload={handleImageLoad}

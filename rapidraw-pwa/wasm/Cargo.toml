@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "image-processing",
     "raw-processing", 
@@ -6,11 +7,11 @@ members = [
 ]
 
 [workspace.dependencies]
-wasm-bindgen = "0.2"
-js-sys = "0.3"
-web-sys = "0.3"
-console_error_panic_hook = "0.1"
-wee_alloc = "0.4"
+wasm-bindgen = "0.2.83"
+js-sys = "0.3.60"
+web-sys = "0.3.60"
+console_error_panic_hook = "0.1.7"
+wee_alloc = "0.4.5"
 
 [profile.release]
 # Optimize for size and performance
