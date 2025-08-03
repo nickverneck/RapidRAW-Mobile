@@ -15,14 +15,14 @@ web-sys = { workspace = true, features = [
   "FileReader",
   "Blob"
 ] }
-console_error_panic_hook = { workspace = true }
+console_error_panic_hook = { workspace = true, optional = true }
 wee_alloc = { workspace = true, optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 
 # RAW processing dependencies
-rawler = { version = "0.6", default-features = false }
-image = { version = "0.24", default-features = false }
+# rawler = { version = "0.6", default-features = false }
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
 
 [features]
 default = ["console_error_panic_hook"]

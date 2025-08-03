@@ -22,3 +22,9 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Rust/Cargo
+/wasm/target/
+/wasm/Cargo.lock
+/wasm/*/Cargo.lock
+**/*.rs.bk
