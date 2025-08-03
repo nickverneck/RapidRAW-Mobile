@@ -118,7 +118,8 @@ export default defineConfig({
 		}
 	},
 	optimizeDeps: {
-		exclude: ['@rapidraw/image-processing', '@rapidraw/raw-processing', '@rapidraw/color-grading']
+		exclude: ['@rapidraw/image-processing', '@rapidraw/color-grading'],
+		include: ['libraw-wasm']
 	},
 	server: {
 		fs: {

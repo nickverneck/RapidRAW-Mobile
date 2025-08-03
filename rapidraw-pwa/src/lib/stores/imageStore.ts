@@ -285,18 +285,24 @@ const imageStore = {
         const { getRawProcessor, tryExtractJpegPreview } = await import('$lib/wasm/raw-processing-wrapper');
         const rawData = new Uint8Array(arrayBuffer);
         
-        console.log('🎯 Processing RAW file in image store');
+        console.log('🎯 Processing RAW file in image store with libraw-wasm');
         
-        // PRIORITY 1: Try rawloader for actual RAW processing (for full resolution)
+        // PRIORITY 1: Try libraw-wasm for actual RAW processing (for full resolution)
         const rawProcessor = await getRawProcessor();
         try {
           // Extract RAW metadata
           const rawMetadata = await rawProcessor.getMetadata(rawData);
           
           // Decode RAW to get full resolution image data
-          processedData = await rawProcessor.decodeRaw(rawData, rawFormat!);
+          processedData = await rawProcessor.decodeRaw(rawData, rawFormat!, {
+            outputBps: 8,      // 8-bit output
+            outputColor: 1,    // sRGB
+            userQual: 3,       // High quality interpolation
+            useCameraWb: true, // Use camera white balance
+            noAutoBright: false // Allow auto brightness
+          });
           
-          console.log('✅ Successfully processed RAW with rawloader in image store');
+          console.log('✅ Successfully processed RAW with libraw-wasm in image store');
           
           metadata = {
             width: rawMetadata.width,
@@ -315,7 +321,7 @@ const imageStore = {
           };
           
           // For thumbnail, try JPEG preview first (memory efficient)
-          const jpegPreview = tryExtractJpegPreview(rawData);
+          const jpegPreview = await tryExtractJpegPreview(rawData);
           if (jpegPreview) {
             console.log('🖼️ Using JPEG preview for thumbnail (memory efficient)');
             const jpegBlob = new Blob([jpegPreview], { type: 'image/jpeg' });
@@ -326,10 +332,10 @@ const imageStore = {
             thumbnail = await generateThumbnailFromImageData(processedData, rawMetadata.width, rawMetadata.height);
           }
         } catch (rawProcessingError) {
-          console.warn('⚠️ rawloader failed in image store, falling back to JPEG preview:', rawProcessingError);
+          console.warn('⚠️ libraw-wasm failed in image store, falling back to JPEG preview:', rawProcessingError);
           
-          // FALLBACK: Use JPEG preview if rawloader fails
-          const jpegPreview = tryExtractJpegPreview(rawData);
+          // FALLBACK: Use JPEG preview if libraw-wasm fails
+          const jpegPreview = await tryExtractJpegPreview(rawData);
           if (jpegPreview) {
             console.log('📸 Using JPEG preview as fallback in image store');
             
@@ -348,7 +354,7 @@ const imageStore = {
             // Store the JPEG preview as processed data
             processedData = jpegPreview;
           } else {
-            throw new Error('Both rawloader and JPEG preview extraction failed');
+            throw new Error('Both libraw-wasm and JPEG preview extraction failed');
           }
         }
       } else {

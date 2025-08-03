@@ -306,7 +306,7 @@ function createFolderStore() {
 					console.log('🖼️ Creating thumbnail - JPEG preview is fine for memory efficiency');
 					
 					// PRIORITY 1 for thumbnails: Extract JPEG preview (saves memory)
-					const jpegPreview = tryExtractJpegPreview(rawData);
+					const jpegPreview = await tryExtractJpegPreview(rawData);
 					if (jpegPreview) {
 						console.log('✅ Using extracted JPEG preview for thumbnail');
 						const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
@@ -356,12 +356,17 @@ function createFolderStore() {
 						});
 					}
 					
-					console.log('⚠️ No JPEG preview found for thumbnail, falling back to rawloader');
+					console.log('⚠️ No JPEG preview found for thumbnail, falling back to libraw-wasm');
 					
-					// FALLBACK for thumbnails: Use rawloader if no JPEG preview
+					// FALLBACK for thumbnails: Use libraw-wasm if no JPEG preview
 					const rawProcessor = await getRawProcessor();
 					const metadata = await rawProcessor.getMetadata(rawData);
-					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
+					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat, {
+						halfSize: true, // Use half-size for thumbnails to save memory
+						outputBps: 8,   // 8-bit output
+						outputColor: 1, // sRGB
+						userQual: 0     // Fastest interpolation for thumbnails
+					});
 					
 					// Create thumbnail from processed data
 					return new Promise((resolve, reject) => {
@@ -373,8 +378,20 @@ function createFolderStore() {
 							return;
 						}
 						
-						// Create ImageData from the raw pixel data
-						const fullImageData = new ImageData(new Uint8ClampedArray(processedData), metadata.width, metadata.height);
+						// Convert RGB data to RGBA format (ImageData expects RGBA)
+						const rgbaData = new Uint8ClampedArray(metadata.width * metadata.height * 4);
+						for (let i = 0; i < metadata.width * metadata.height; i++) {
+							const rgbIndex = i * 3;
+							const rgbaIndex = i * 4;
+							
+							rgbaData[rgbaIndex] = processedData[rgbIndex];         // R
+							rgbaData[rgbaIndex + 1] = processedData[rgbIndex + 1]; // G
+							rgbaData[rgbaIndex + 2] = processedData[rgbIndex + 2]; // B
+							rgbaData[rgbaIndex + 3] = 255;                         // A (fully opaque)
+						}
+						
+						// Create ImageData from RGBA data
+						const fullImageData = new ImageData(rgbaData, metadata.width, metadata.height);
 						
 						// Calculate thumbnail dimensions
 						const maxSize = 200;
@@ -503,9 +520,14 @@ function createFolderStore() {
 		generateFullResolutionUrl: async (imageFile: ImageFile): Promise<string> => {
 			console.log(`🎯 generateFullResolutionUrl called for: ${imageFile.name}, isRaw: ${imageFile.isRaw}`);
 			
-			if (!imageFile.isRaw || imageFile.fullResolutionUrl) {
-				console.log(`↩️ Returning existing URL or thumbnail for ${imageFile.name}`);
+			if (!imageFile.isRaw) {
+				console.log(`↩️ Not a RAW file, returning existing URL or thumbnail for ${imageFile.name}`);
 				return imageFile.fullResolutionUrl || imageFile.thumbnail || '';
+			}
+
+			if (imageFile.fullResolutionUrl) {
+				console.log(`↩️ Full resolution URL already exists for ${imageFile.name}`);
+				return imageFile.fullResolutionUrl;
 			}
 
 			try {
@@ -514,22 +536,40 @@ function createFolderStore() {
 				
 				const rawFormat = detectRawFormat(imageFile.name);
 				if (!rawFormat) {
-					throw new Error('Unsupported RAW format');
+					console.error(`❌ Unsupported RAW format for ${imageFile.name}`);
+					return imageFile.thumbnail || '';
 				}
 				
 				const file = await imageFile.handle.getFile();
 				const arrayBuffer = await file.arrayBuffer();
 				const rawData = new Uint8Array(arrayBuffer);
 				
-				console.log('🎯 Generating FULL RESOLUTION for image viewer - prioritizing rawloader');
+				// Create a copy of the raw data to avoid ArrayBuffer detachment issues
+				const rawDataCopy = new Uint8Array(rawData);
 				
-				// PRIORITY 1: Try rawloader for actual RAW processing
+				console.log('🎯 Generating FULL RESOLUTION for image viewer - using libraw-wasm processing');
+				
+				// PRIORITY 1: Use libraw-wasm for actual RAW processing (full resolution)
 				const rawProcessor = await getRawProcessor();
 				try {
-					const metadata = await rawProcessor.getMetadata(rawData);
-					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
+					console.log(`🔧 Getting metadata for ${imageFile.name}...`);
+					const metadata = await rawProcessor.getMetadata(rawDataCopy);
+					console.log(`📊 Metadata extracted: ${metadata.width}x${metadata.height}`);
 					
-					console.log('✅ Successfully processed RAW with rawloader for full resolution');
+					console.log(`🔧 Decoding RAW data for ${imageFile.name}...`);
+					const processedData = await rawProcessor.decodeRaw(new Uint8Array(rawData), rawFormat, {
+						// Full resolution settings
+						outputBps: 8,      // 8-bit output
+						outputColor: 1,    // sRGB
+						userQual: 3,       // High quality interpolation
+						useCameraWb: true, // Use camera white balance
+						noAutoBright: false // Allow auto brightness
+					});
+					console.log(`🔧 RAW decoding complete, got ${processedData.length} bytes`);
+					
+					console.log('✅ Successfully processed RAW with libraw-wasm for full resolution');
+					console.log(`📊 Full resolution dimensions: ${metadata.width}x${metadata.height}`);
+					console.log(`📊 Processed data size: ${processedData.length} bytes`);
 					
 					// Create a canvas with the processed RAW data
 					const canvas = document.createElement('canvas');
@@ -542,11 +582,28 @@ function createFolderStore() {
 					canvas.width = metadata.width;
 					canvas.height = metadata.height;
 					
-					// Create ImageData from the processed RAW data
-					const imageData = new ImageData(new Uint8ClampedArray(processedData), metadata.width, metadata.height);
+					// libraw-wasm returns RGB data, convert to RGBA for ImageData
+					const pixelCount = metadata.width * metadata.height;
+					const rgbaData = new Uint8ClampedArray(pixelCount * 4);
+					
+					// Convert RGB to RGBA (following the example pattern)
+					for (let i = 0; i < pixelCount; i++) {
+						const rgbIndex = i * 3;
+						const rgbaIndex = i * 4;
+						
+						rgbaData[rgbaIndex] = processedData[rgbIndex];         // R
+						rgbaData[rgbaIndex + 1] = processedData[rgbIndex + 1]; // G
+						rgbaData[rgbaIndex + 2] = processedData[rgbIndex + 2]; // B
+						rgbaData[rgbaIndex + 3] = 255;                         // A (fully opaque)
+					}
+					
+					// Create ImageData and put it on canvas
+					const imageData = new ImageData(rgbaData, metadata.width, metadata.height);
+					canvas.width = metadata.width;
+					canvas.height = metadata.height;
 					ctx.putImageData(imageData, 0, 0);
 					
-					// Convert to blob URL
+					// Create a blob URL from canvas (better for large images)
 					return new Promise<string>((resolve, reject) => {
 						canvas.toBlob((blob) => {
 							if (blob) {
@@ -562,18 +619,18 @@ function createFolderStore() {
 									)
 								}));
 								
-								console.log('🎯 Full resolution RAW processing complete');
+								console.log('🎯 Full resolution RAW processing complete - using blob URL');
 								resolve(url);
 							} else {
 								reject(new Error('Failed to create blob from canvas'));
 							}
-						}, 'image/jpeg', 0.95);
+						}, 'image/png'); // Use PNG for lossless quality
 					});
 				} catch (rawProcessingError) {
-					console.warn('⚠️ rawloader failed for full resolution, falling back to JPEG preview:', rawProcessingError);
+					console.warn('⚠️ libraw-wasm failed for full resolution, falling back to JPEG preview:', rawProcessingError);
 					
-					// FALLBACK: Use JPEG preview only if rawloader fails
-					const jpegPreview = tryExtractJpegPreview(rawData);
+					// FALLBACK: Use JPEG preview only if libraw-wasm fails
+					const jpegPreview = await tryExtractJpegPreview(new Uint8Array(rawData));
 					if (jpegPreview) {
 						console.log('📸 Using JPEG preview as fallback for full resolution');
 						const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
@@ -591,14 +648,20 @@ function createFolderStore() {
 						
 						return url;
 					} else {
-						throw new Error('Both rawloader and JPEG preview extraction failed');
+						throw new Error('Both libraw-wasm and JPEG preview extraction failed');
 					}
 				}
 			} catch (error) {
 				console.error('❌ Failed to generate full resolution URL for RAW file:', error);
-				console.error('❌ Error details:', error);
 				console.log('🔄 Falling back to thumbnail for display');
-				return imageFile.thumbnail || '';
+				
+				// Return thumbnail as fallback, but ensure it's a valid string
+				const fallbackUrl = imageFile.thumbnail || '';
+				if (!fallbackUrl) {
+					console.error('❌ No thumbnail available as fallback');
+					return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjNDQ0Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiPkVSUk9SPC90ZXh0Pgo8L3N2Zz4=';
+				}
+				return fallbackUrl;
 			}
 		},
 
