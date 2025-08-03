@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
+import { getRawProcessor, detectRawFormat, isRawFile, type RawMetadata } from '$lib/wasm/raw-processing-wrapper';
 
 // Types
 export interface ImageMetadata {
@@ -13,6 +14,9 @@ export interface ImageMetadata {
   width: number;
   height: number;
   colorSpace?: string;
+  isRaw?: boolean;
+  rawFormat?: string;
+  rawMetadata?: RawMetadata;
   [key: string]: any;
 }
 
@@ -70,6 +74,7 @@ export interface ImageData {
   size: number;
   type: string;
   data: ArrayBuffer | null;
+  processedData?: Uint8Array; // For RAW files, this holds the decoded image data
   thumbnail: string | null;
   metadata: ImageMetadata;
   adjustments: ImageAdjustments;
@@ -268,8 +273,47 @@ const imageStore = {
     
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const metadata = await extractMetadata(file, arrayBuffer);
-      const thumbnail = await generateThumbnail(file);
+      const isRawImage = isRawFile(file.name);
+      
+      let metadata: ImageMetadata;
+      let thumbnail: string;
+      let processedData: Uint8Array | undefined;
+      
+      if (isRawImage) {
+        // Process RAW file
+        const rawFormat = detectRawFormat(file.name);
+        const rawProcessor = await getRawProcessor();
+        const rawData = new Uint8Array(arrayBuffer);
+        
+        // Extract RAW metadata
+        const rawMetadata = await rawProcessor.getMetadata(rawData);
+        
+        // Decode RAW to get image data for thumbnail and display
+        processedData = await rawProcessor.decodeRaw(rawData, rawFormat!);
+        
+        metadata = {
+          width: rawMetadata.width,
+          height: rawMetadata.height,
+          camera: rawMetadata.camera_make,
+          lens: rawMetadata.lens_model,
+          iso: rawMetadata.iso,
+          aperture: rawMetadata.aperture,
+          shutterSpeed: rawMetadata.shutter_speed,
+          focalLength: rawMetadata.focal_length,
+          dateTime: rawMetadata.timestamp,
+          colorSpace: rawMetadata.color_space,
+          isRaw: true,
+          rawFormat,
+          rawMetadata
+        };
+        
+        // Generate thumbnail from processed RAW data
+        thumbnail = await generateThumbnailFromImageData(processedData, rawMetadata.width, rawMetadata.height);
+      } else {
+        // Process regular image file
+        metadata = await extractMetadata(file, arrayBuffer);
+        thumbnail = await generateThumbnail(file);
+      }
       
       const imageData: ImageData = {
         id: generateId(),
@@ -278,6 +322,7 @@ const imageStore = {
         size: file.size,
         type: file.type,
         data: arrayBuffer,
+        processedData,
         thumbnail,
         metadata,
         adjustments: JSON.parse(JSON.stringify(defaultAdjustments)),
@@ -590,6 +635,47 @@ async function generateThumbnail(file: File): Promise<string> {
     
     img.onerror = () => reject(new Error('Failed to generate thumbnail'));
     img.src = URL.createObjectURL(file);
+  });
+}
+
+async function generateThumbnailFromImageData(imageData: Uint8Array, width: number, height: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      reject(new Error('Failed to get canvas context'));
+      return;
+    }
+    
+    // Create ImageData from the raw pixel data
+    const fullImageData = new ImageData(new Uint8ClampedArray(imageData), width, height);
+    
+    // Calculate thumbnail dimensions
+    const maxSize = 200;
+    const ratio = Math.min(maxSize / width, maxSize / height);
+    const thumbWidth = Math.floor(width * ratio);
+    const thumbHeight = Math.floor(height * ratio);
+    
+    // Create temporary canvas for full image
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    if (!tempCtx) {
+      reject(new Error('Failed to get temporary canvas context'));
+      return;
+    }
+    
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    tempCtx.putImageData(fullImageData, 0, 0);
+    
+    // Draw scaled version to thumbnail canvas
+    canvas.width = thumbWidth;
+    canvas.height = thumbHeight;
+    ctx.drawImage(tempCanvas, 0, 0, width, height, 0, 0, thumbWidth, thumbHeight);
+    
+    resolve(canvas.toDataURL('image/jpeg', 0.8));
   });
 }
 

@@ -25,8 +25,9 @@
 	let translateY = $state(0);
 	let isDragging = $state(false);
 	let lastTouchDistance = $state(0);
+	let fullResolutionSrc = $state<string>('');
 
-	// Reset transform when image changes
+	// Reset transform when image changes and load full resolution for RAW files
 	$effect(() => {
 		if (image) {
 			scale = 1;
@@ -34,6 +35,18 @@
 			translateY = 0;
 			isLoading = true;
 			hasError = false;
+			
+			// Load full resolution URL for RAW files
+			if (image.isRaw && !image.fullResolutionUrl) {
+				folderStore.generateFullResolutionUrl(image).then(url => {
+					fullResolutionSrc = url;
+				}).catch(error => {
+					console.error('Failed to load full resolution RAW image:', error);
+					fullResolutionSrc = image.thumbnail || '';
+				});
+			} else {
+				fullResolutionSrc = image.fullResolutionUrl || image.thumbnail || '';
+			}
 		}
 	});
 
@@ -275,7 +288,7 @@
 			{:else}
 				<img
 					bind:this={imageElement}
-					src={image.thumbnail}
+					src={fullResolutionSrc}
 					alt={image.name}
 					class="main-image"
 					onload={handleImageLoad}

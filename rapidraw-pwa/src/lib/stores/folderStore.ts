@@ -10,11 +10,14 @@ export interface ImageFile {
 	name: string;
 	handle: FileSystemFileHandle;
 	thumbnail?: string;
+	fullResolutionUrl?: string;
 	path: string;
 	lastModified: number;
 	size: number;
 	rating: number; // 0-5 stars
 	flagged: boolean;
+	isRaw?: boolean;
+	rawFormat?: string;
 }
 
 export interface FilterState {
@@ -200,30 +203,48 @@ function createFolderStore() {
 
 				const images: ImageFile[] = [];
 				const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/tiff', 'image/bmp'];
+				const rawExtensions = /\.(cr2|cr3|nef|nrw|arw|srf|sr2|raf|orf|rw2|dng|raw)$/i;
 				const ratings = loadImageRatings();
 
 				for await (const [name, handle] of (folder.handle as any).entries()) {
 					if (handle.kind === 'file') {
 						const file = await handle.getFile();
 						
-						// Check if it's an image file
+						// Check if it's an image file (including RAW formats)
 						if (supportedTypes.includes(file.type) || 
-							/\.(jpe?g|png|webp|tiff?|bmp|raw|arw|cr2|nef|dng)$/i.test(name)) {
+							/\.(jpe?g|png|webp|tiff?|bmp)$/i.test(name) ||
+							rawExtensions.test(name)) {
 							
 							// Create thumbnail
 							const thumbnail = await folderStore.createThumbnail(file);
 							const imagePath = `${folder.path}/${name}`;
 							const ratingData = ratings.get(imagePath) || { rating: 0, flagged: false };
+							const isRawFile = rawExtensions.test(name);
+							
+							let fullResolutionUrl: string | undefined;
+							let rawFormat: string | undefined;
+							
+							if (isRawFile) {
+								// For RAW files, we'll generate the full resolution URL when needed
+								rawFormat = name.split('.').pop()?.toUpperCase();
+								// We'll generate the full resolution URL lazily when the image is selected
+							} else {
+								// For regular images, create a blob URL for full resolution
+								fullResolutionUrl = URL.createObjectURL(file);
+							}
 							
 							images.push({
 								name,
 								handle,
 								path: imagePath,
 								thumbnail,
+								fullResolutionUrl,
 								lastModified: file.lastModified,
 								size: file.size,
 								rating: ratingData.rating,
-								flagged: ratingData.flagged
+								flagged: ratingData.flagged,
+								isRaw: isRawFile,
+								rawFormat
 							});
 						}
 					}
@@ -250,38 +271,119 @@ function createFolderStore() {
 
 		// Create thumbnail for an image file
 		createThumbnail: async (file: File): Promise<string> => {
-			return new Promise((resolve, reject) => {
-				const canvas = document.createElement('canvas');
-				const ctx = canvas.getContext('2d');
-				const img = new Image();
-
-				img.onload = () => {
-					// Set thumbnail size
-					const maxSize = 200;
-					let { width, height } = img;
-
-					if (width > height) {
-						if (width > maxSize) {
-							height = (height * maxSize) / width;
-							width = maxSize;
-						}
-					} else {
-						if (height > maxSize) {
-							width = (width * maxSize) / height;
-							height = maxSize;
-						}
+			const rawExtensions = /\.(cr2|cr3|nef|nrw|arw|srf|sr2|raf|orf|rw2|dng|raw)$/i;
+			
+			// Check if it's a RAW file
+			if (rawExtensions.test(file.name)) {
+				try {
+					// Import RAW processing wrapper dynamically to avoid SSR issues
+					const { getRawProcessor, detectRawFormat } = await import('$lib/wasm/raw-processing-wrapper');
+					
+					const rawFormat = detectRawFormat(file.name);
+					if (!rawFormat) {
+						throw new Error('Unsupported RAW format');
 					}
+					
+					const rawProcessor = await getRawProcessor();
+					const arrayBuffer = await file.arrayBuffer();
+					const rawData = new Uint8Array(arrayBuffer);
+					
+					// Get metadata for dimensions
+					const metadata = await rawProcessor.getMetadata(rawData);
+					
+					// Decode RAW to get image data
+					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
+					
+					// Create thumbnail from processed data
+					return new Promise((resolve, reject) => {
+						const canvas = document.createElement('canvas');
+						const ctx = canvas.getContext('2d');
+						
+						if (!ctx) {
+							reject(new Error('Failed to get canvas context'));
+							return;
+						}
+						
+						// Create ImageData from the raw pixel data
+						const fullImageData = new ImageData(new Uint8ClampedArray(processedData), metadata.width, metadata.height);
+						
+						// Calculate thumbnail dimensions
+						const maxSize = 200;
+						let width = metadata.width;
+						let height = metadata.height;
+						
+						if (width > height) {
+							if (width > maxSize) {
+								height = (height * maxSize) / width;
+								width = maxSize;
+							}
+						} else {
+							if (height > maxSize) {
+								width = (width * maxSize) / height;
+								height = maxSize;
+							}
+						}
+						
+						// Create temporary canvas for full image
+						const tempCanvas = document.createElement('canvas');
+						const tempCtx = tempCanvas.getContext('2d');
+						
+						if (!tempCtx) {
+							reject(new Error('Failed to get temporary canvas context'));
+							return;
+						}
+						
+						tempCanvas.width = metadata.width;
+						tempCanvas.height = metadata.height;
+						tempCtx.putImageData(fullImageData, 0, 0);
+						
+						// Draw scaled version to thumbnail canvas
+						canvas.width = width;
+						canvas.height = height;
+						ctx.drawImage(tempCanvas, 0, 0, metadata.width, metadata.height, 0, 0, width, height);
+						
+						resolve(canvas.toDataURL('image/jpeg', 0.8));
+					});
+				} catch (error) {
+					console.error('Failed to create RAW thumbnail:', error);
+					// Fallback to a generic RAW file icon or placeholder
+					return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjNDQ0Ii8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjQiPkNSMjwvdGV4dD4KPC9zdmc+';
+				}
+			} else {
+				// Handle regular image files
+				return new Promise((resolve, reject) => {
+					const canvas = document.createElement('canvas');
+					const ctx = canvas.getContext('2d');
+					const img = new Image();
 
-					canvas.width = width;
-					canvas.height = height;
+					img.onload = () => {
+						// Set thumbnail size
+						const maxSize = 200;
+						let { width, height } = img;
 
-					ctx?.drawImage(img, 0, 0, width, height);
-					resolve(canvas.toDataURL('image/jpeg', 0.8));
-				};
+						if (width > height) {
+							if (width > maxSize) {
+								height = (height * maxSize) / width;
+								width = maxSize;
+							}
+						} else {
+							if (height > maxSize) {
+								width = (width * maxSize) / height;
+								height = maxSize;
+							}
+						}
 
-				img.onerror = () => reject(new Error('Failed to create thumbnail'));
-				img.src = URL.createObjectURL(file);
-			});
+						canvas.width = width;
+						canvas.height = height;
+
+						ctx?.drawImage(img, 0, 0, width, height);
+						resolve(canvas.toDataURL('image/jpeg', 0.8));
+					};
+
+					img.onerror = () => reject(new Error('Failed to create thumbnail'));
+					img.src = URL.createObjectURL(file);
+				});
+			}
 		},
 
 		// Switch to a different folder
@@ -325,6 +427,75 @@ function createFolderStore() {
 			set(initialState);
 			if (typeof window !== 'undefined') {
 				localStorage.removeItem('rapidraw-folders');
+			}
+		},
+
+		// Generate full resolution URL for RAW files
+		generateFullResolutionUrl: async (imageFile: ImageFile): Promise<string> => {
+			if (!imageFile.isRaw || imageFile.fullResolutionUrl) {
+				return imageFile.fullResolutionUrl || imageFile.thumbnail || '';
+			}
+
+			try {
+				// Import RAW processing wrapper dynamically
+				const { getRawProcessor, detectRawFormat } = await import('$lib/wasm/raw-processing-wrapper');
+				
+				const rawFormat = detectRawFormat(imageFile.name);
+				if (!rawFormat) {
+					throw new Error('Unsupported RAW format');
+				}
+				
+				const rawProcessor = await getRawProcessor();
+				const file = await imageFile.handle.getFile();
+				const arrayBuffer = await file.arrayBuffer();
+				const rawData = new Uint8Array(arrayBuffer);
+				
+				// Get metadata for dimensions
+				const metadata = await rawProcessor.getMetadata(rawData);
+				
+				// Decode RAW to get full resolution image data
+				const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
+				
+				// Create a canvas with the full resolution image
+				const canvas = document.createElement('canvas');
+				const ctx = canvas.getContext('2d');
+				
+				if (!ctx) {
+					throw new Error('Failed to get canvas context');
+				}
+				
+				canvas.width = metadata.width;
+				canvas.height = metadata.height;
+				
+				// Create ImageData from the processed RAW data
+				const imageData = new ImageData(new Uint8ClampedArray(processedData), metadata.width, metadata.height);
+				ctx.putImageData(imageData, 0, 0);
+				
+				// Convert to blob URL
+				return new Promise<string>((resolve, reject) => {
+					canvas.toBlob((blob) => {
+						if (blob) {
+							const url = URL.createObjectURL(blob);
+							
+							// Update the image file with the full resolution URL
+							update(state => ({
+								...state,
+								images: state.images.map(img => 
+									img.path === imageFile.path 
+										? { ...img, fullResolutionUrl: url }
+										: img
+								)
+							}));
+							
+							resolve(url);
+						} else {
+							reject(new Error('Failed to create blob from canvas'));
+						}
+					}, 'image/jpeg', 0.95);
+				});
+			} catch (error) {
+				console.error('Failed to generate full resolution URL for RAW file:', error);
+				return imageFile.thumbnail || '';
 			}
 		},
 
