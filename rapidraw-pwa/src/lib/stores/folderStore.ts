@@ -277,21 +277,70 @@ function createFolderStore() {
 			if (rawExtensions.test(file.name)) {
 				try {
 					// Import RAW processing wrapper dynamically to avoid SSR issues
-					const { getRawProcessor, detectRawFormat } = await import('$lib/wasm/raw-processing-wrapper');
+					const { getRawProcessor, detectRawFormat, tryExtractJpegPreview } = await import('$lib/wasm/raw-processing-wrapper');
 					
 					const rawFormat = detectRawFormat(file.name);
 					if (!rawFormat) {
 						throw new Error('Unsupported RAW format');
 					}
 					
-					const rawProcessor = await getRawProcessor();
 					const arrayBuffer = await file.arrayBuffer();
 					const rawData = new Uint8Array(arrayBuffer);
 					
-					// Get metadata for dimensions
-					const metadata = await rawProcessor.getMetadata(rawData);
+					// First, try to extract embedded JPEG preview for thumbnail
+					const jpegPreview = tryExtractJpegPreview(rawData);
+					if (jpegPreview) {
+						console.log('📸 Using extracted JPEG preview for thumbnail');
+						const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
+						const url = URL.createObjectURL(blob);
+						
+						// Create thumbnail from the JPEG preview
+						return new Promise((resolve, reject) => {
+							const img = new Image();
+							img.onload = () => {
+								const canvas = document.createElement('canvas');
+								const ctx = canvas.getContext('2d');
+								
+								if (!ctx) {
+									reject(new Error('Failed to get canvas context'));
+									return;
+								}
+								
+								// Calculate thumbnail dimensions
+								const maxSize = 200;
+								let width = img.width;
+								let height = img.height;
+								
+								if (width > height) {
+									if (width > maxSize) {
+										height = (height * maxSize) / width;
+										width = maxSize;
+									}
+								} else {
+									if (height > maxSize) {
+										width = (width * maxSize) / height;
+										height = maxSize;
+									}
+								}
+								
+								canvas.width = width;
+								canvas.height = height;
+								ctx.drawImage(img, 0, 0, width, height);
+								
+								URL.revokeObjectURL(url); // Clean up
+								resolve(canvas.toDataURL('image/jpeg', 0.8));
+							};
+							img.onerror = () => {
+								URL.revokeObjectURL(url);
+								reject(new Error('Failed to load JPEG preview'));
+							};
+							img.src = url;
+						});
+					}
 					
-					// Decode RAW to get image data
+					// Fallback to WASM processing
+					const rawProcessor = await getRawProcessor();
+					const metadata = await rawProcessor.getMetadata(rawData);
 					const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
 					
 					// Create thumbnail from processed data
@@ -438,25 +487,43 @@ function createFolderStore() {
 
 			try {
 				// Import RAW processing wrapper dynamically
-				const { getRawProcessor, detectRawFormat } = await import('$lib/wasm/raw-processing-wrapper');
+				const { getRawProcessor, detectRawFormat, tryExtractJpegPreview } = await import('$lib/wasm/raw-processing-wrapper');
 				
 				const rawFormat = detectRawFormat(imageFile.name);
 				if (!rawFormat) {
 					throw new Error('Unsupported RAW format');
 				}
 				
-				const rawProcessor = await getRawProcessor();
 				const file = await imageFile.handle.getFile();
 				const arrayBuffer = await file.arrayBuffer();
 				const rawData = new Uint8Array(arrayBuffer);
 				
-				// Get metadata for dimensions
-				const metadata = await rawProcessor.getMetadata(rawData);
+				// First, try to extract embedded JPEG preview
+				const jpegPreview = tryExtractJpegPreview(rawData);
+				if (jpegPreview) {
+					console.log('📸 Using extracted JPEG preview for full resolution');
+					const blob = new Blob([jpegPreview], { type: 'image/jpeg' });
+					const url = URL.createObjectURL(blob);
+					
+					// Update the image file with the full resolution URL
+					update(state => ({
+						...state,
+						images: state.images.map(img => 
+							img.path === imageFile.path 
+								? { ...img, fullResolutionUrl: url }
+								: img
+						)
+					}));
+					
+					return url;
+				}
 				
-				// Decode RAW to get full resolution image data
+				// Fallback to WASM processing
+				const rawProcessor = await getRawProcessor();
+				const metadata = await rawProcessor.getMetadata(rawData);
 				const processedData = await rawProcessor.decodeRaw(rawData, rawFormat);
 				
-				// Create a canvas with the full resolution image
+				// Create a canvas with the processed data
 				const canvas = document.createElement('canvas');
 				const ctx = canvas.getContext('2d');
 				

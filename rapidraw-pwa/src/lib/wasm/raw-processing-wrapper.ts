@@ -46,6 +46,7 @@ export class RawProcessorWrapper {
       this.isInitialized = true;
       
       console.log('✅ RAW processing WASM module initialized');
+      console.log('⚠️  Note: Currently using enhanced fallback RAW processing. Full RAW decoding requires specialized libraries not yet available in WASM.');
     } catch (error) {
       console.error('❌ Failed to initialize RAW processing WASM module:', error);
       throw new Error(`Failed to initialize RAW WebAssembly module: ${error}`);
@@ -155,4 +156,50 @@ export function detectRawFormat(filename: string): string | null {
 // Utility function to check if a file is a RAW file
 export function isRawFile(filename: string): boolean {
   return detectRawFormat(filename) !== null;
+}
+
+// Utility function to try extracting JPEG preview from RAW file
+export function tryExtractJpegPreview(rawData: Uint8Array): Uint8Array | null {
+  try {
+    // Look for JPEG markers in the RAW data
+    const jpegStart = new Uint8Array([0xFF, 0xD8]); // JPEG SOI marker
+    const jpegEnd = new Uint8Array([0xFF, 0xD9]);   // JPEG EOI marker
+    
+    let startIndex = -1;
+    let endIndex = -1;
+    
+    // Find JPEG start marker
+    for (let i = 0; i < rawData.length - 1; i++) {
+      if (rawData[i] === jpegStart[0] && rawData[i + 1] === jpegStart[1]) {
+        startIndex = i;
+        break;
+      }
+    }
+    
+    if (startIndex === -1) return null;
+    
+    // Find JPEG end marker after the start
+    for (let i = startIndex + 2; i < rawData.length - 1; i++) {
+      if (rawData[i] === jpegEnd[0] && rawData[i + 1] === jpegEnd[1]) {
+        endIndex = i + 2;
+        break;
+      }
+    }
+    
+    if (endIndex === -1) return null;
+    
+    // Extract the JPEG data
+    const jpegData = rawData.slice(startIndex, endIndex);
+    
+    // Validate it's a reasonable size (at least 1KB, less than 50MB)
+    if (jpegData.length < 1024 || jpegData.length > 50 * 1024 * 1024) {
+      return null;
+    }
+    
+    console.log(`📸 Extracted JPEG preview: ${jpegData.length} bytes`);
+    return jpegData;
+  } catch (error) {
+    console.warn('Failed to extract JPEG preview:', error);
+    return null;
+  }
 }
