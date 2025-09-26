@@ -20,6 +20,7 @@ import {
   FolderInput,
   FolderPlus,
   Images,
+  LayoutTemplate,
   Redo,
   RotateCcw,
   Star,
@@ -54,6 +55,7 @@ import ConfirmModal from './components/modals/ConfirmModal';
 import ImportSettingsModal from './components/modals/ImportSettingsModal';
 import RenameFileModal from './components/modals/RenameFileModal';
 import PanoramaModal from './components/modals/PanoramaModal';
+import CollageModal from './components/modals/CollageModal';
 import CullingModal from './components/modals/CullingModal';
 import { useHistoryState } from './hooks/useHistoryState';
 import Resizer from './components/ui/Resizer';
@@ -135,6 +137,11 @@ interface MultiSelectOptions {
   onSimpleClick(p: any): void;
   updateLibraryActivePath: boolean;
   shiftAnchor: string | null;
+}
+
+interface CollageModalState {
+  isOpen: boolean;
+  sourceImages: ImageFile[];
 }
 
 interface PanoramaModalState {
@@ -324,6 +331,10 @@ function App() {
     progress: null,
     error: null,
     pathsToCull: [],
+  });
+  const [collageModalState, setCollageModalState] = useState<CollageModalState>({
+    isOpen: false,
+    sourceImages: [],
   });
   const [customEscapeHandler, setCustomEscapeHandler] = useState(null);
   const [isGeneratingAiMask, setIsGeneratingAiMask] = useState(false);
@@ -2091,6 +2102,21 @@ function App() {
     }
   };
 
+  const handleSaveCollage = async (base64Data: string, firstPath: string): Promise<string> => {
+    try {
+      const savedPath: string = await invoke(Invokes.SaveCollage, {
+        base64Data,
+        firstPathStr: firstPath,
+      });
+      handleLibraryRefresh();
+      return savedPath;
+    } catch (err) {
+      console.error('Failed to save collage:', err);
+      setError(`Failed to save collage: ${err}`);
+      throw err;
+    }
+  };
+
   useEffect(() => {
     if (selectedImage?.isReady) {
       applyAdjustments(adjustments);
@@ -2571,9 +2597,11 @@ function App() {
     const resetLabel = isSingleSelection ? 'Reset Adjustments' : `Reset Adjustments on ${selectionCount} Images`;
     const deleteLabel = isSingleSelection ? 'Delete Image' : `Delete ${selectionCount} Images`;
     const copyLabel = isSingleSelection ? 'Copy Image' : `Copy ${selectionCount} Images`;
-    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust ${selectionCount} Images`;
+    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust Images`;
     const renameLabel = isSingleSelection ? 'Rename Image' : `Rename ${selectionCount} Images`;
-    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull ${selectionCount} Images`;
+    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull Images`;
+    const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
+    const stitchLabel = isSingleSelection ? 'Stitch Image' : `Stitch Images`;
 
     const handleApplyAutoAdjustmentsToSelection = () => {
       if (finalSelection.length === 0) {
@@ -2657,9 +2685,9 @@ function App() {
             onClick: handleApplyAutoAdjustmentsToSelection,
           },
           {
-            disabled: selectionCount < 2,
+            disabled: selectionCount < 2  || selectionCount > 9,
             icon: Images,
-            label: isSingleSelection ? 'Stitch Image' : `Stitch ${selectionCount} Images`,
+            label: stitchLabel,
             onClick: () => {
               setPanoramaModalState({
                 error: null,
@@ -2677,6 +2705,18 @@ function App() {
                 }));
               });
             },
+          },
+          {
+            icon: LayoutTemplate,
+            label: collageLabel,
+            onClick: () => {
+              const imagesForCollage = imageList.filter(img => finalSelection.includes(img.path));
+              setCollageModalState({
+                isOpen: true,
+                sourceImages: imagesForCollage,
+              });
+            },
+            disabled: selectionCount === 0 || selectionCount > 9,
           },
           {
             label: cullLabel,
@@ -3399,6 +3439,13 @@ function App() {
         onError={(err) => {
           setCullingModalState((prev) => ({ ...prev, error: err, progress: null }));
         }}
+      />
+      <CollageModal
+        isOpen={collageModalState.isOpen}
+        onClose={() => setCollageModalState({ isOpen: false, sourceImages: [] })}
+        onSave={handleSaveCollage}
+        sourceImages={collageModalState.sourceImages}
+        thumbnails={thumbnails}
       />
     </div>
   );

@@ -1983,6 +1983,81 @@ async fn save_panorama(
 }
 
 #[tauri::command]
+async fn save_collage(
+    base64_data: String,
+    first_path_str: String,
+) -> Result<String, String> {
+    let data_url_prefix = "data:image/png;base64,";
+    if !base64_data.starts_with(data_url_prefix) {
+        return Err("Invalid base64 data format".to_string());
+    }
+    let encoded_data = &base64_data[data_url_prefix.len()..];
+
+    let decoded_bytes = general_purpose::STANDARD
+        .decode(encoded_data)
+        .map_err(|e| format!("Failed to decode base64: {}", e))?;
+
+    let first_path = Path::new(&first_path_str);
+    let parent_dir = first_path
+        .parent()
+        .ok_or_else(|| "Could not determine parent directory of the first image.".to_string())?;
+    let stem = first_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("collage");
+
+    let output_filename = format!("{}_Collage.png", stem);
+    let output_path = parent_dir.join(output_filename);
+
+    fs::write(&output_path, &decoded_bytes)
+        .map_err(|e| format!("Failed to save collage image: {}", e))?;
+
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn generate_preview_for_path(
+    path: String,
+    js_adjustments: Value,
+    state: tauri::State<AppState>,
+) -> Result<Response, String> {
+    let context = get_or_init_gpu_context(&state)?;
+    let base_image = load_and_composite(&path, &js_adjustments, false)
+        .map_err(|e| e.to_string())?;
+    let (transformed_image, unscaled_crop_offset) =
+        apply_all_transformations(&base_image, &js_adjustments, 1.0);
+    let (img_w, img_h) = transformed_image.dimensions();
+    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+        .get("masks")
+        .and_then(|m| serde_json::from_value(m.clone()).ok())
+        .unwrap_or_else(Vec::new);
+    let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
+        .iter()
+        .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, 1.0, unscaled_crop_offset))
+        .collect();
+    let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let lut_path = js_adjustments["lutPath"].as_str();
+    let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
+    let unique_hash = calculate_full_job_hash(&path, &js_adjustments);
+    let final_image = process_and_get_dynamic_image(
+        &context,
+        &state,
+        &transformed_image,
+        unique_hash,
+        all_adjustments,
+        &mask_bitmaps,
+        lut,
+    )?;
+    let mut buf = Cursor::new(Vec::new());
+    final_image
+        .to_rgb8()
+        .write_with_encoder(JpegEncoder::new_with_quality(&mut buf, 92))
+        .map_err(|e| e.to_string())?;
+
+    Ok(Response::new(buf.into_inner()))
+}
+
+#[tauri::command]
 async fn load_and_parse_lut(
     path: String,
     state: tauri::State<'_, AppState>,
@@ -2145,6 +2220,7 @@ fn main() {
             estimate_export_size,
             estimate_batch_export_size,
             generate_fullscreen_preview,
+            generate_preview_for_path,
             generate_original_transformed_preview,
             generate_preset_preview,
             generate_uncropped_preview,
@@ -2157,6 +2233,7 @@ fn main() {
             test_comfyui_connection,
             invoke_generative_replace_with_mask_def,
             get_supported_file_types,
+            save_collage,
             stitch_panorama,
             save_panorama,
             load_and_parse_lut,
