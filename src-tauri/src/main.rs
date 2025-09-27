@@ -1,3 +1,5 @@
+// main.rs
+
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use mimalloc::MiMalloc;
@@ -2110,19 +2112,32 @@ fn apply_window_effect(theme: String, window: impl raw_window_handle::HasWindowH
     {}
 }
 
-/// Hook panic messages to the logger.
-fn logger(){
+fn setup_logging(app_handle: &tauri::AppHandle) {
+    let log_dir = match app_handle.path().app_log_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("Failed to get app log directory: {}", e);
+            return;
+        }
+    };
+
+    if let Err(e) = fs::create_dir_all(&log_dir) {
+        eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
+    }
+
+    let log_file_path = log_dir.join("app.log");
+
     let log_file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .append(true)
-            .open("RapidRaw.log")
-            .unwrap();
-    
-    let var = std::env::var("RUST_LOG").unwrap_or_else(|_| "error".to_string());
-    let level: log::LevelFilter = var.parse().unwrap_or(log::LevelFilter::Error);
-    
-    fern::Dispatch::new()
+        .write(true)
+        .create(true)
+        .append(true)
+        .open(&log_file_path)
+        .ok();
+
+    let var = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let level: log::LevelFilter = var.parse().unwrap_or(log::LevelFilter::Info);
+
+    let mut dispatch = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
                 "{} [{}] {}",
@@ -2132,19 +2147,26 @@ fn logger(){
             ))
         })
         .level(level)
-        .chain(std::io::stderr())   
-        .chain(log_file)            
-        .apply()
-        .unwrap();
+        .chain(std::io::stderr());
 
+    if let Some(file) = log_file {
+        dispatch = dispatch.chain(file);
+    } else {
+        eprintln!("Failed to open log file at {:?}. Logging to console only.", log_file_path);
+    }
+
+    if let Err(e) = dispatch.apply() {
+        eprintln!("Failed to apply logger configuration: {}", e);
+    }
 
     panic::set_hook(Box::new(|error| {
         log::error!("PANIC! {:#?}", error);
     }));
+
+    log::info!("Logger initialized successfully. Log file at: {:?}", log_file_path);
 }
 
 fn main() {
-    logger();
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
@@ -2153,6 +2175,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
+            setup_logging(&app_handle);
 
             let resource_path = app_handle
                 .path()
@@ -2177,7 +2200,7 @@ fn main() {
             let ort_library_path = resource_path.join(ort_library_name);
             // TODO: Audit that the environment access only happens in single-threaded code.
             unsafe { std::env::set_var("ORT_DYLIB_PATH", &ort_library_path) };
-            println!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
+            log::info!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
 
             let settings: AppSettings = load_settings(app_handle.clone()).unwrap_or_default();
             let window_cfg = app.config().app.windows.get(0).unwrap().clone();
