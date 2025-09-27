@@ -305,6 +305,7 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
     if (!ctx) return;
 
     let canvasWidth, canvasHeight, exportScale = 1;
+    const dpr = isExport ? 1 : window.devicePixelRatio || 1;
 
     if (isExport) {
       canvasWidth = exportWidth;
@@ -317,9 +318,12 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
       canvasHeight = previewSize.height;
     }
 
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    canvas.width = canvasWidth * dpr;
+    canvas.height = canvasHeight * dpr;
+    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.height = `${canvasHeight}px`;
 
+    ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -453,10 +457,10 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
     const y = e.clientY - rect.top;
 
     const clickedIndex = activeLayout.findIndex(cell => {
-      const x1 = cell.x * canvas.width;
-      const y1 = cell.y * canvas.height;
-      const x2 = (cell.x + cell.width) * canvas.width;
-      const y2 = (cell.y + cell.height) * canvas.height;
+      const x1 = cell.x * previewSize.width;
+      const y1 = cell.y * previewSize.height;
+      const x2 = (cell.x + cell.width) * previewSize.width;
+      const y2 = (cell.y + cell.height) * previewSize.height;
       return x >= x1 && x <= x2 && y >= y1 && y <= y2;
     });
 
@@ -468,16 +472,15 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!draggingImage || !previewCanvasRef.current || !activeLayout) return;
     
-    const canvas = previewCanvasRef.current;
     const imagePath = loadedImages[draggingImage.index].path;
     const imageState = imageStates[imagePath];
     const img = imageElementsRef.current[imagePath];
     const cell = activeLayout[draggingImage.index];
 
-    const x1 = cell.x * canvas.width;
-    const y1 = cell.y * canvas.height;
-    const x2 = (cell.x + cell.width) * canvas.width;
-    const y2 = (cell.y + cell.height) * canvas.height;
+    const x1 = cell.x * previewSize.width;
+    const y1 = cell.y * previewSize.height;
+    const x2 = (cell.x + cell.width) * previewSize.width;
+    const y2 = (cell.y + cell.height) * previewSize.height;
     const cellFinalWidth = (x2 - x1) - (cell.x === 0 ? spacing : spacing / 2) - (cell.x + cell.width >= 1 ? spacing : spacing / 2);
     const cellFinalHeight = (y2 - y1) - (cell.y === 0 ? spacing : spacing / 2) - (cell.y + cell.height >= 1 ? spacing : spacing / 2);
 
@@ -644,7 +647,7 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
               <Loader2 className="w-12 h-12 text-accent animate-spin" />
             </div>
           )}
-          <canvas ref={previewCanvasRef} style={{ width: previewSize.width, height: previewSize.height }} className={clsx('shadow-lg', draggingImage ? 'cursor-grabbing' : 'cursor-grab')} onMouseDown={handleMouseDown} />
+          <canvas ref={previewCanvasRef} className={clsx('shadow-lg', draggingImage ? 'cursor-grabbing' : 'cursor-grab')} onMouseDown={handleMouseDown} />
         </div>
         {renderControls()}
       </div>
