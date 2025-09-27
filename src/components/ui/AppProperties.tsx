@@ -160,6 +160,7 @@ export interface ImageFile {
   modified: number;
   path: string;
   tags: Array<string>;
+  exif: { [key: string]: string } | null;
 }
 
 export interface Option {

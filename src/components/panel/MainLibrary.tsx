@@ -163,13 +163,14 @@ interface ViewOptionsProps {
   thumbnailAspectRatio: ThumbnailAspectRatio;
 }
 
-const sortOptions: Array<SortCriteria> = [
-  { key: 'name', order: SortDirection.Ascending, label: 'File Name (A-Z)' },
-  { key: 'name', order: SortDirection.Descening, label: 'File Name (Z-A)' },
-  { key: 'date', order: SortDirection.Descening, label: 'Date (Newest)' },
-  { key: 'date', order: SortDirection.Ascending, label: 'Date (Oldest)' },
-  { key: 'rating', order: SortDirection.Descening, label: 'Rating (Highest)' },
-  { key: 'rating', order: SortDirection.Ascending, label: 'Rating (Lowest)' },
+const sortOptions: Array<Omit<SortCriteria, 'order'>> = [
+  { key: 'name', label: 'File Name' },
+  { key: 'date_taken', label: 'Date Taken' },
+  { key: 'date', label: 'Date Modified' },
+  { key: 'rating', label: 'Rating' },
+  { key: 'iso', label: 'ISO' },
+  { key: 'shutter_speed', label: 'Shutter Speed' },
+  { key: 'aperture', label: 'Aperture' },
 ];
 
 const ratingFilterOptions: Array<KeyValueLabel> = [
@@ -506,18 +507,44 @@ function FilterOptions({ filterCriteria, setFilterCriteria }: FilterOptionProps)
 }
 
 function SortOptions({ sortCriteria, setSortCriteria }: SortOptionsProps) {
+  const handleKeyChange = (key: string) => {
+    setSortCriteria((prev: SortCriteria) => ({ ...prev, key }));
+  };
+
+  const handleOrderToggle = () => {
+    setSortCriteria((prev: SortCriteria) => ({
+      ...prev,
+      order: prev.order === SortDirection.Ascending ? SortDirection.Descening : SortDirection.Ascending,
+    }));
+  };
+
   return (
     <>
-      <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Sort by</div>
-      {sortOptions.map((option: SortCriteria) => {
-        const isSelected = sortCriteria.key === option.key && sortCriteria.order === option.order;
+      <div className="px-3 py-2 flex items-center justify-between">
+        <div className="text-xs font-semibold text-text-secondary uppercase">Sort by</div>
+        <button
+          onClick={handleOrderToggle}
+          title={`Sort ${
+            sortCriteria.order === SortDirection.Ascending ? 'Descending' : 'Ascending'
+          }`}
+          className="p-1 bg-transparent border-none text-text-secondary hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-accent rounded"
+        >
+          {sortCriteria.order === SortDirection.Ascending ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          )}
+        </button>
+      </div>
+      {sortOptions.map((option: Omit<SortCriteria, 'order'>) => {
+        const isSelected = sortCriteria.key === option.key;
         return (
           <button
             className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${
               isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'
             }`}
-            key={`${option.key}-${option.order}`}
-            onClick={() => setSortCriteria({ key: option.key, order: option.order })}
+            key={option.key}
+            onClick={() => handleKeyChange(option.key)}
             role="menuitem"
           >
             <span>{option.label}</span>
