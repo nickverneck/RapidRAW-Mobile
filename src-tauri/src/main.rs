@@ -126,6 +126,7 @@ struct LoadImageResult {
 #[serde(rename_all = "camelCase")]
 enum ResizeMode {
     LongEdge,
+    ShortEdge,
     Width,
     Height,
 }
@@ -766,6 +767,7 @@ fn process_image_for_export(
         let should_resize = if resize_opts.dont_enlarge {
             match resize_opts.mode {
                 ResizeMode::LongEdge => current_w.max(current_h) > resize_opts.value,
+                ResizeMode::ShortEdge => current_w.min(current_h) > resize_opts.value,
                 ResizeMode::Width => current_w > resize_opts.value,
                 ResizeMode::Height => current_h > resize_opts.value,
             }
@@ -777,6 +779,22 @@ fn process_image_for_export(
             final_image = match resize_opts.mode {
                 ResizeMode::LongEdge => {
                     let (w, h) = if current_w > current_h {
+                        (
+                            resize_opts.value,
+                            (resize_opts.value as f32 * (current_h as f32 / current_w as f32))
+                                .round() as u32,
+                        )
+                    } else {
+                        (
+                            (resize_opts.value as f32 * (current_w as f32 / current_h as f32))
+                                .round() as u32,
+                            resize_opts.value,
+                        )
+                    };
+                    final_image.thumbnail(w, h)
+                }
+                ResizeMode::ShortEdge => {
+                    let (w, h) = if current_w < current_h {
                         (
                             resize_opts.value,
                             (resize_opts.value as f32 * (current_h as f32 / current_w as f32))

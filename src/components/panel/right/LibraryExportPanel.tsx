@@ -4,6 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Save, CheckCircle, XCircle, Loader, X, Ban } from 'lucide-react';
 import debounce from 'lodash.debounce';
 import Switch from '../../ui/Switch';
+import Dropdown from '../../ui/Dropdown';
+import Slider from '../../ui/Slider';
 import {
   FileFormat,
   FILE_FORMATS,
@@ -45,6 +47,13 @@ const formatBytes = (bytes: number, decimals = 2) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
+
+const resizeModeOptions = [
+  { label: 'Long Edge', value: 'longEdge' },
+  { label: 'Short Edge', value: 'shortEdge' },
+  { label: 'Width', value: 'width' },
+  { label: 'Height', value: 'height' },
+];
 
 export default function LibraryExportPanel({
   exportState,
@@ -235,18 +244,16 @@ export default function LibraryExportPanel({
                 ))}
               </div>
               {fileFormat === FileFormats.Jpeg && (
-                <div className="flex items-center gap-2">
-                  <label className="text-sm w-20">Quality</label>
-                  <input
-                    className="w-full h-1 bg-surface rounded-lg appearance-none cursor-pointer accent-accent"
-                    disabled={isExporting}
-                    max="100"
-                    min="1"
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setJpegQuality(parseInt(e?.target?.value))}
-                    type="range"
+                <div className={isExporting ? 'opacity-50 pointer-events-none' : ''}>
+                  <Slider
+                    defaultValue={90}
+                    label="Quality"
+                    max={100}
+                    min={1}
+                    onChange={(e) => setJpegQuality(parseInt(e.target.value))}
+                    step={1}
                     value={jpegQuality}
                   />
-                  <span className="text-sm font-mono w-12 text-right">{jpegQuality}</span>
                 </div>
               )}
             </Section>
@@ -279,16 +286,9 @@ export default function LibraryExportPanel({
               {enableResize && (
                 <div className="space-y-4 pl-2 border-l-2 border-surface">
                   <div className="flex items-center gap-2">
-                    <select
-                      className="w-full bg-bg-primary border border-surface rounded-md p-2 text-sm text-text-primary focus:ring-accent focus:border-accent"
-                      disabled={isExporting}
-                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setResizeMode(e?.target?.value)}
-                      value={resizeMode}
-                    >
-                      <option value="longEdge">Long Edge</option>
-                      <option value="width">Width</option>
-                      <option value="height">Height</option>
-                    </select>
+                    <div className={`w-full ${isExporting ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <Dropdown options={resizeModeOptions} value={resizeMode} onChange={setResizeMode} />
+                    </div>
                     <input
                       className="w-24 bg-bg-primary text-center rounded-md p-2 border border-surface focus:border-accent focus:ring-accent"
                       disabled={isExporting}
