@@ -308,7 +308,7 @@ fn scan_dir_recursive(path: &Path) -> Result<Vec<FolderNode>, std::io::Error> {
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,
         Err(e) => {
-            eprintln!("Could not scan directory '{}': {}", path.display(), e);
+            log::warn!("Could not scan directory '{}': {}", path.display(), e);
             return Ok(Vec::new());
         }
     };
@@ -342,6 +342,9 @@ fn scan_dir_recursive(path: &Path) -> Result<Vec<FolderNode>, std::io::Error> {
 
 fn get_folder_tree_sync(path: String) -> Result<FolderNode, String> {
     let root_path = Path::new(&path);
+    if !root_path.is_dir() {
+        return Err(format!("Could not scan directory '{}': No such file or directory (os error 2)", path));
+    }
     let name = root_path
         .file_name()
         .unwrap_or_default()

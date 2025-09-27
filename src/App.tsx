@@ -2173,21 +2173,20 @@ function App() {
       }
 
       setIsTreeLoading(true);
-      try {
-        const treeData = await invoke(Invokes.GetFolderTree, { path: root });
-        setFolderTree(treeData);
-      } catch (err) {
-        console.error('Failed to load folder tree:', err);
-        setError(`Failed to load folder tree: ${err}.`);
-      } finally {
-        setIsTreeLoading(false);
-      }
+      const treeData = await invoke(Invokes.GetFolderTree, { path: root });
+      setFolderTree(treeData);
+      setIsTreeLoading(false);
 
       await handleSelectSubfolder(pathToSelect, false);
     };
     restore().catch((err) => {
-      console.error('Failed to restore session:', err);
-      setError('Failed to restore session.');
+      console.error('Failed to restore session, folder might be missing:', err);
+      setError('Failed to restore session. The last used folder may have been moved or deleted.');
+      if (appSettings) {
+        handleSettingsChange({ ...appSettings, lastRootPath: null, lastFolderState: null });
+      }
+      handleGoHome();
+      setIsTreeLoading(false);
     });
   };
 

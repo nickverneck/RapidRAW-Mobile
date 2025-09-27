@@ -245,9 +245,10 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
       }
     };
 
-    loadImages();
+    const timerId = setTimeout(loadImages, 300);
 
     return () => {
+      clearTimeout(timerId);
       Object.values(imageElementsRef.current).forEach(img => URL.revokeObjectURL(img.src));
     };
   }, [isOpen, sourceImages]);
