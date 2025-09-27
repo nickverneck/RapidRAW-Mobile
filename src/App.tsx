@@ -2600,7 +2600,7 @@ function App() {
     const renameLabel = isSingleSelection ? 'Rename Image' : `Rename ${selectionCount} Images`;
     const cullLabel = isSingleSelection ? 'Cull Image' : `Cull Images`;
     const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
-    const stitchLabel = isSingleSelection ? 'Stitch Image' : `Stitch Images`;
+    const stitchLabel = `Stitch Panorama`;
 
     const handleApplyAutoAdjustmentsToSelection = () => {
       if (finalSelection.length === 0) {
