@@ -685,7 +685,7 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
       <AnimatePresence>
         {show && (
           <motion.div
-            className="bg-surface rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col"
+            className="bg-surface rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
             onMouseDown={(e) => e.stopPropagation()}
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
