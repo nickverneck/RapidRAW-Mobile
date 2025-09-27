@@ -2602,6 +2602,46 @@ function App() {
     const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
     const stitchLabel = `Stitch Panorama`;
 
+    const hasAssociatedFiles = finalSelection.some((selectedPath) => {
+      const lastDotIndex = selectedPath.lastIndexOf('.');
+      if (lastDotIndex === -1) return false;
+      const basePath = selectedPath.substring(0, lastDotIndex);
+      return imageList.some(
+        (image) => image.path.startsWith(basePath + '.') && image.path !== selectedPath,
+      );
+    });
+
+    const deleteOption = {
+      label: deleteLabel,
+      icon: Trash2,
+      isDestructive: true,
+      submenu: hasAssociatedFiles
+        ? [
+            { label: 'Cancel', icon: X, onClick: () => {} },
+            {
+              label: 'Delete Selected Only',
+              icon: Check,
+              isDestructive: true,
+              onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+            },
+            {
+              label: 'Delete + Associated (RAW/JPEG)',
+              icon: Check,
+              isDestructive: true,
+              onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
+            },
+          ]
+        : [
+            { label: 'Cancel', icon: X, onClick: () => {} },
+            {
+              label: 'Confirm',
+              icon: Check,
+              isDestructive: true,
+              onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+            },
+          ],
+    };
+
     const handleApplyAutoAdjustmentsToSelection = () => {
       if (finalSelection.length === 0) {
         return;
@@ -2789,26 +2829,7 @@ function App() {
         },
       },
       { label: resetLabel, icon: RotateCcw, onClick: () => handleResetAdjustments(finalSelection) },
-      {
-        label: deleteLabel,
-        icon: Trash2,
-        isDestructive: true,
-        submenu: [
-          { label: 'Cancel', icon: X, onClick: () => {} },
-          {
-            label: 'Delete Selected Only',
-            icon: Check,
-            isDestructive: true,
-            onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
-          },
-          {
-            label: 'Delete + Associated (RAW/JPEG)',
-            icon: Check,
-            isDestructive: true,
-            onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
-          },
-        ],
-      },
+      deleteOption,
     ];
     showContextMenu(event.clientX, event.clientY, options);
   };
