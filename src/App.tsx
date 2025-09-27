@@ -345,7 +345,7 @@ function App() {
   const { showContextMenu } = useContextMenu();
   const imagePathList = useMemo(() => imageList.map((f: ImageFile) => f.path), [imageList]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
-  useThumbnails(imageList, setThumbnails);
+  const { loading: isThumbnailsLoading } = useThumbnails(imageList, setThumbnails);
   const transformWrapperRef = useRef<any>(null);
   const isProgrammaticZoom = useRef(false);
   const isInitialMount = useRef(true);
@@ -3270,6 +3270,7 @@ function App() {
               importState={importState}
               indexingProgress={indexingProgress}
               isIndexing={isIndexing}
+              isThumbnailsLoading={isThumbnailsLoading}
               isLoading={isViewLoading}
               isTreeLoading={isTreeLoading}
               libraryScrollTop={libraryScrollTop}

@@ -75,6 +75,7 @@ interface MainLibraryProps {
   importState: ImportState;
   indexingProgress: Progress;
   isLoading: boolean;
+  isThumbnailsLoading?: boolean;
   isIndexing: boolean;
   isTreeLoading: boolean;
   libraryScrollTop: number;
@@ -722,6 +723,7 @@ export default function MainLibrary({
   importState,
   indexingProgress,
   isIndexing,
+  isThumbnailsLoading,
   isTreeLoading,
   libraryScrollTop,
   multiSelectedPaths,
@@ -756,6 +758,35 @@ export default function MainLibrary({
   const libraryContainerRef = useRef<HTMLDivElement>(null);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
+  const [isLoaderVisible, setIsLoaderVisible] = useState(false);
+  const hideTimeoutRef = useRef<number | null>(null);
+  const showTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isThumbnailsLoading) {
+      showTimeoutRef.current = window.setTimeout(() => {
+        setIsLoaderVisible(true);
+      }, 1000);
+    } else {
+      if (showTimeoutRef.current) {
+        clearTimeout(showTimeoutRef.current);
+      }
+      if (isLoaderVisible) {
+        hideTimeoutRef.current = window.setTimeout(() => {
+          setIsLoaderVisible(false);
+        }, 500);
+      }
+    }
+
+    return () => {
+      if (showTimeoutRef.current) {
+        clearTimeout(showTimeoutRef.current);
+      }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, [isThumbnailsLoading]);
 
   useEffect(() => {
     const compareVersions = (v1: string, v2: string) => {
@@ -979,7 +1010,16 @@ export default function MainLibrary({
       <header className="p-4 flex-shrink-0 flex justify-between items-center border-b border-border-color">
         <div>
           <h2 className="text-2xl font-bold text-primary">Library</h2>
-          <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                isLoaderVisible ? 'max-w-[1rem] opacity-100' : 'max-w-0 opacity-0'
+              }`}
+            >
+              <Loader2 size={14} className="animate-spin text-text-secondary" />
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {importState.status === Status.Importing && (
