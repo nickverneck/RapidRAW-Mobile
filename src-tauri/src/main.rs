@@ -4,9 +4,6 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-use std::sync::Once;
-static INIT: Once = Once::new();
-
 mod ai_processing;
 mod culling;
 mod comfyui_connector;
@@ -31,14 +28,13 @@ use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
-use directories::ProjectDirs;
 use image::codecs::jpeg::JpegEncoder;
 use image::{
     DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, Rgb, RgbImage, Rgba,
@@ -152,15 +148,6 @@ struct ExportSettings {
     keep_metadata: bool,
     strip_gps: bool,
     filename_template: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct GitHubContent {
-    name: String,
-    path: String,
-    download_url: String,
-    #[serde(rename = "type")]
-    content_type: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

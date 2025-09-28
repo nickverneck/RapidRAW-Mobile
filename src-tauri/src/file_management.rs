@@ -260,20 +260,6 @@ pub struct ImportSettings {
     pub delete_after_import: bool,
 }
 
-fn read_exif_data(file_bytes: &[u8]) -> HashMap<String, String> {
-    let mut exif_data = HashMap::new();
-    let exif_reader = exif::Reader::new();
-    if let Ok(exif) = exif_reader.read_from_container(&mut Cursor::new(file_bytes)) {
-        for field in exif.fields() {
-            exif_data.insert(
-                field.tag.to_string(),
-                field.display_value().with_unit(&exif).to_string(),
-            );
-        }
-    }
-    exif_data
-}
-
 #[tauri::command]
 pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
     let entries: Vec<ImageFile> = fs::read_dir(path)
@@ -315,9 +301,26 @@ pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
                 (false, None)
             };
 
-            let exif = fs::read(&path)
-                .ok()
-                .map(|bytes| read_exif_data(&bytes));
+            // commented out as TIFF parsing by exif-rs reads the file to the end, causing a huge UI slowdown: https://github.com/kamadak/exif-rs/issues/42
+            /*
+            let exif = {
+                let mut exif_data = HashMap::new();
+                if let Ok(file) = fs::File::open(&path) {
+                    let mut buf_reader = BufReader::new(&file);
+                    let exif_reader = exif::Reader::new();
+                    if let Ok(exif) = exif_reader.read_from_container(&mut buf_reader) {
+                        for field in exif.fields() {
+                            exif_data.insert(
+                                field.tag.to_string(),
+                                field.display_value().with_unit(&exif).to_string(),
+                            );
+                        }
+                    }
+                }
+                Some(exif_data)
+            };
+            */
+            let exif = Some(HashMap::new()); // Return empty EXIF data for now :(
 
             ImageFile {
                 path: path_str,

@@ -165,12 +165,12 @@ interface ViewOptionsProps {
 
 const sortOptions: Array<Omit<SortCriteria, 'order'>> = [
   { key: 'name', label: 'File Name' },
-  { key: 'date_taken', label: 'Date Taken' },
   { key: 'date', label: 'Date Modified' },
   { key: 'rating', label: 'Rating' },
-  { key: 'iso', label: 'ISO' },
+  /*{ key: 'iso', label: 'ISO' }, COMMENTED OUT BECAUSE OF https://github.com/kamadak/exif-rs/issues/42 -> see more in file_management.rs
+  { key: 'date_taken', label: 'Date Taken' },
   { key: 'shutter_speed', label: 'Shutter Speed' },
-  { key: 'aperture', label: 'Aperture' },
+  { key: 'aperture', label: 'Aperture' },*/
 ];
 
 const ratingFilterOptions: Array<KeyValueLabel> = [
