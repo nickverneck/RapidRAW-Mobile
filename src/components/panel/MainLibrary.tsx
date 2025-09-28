@@ -1002,6 +1002,17 @@ export default function MainLibrary({
                 </div>
               </div>
               <div className="absolute bottom-8 left-8 lg:left-16 text-xs text-text-secondary space-y-1">
+                <p>
+                Images by{' '}
+                  <a
+                    href="https://instagram.com/timonkaech.photography"
+                    className="hover:underline"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Timon Käch
+                  </a>  
+                </p>
                 {appVersion && (
                   <div className="flex items-center space-x-2">
                     <p>
@@ -1017,7 +1028,9 @@ export default function MainLibrary({
                           }
                         }}
                         title={
-                          isUpdateAvailable ? `Click to download version ${latestVersion}` : `You are on the latest version`
+                          isUpdateAvailable
+                            ? `Click to download version ${latestVersion}`
+                            : `You are on the latest version`
                         }
                       >
                         <span className={isUpdateAvailable ? 'group-hover:hidden' : ''}>Version {appVersion}</span>
@@ -1034,12 +1047,20 @@ export default function MainLibrary({
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        Donate on Ko-fi
+                        Donate on Ko-Fi
+                      </a>
+                      <span className="mx-1">or</span>
+                      <a
+                        href="https://github.com/CyberTimon/RapidRAW"
+                        className="hover:underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Contribute on GitHub
                       </a>
                     </p>
                   </div>
                 )}
-                <p>Images by Timon Käch (@timonkaech.photography)</p>
               </div>
             </>
           )}
