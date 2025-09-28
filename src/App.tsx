@@ -2413,14 +2413,9 @@ function App() {
             return;
         }
 
-        // --- START OF ADDED/MOVED LOGIC ---
-
         const { width, height } = loadImageResult;
-
-        // 1. Set originalSize directly from the loaded data
         setOriginalSize({ width, height });
 
-        // 2. Calculate and set previewSize
         if (appSettings?.editorPreviewResolution) {
             const maxSize = appSettings.editorPreviewResolution;
             const aspectRatio = width / height;
@@ -2438,12 +2433,9 @@ function App() {
             setPreviewSize({ width: 0, height: 0 });
         }
 
-        // 3. Reset full resolution state
         setIsFullResolution(false);
         setFullResolutionUrl(null);
         fullResCacheKeyRef.current = null;
-
-        // --- END OF ADDED/MOVED LOGIC ---
 
         const blob = new Blob([loadImageResult.original_image_bytes], { type: 'image/jpeg' });
         const originalUrl = URL.createObjectURL(blob);

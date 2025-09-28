@@ -415,7 +415,6 @@ fn apply_adjustments(
 ) -> Result<(), String> {
     let context = get_or_init_gpu_context(&state)?;
     let adjustments_clone = js_adjustments.clone();
-
     let loaded_image = state
         .original_image
         .lock()
@@ -500,6 +499,7 @@ fn apply_adjustments(
             final_adjustments,
             &mask_bitmaps,
             lut,
+            "apply_adjustments",
         ) {
             if let Ok(histogram_data) =
                 image_processing::calculate_histogram_from_image(&final_processed_image)
@@ -608,6 +608,7 @@ fn generate_uncropped_preview(
             uncropped_adjustments,
             &mask_bitmaps,
             lut,
+            "generate_uncropped_preview",
         ) {
             let mut buf = Cursor::new(Vec::new());
             if processed_image
@@ -703,6 +704,7 @@ fn generate_fullscreen_preview(
         all_adjustments,
         &mask_bitmaps,
         lut,
+        "generate_fullscreen_preview",
     )?;
 
     let mut buf = Cursor::new(Vec::new());
@@ -752,6 +754,7 @@ fn process_image_for_export(
         all_adjustments,
         &mask_bitmaps,
         lut,
+        "process_image_for_export",
     )?;
 
     if let Some(resize_opts) = &export_settings.resize {
@@ -1096,27 +1099,85 @@ async fn estimate_export_size(
     export_settings: ExportSettings,
     output_format: String,
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<usize, String> {
     let context = get_or_init_gpu_context(&state)?;
-    let original_image_data = get_full_image_for_processing(&state)?;
-    let path = state.original_image.lock().unwrap().as_ref().ok_or("Original image path not found")?.path.clone();
+    let loaded_image = state
+        .original_image
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("No original image loaded")?;
 
-    let base_image = composite_patches_on_image(&original_image_data, &js_adjustments)
-        .map_err(|e| format!("Failed to composite AI patches for estimation: {}", e))?;
+    let new_transform_hash = calculate_transform_hash(&js_adjustments);
+    let cached_preview_lock = state.cached_preview.lock().unwrap();
 
-    let final_image = process_image_for_export(
-        &path,
-        &base_image,
-        &js_adjustments,
-        &export_settings,
+    let (preview_image, scale, unscaled_crop_offset) = if let Some(cached) = &*cached_preview_lock {
+        if cached.transform_hash == new_transform_hash {
+            (
+                cached.image.clone(),
+                cached.scale,
+                cached.unscaled_crop_offset,
+            )
+        } else {
+            drop(cached_preview_lock);
+            let (base, scale, offset) =
+                generate_transformed_preview(&loaded_image, &js_adjustments, &app_handle)?;
+            (base, scale, offset)
+        }
+    } else {
+        drop(cached_preview_lock);
+        let (base, scale, offset) =
+            generate_transformed_preview(&loaded_image, &js_adjustments, &app_handle)?;
+        (base, scale, offset)
+    };
+
+    let (img_w, img_h) = preview_image.dimensions();
+    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+        .get("masks")
+        .and_then(|m| serde_json::from_value(m.clone()).ok())
+        .unwrap_or_else(Vec::new);
+
+    let scaled_crop_offset = (unscaled_crop_offset.0 * scale, unscaled_crop_offset.1 * scale);
+
+    let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
+        .iter()
+        .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, scale, scaled_crop_offset))
+        .collect();
+
+    let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let lut_path = js_adjustments["lutPath"].as_str();
+    let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
+    let unique_hash = calculate_full_job_hash(&loaded_image.path, &js_adjustments).wrapping_add(1);
+
+    let processed_preview = process_and_get_dynamic_image(
         &context,
         &state,
+        &preview_image,
+        unique_hash,
+        all_adjustments,
+        &mask_bitmaps,
+        lut,
+        "estimate_export_size",
     )?;
 
-    let image_bytes =
-        encode_image_to_bytes(&final_image, &output_format, export_settings.jpeg_quality)?;
+    let preview_bytes =
+        encode_image_to_bytes(&processed_preview, &output_format, export_settings.jpeg_quality)?;
+    let preview_byte_size = preview_bytes.len();
 
-    Ok(image_bytes.len())
+    let (final_full_w, final_full_h) = loaded_image.image.dimensions();
+    let (processed_preview_w, processed_preview_h) = processed_preview.dimensions();
+
+    let pixel_ratio = if processed_preview_w > 0 && processed_preview_h > 0 {
+        (final_full_w as f64 * final_full_h as f64)
+            / (processed_preview_w as f64 * processed_preview_h as f64)
+    } else {
+        1.0
+    };
+
+    let estimated_size = (preview_byte_size as f64 * pixel_ratio) as usize;
+
+    Ok(estimated_size)
 }
 
 #[tauri::command]
@@ -1140,23 +1201,38 @@ async fn estimate_batch_export_size(
         ImageMetadata::default()
     };
     let js_adjustments = metadata.adjustments;
-    let img_bytes = read_file_mapped(Path::new(first_path)).expect("Failed to read file");
-    let base_image =
-        load_and_composite(&img_bytes[..], first_path, &js_adjustments, false).map_err(|e| e.to_string())?;
 
-    let final_image = process_image_for_export(
+    const ESTIMATE_DIM: u32 = 1280;
+    let img_bytes = read_file_mapped(Path::new(first_path)).map_err(|e| e.to_string())?;
+    let original_image =
+        load_base_image_from_bytes(&img_bytes, first_path, true).map_err(|e| e.to_string())?;
+    let base_image_preview = original_image.thumbnail(ESTIMATE_DIM, ESTIMATE_DIM);
+
+    let final_image_preview = process_image_for_export(
         first_path,
-        &base_image,
+        &base_image_preview,
         &js_adjustments,
         &export_settings,
         &context,
         &state,
     )?;
 
-    let image_bytes =
-        encode_image_to_bytes(&final_image, &output_format, export_settings.jpeg_quality)?;
+    let preview_bytes =
+        encode_image_to_bytes(&final_image_preview, &output_format, export_settings.jpeg_quality)?;
+    let single_image_estimated_size = preview_bytes.len();
 
-    Ok(image_bytes.len() * paths.len())
+    let (full_w, full_h) = original_image.dimensions();
+    let (preview_w, preview_h) = final_image_preview.dimensions();
+
+    let pixel_ratio = if preview_w > 0 && preview_h > 0 {
+        (full_w as f64 * full_h as f64) / (preview_w as f64 * preview_h as f64)
+    } else {
+        1.0
+    };
+
+    let single_image_extrapolated_size = (single_image_estimated_size as f64 * pixel_ratio) as usize;
+
+    Ok(single_image_extrapolated_size * paths.len())
 }
 
 fn write_image_with_metadata(
@@ -1528,6 +1604,7 @@ fn generate_preset_preview(
         all_adjustments,
         &mask_bitmaps,
         lut,
+        "generate_preset_preview",
     )?;
 
     let mut buf = Cursor::new(Vec::new());
@@ -1902,6 +1979,7 @@ async fn generate_all_community_previews(
                 all_adjustments,
                 &mask_bitmaps,
                 lut,
+                "generate_all_community_previews",
             )?;
             
             let processed_image = processed_image_dynamic.to_rgb8();
@@ -2071,6 +2149,7 @@ fn generate_preview_for_path(
         all_adjustments,
         &mask_bitmaps,
         lut,
+        "generate_preview_for_path",
     )?;
     let mut buf = Cursor::new(Vec::new());
     final_image

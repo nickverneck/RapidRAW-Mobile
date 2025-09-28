@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use bytemuck;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgba};
@@ -121,6 +122,7 @@ pub fn run_gpu_processing(
     mask_bitmaps: &[ImageBuffer<Luma<u8>, Vec<u8>>],
     lut: Option<Arc<Lut>>,
 ) -> Result<Vec<u8>, String> {
+    let start_time = Instant::now();
     let device = &context.device;
     let queue = &context.queue;
     let max_dim = context.limits.max_texture_dimension_2d;
@@ -431,6 +433,13 @@ pub fn run_gpu_processing(
         }
     }
 
+    let duration = start_time.elapsed();
+    log::info!(
+        "GPU adjustments for {}x{} image took {:?}",
+        width,
+        height,
+        duration
+    );
     Ok(final_pixels)
 }
 
@@ -442,8 +451,10 @@ pub fn process_and_get_dynamic_image(
     all_adjustments: AllAdjustments,
     mask_bitmaps: &[ImageBuffer<Luma<u8>, Vec<u8>>],
     lut: Option<Arc<Lut>>,
+    caller_id: &str,
 ) -> Result<DynamicImage, String> {
     let (width, height) = base_image.dimensions();
+    log::info!("[Caller: {}] GPU processing called for {}x{} image.", caller_id, width, height);
     let device = &context.device;
     let queue = &context.queue;
 
