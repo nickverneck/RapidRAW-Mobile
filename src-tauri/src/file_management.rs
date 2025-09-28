@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use memmap2::{MmapOptions, Mmap};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::hash::{Hash, Hasher};
@@ -95,6 +97,21 @@ impl Default for FilterCriteria {
             rating: 0,
             raw_status: "all".to_string(),
             colors: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ReadFileError {
+    Io(std::io::Error),
+    Locked,
+}
+
+impl fmt::Display for ReadFileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReadFileError::Io(err) => write!(f, "IO error: {}", err),
+            ReadFileError::Locked => write!(f, "File is locked"),
         }
     }
 }
@@ -243,20 +260,6 @@ pub struct ImportSettings {
     pub delete_after_import: bool,
 }
 
-fn read_exif_data(file_bytes: &[u8]) -> HashMap<String, String> {
-    let mut exif_data = HashMap::new();
-    let exif_reader = exif::Reader::new();
-    if let Ok(exif) = exif_reader.read_from_container(&mut Cursor::new(file_bytes)) {
-        for field in exif.fields() {
-            exif_data.insert(
-                field.tag.to_string(),
-                field.display_value().with_unit(&exif).to_string(),
-            );
-        }
-    }
-    exif_data
-}
-
 #[tauri::command]
 pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
     let entries: Vec<ImageFile> = fs::read_dir(path)
@@ -298,9 +301,26 @@ pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
                 (false, None)
             };
 
-            let exif = fs::read(&path)
-                .ok()
-                .map(|bytes| read_exif_data(&bytes));
+            // commented out as TIFF parsing by exif-rs reads the file to the end, causing a huge UI slowdown: https://github.com/kamadak/exif-rs/issues/42
+            /*
+            let exif = {
+                let mut exif_data = HashMap::new();
+                if let Ok(file) = fs::File::open(&path) {
+                    let mut buf_reader = BufReader::new(&file);
+                    let exif_reader = exif::Reader::new();
+                    if let Ok(exif) = exif_reader.read_from_container(&mut buf_reader) {
+                        for field in exif.fields() {
+                            exif_data.insert(
+                                field.tag.to_string(),
+                                field.display_value().with_unit(&exif).to_string(),
+                            );
+                        }
+                    }
+                }
+                Some(exif_data)
+            };
+            */
+            let exif = Some(HashMap::new()); // Return empty EXIF data for now :(
 
             ImageFile {
                 path: path_str,
@@ -395,6 +415,26 @@ pub fn get_sidecar_path(image_path: &str) -> PathBuf {
     path.with_file_name(new_filename)
 }
 
+pub fn read_file_mapped(path: &Path) -> Result<Mmap, ReadFileError> {
+    let file = fs::File::open(path).map_err(ReadFileError::Io)?;
+    if file.try_lock_shared().is_err() {
+        return Err(ReadFileError::Locked);
+    }
+    let mmap = unsafe {
+        MmapOptions::new()
+            .len(file.metadata().map_err(ReadFileError::Io)?.len() as usize)
+            .map(&file)
+            .map_err(ReadFileError::Io)?
+    };
+    Ok(mmap)
+}
+
+/*pub fn image_to_bytes(img: &DynamicImage) -> Vec<u8> {
+    img.to_rgba8().into_raw()
+}
+*/
+
+
 pub fn generate_thumbnail_data(
     path_str: &str,
     gpu_context: Option<&GpuContext>,
@@ -409,12 +449,16 @@ pub fn generate_thumbnail_data(
     let adjustments = metadata
         .as_ref()
         .map_or(serde_json::Value::Null, |m| m.adjustments.clone());
+    
+    let composite_image = if let Some(img) = preloaded_image {
+            
+            image_loader::composite_patches_on_image(img, &adjustments)?
+        } else {
+            
+            let mmap = read_file_mapped(Path::new(path_str)).expect("Failed to map file");
+            image_loader::load_and_composite(&mmap, path_str, &adjustments, true)?
+        };
 
-    let base_image = if let Some(img) = preloaded_image {
-        image_loader::composite_patches_on_image(img, &adjustments)?
-    } else {
-        image_loader::load_and_composite(path_str, &adjustments, true)?
-    };
 
     if let (Some(context), Some(meta)) = (gpu_context, metadata) {
         if !meta.adjustments.is_null() {
@@ -422,7 +466,7 @@ pub fn generate_thumbnail_data(
             const THUMBNAIL_PROCESSING_DIM: u32 = 1280;
             let orientation_steps =
                 meta.adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
-            let coarse_rotated_image = apply_coarse_rotation(base_image, orientation_steps);
+            let coarse_rotated_image = apply_coarse_rotation(composite_image, orientation_steps);
             let (full_w, full_h) = coarse_rotated_image.dimensions();
 
             let (processing_base, scale_for_gpu) =
@@ -528,7 +572,7 @@ pub fn generate_thumbnail_data(
 
     let fallback_orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
     Ok(apply_coarse_rotation(
-        base_image,
+        composite_image,
         fallback_orientation_steps,
     ))
 }
@@ -540,6 +584,7 @@ fn encode_thumbnail(image: &DynamicImage) -> Result<Vec<u8>> {
     encoder.encode_image(&thumbnail.to_rgba8())?;
     Ok(buf.into_inner())
 }
+
 
 fn generate_single_thumbnail_and_cache(
     path_str: &str,

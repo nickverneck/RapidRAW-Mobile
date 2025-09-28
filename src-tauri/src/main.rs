@@ -44,6 +44,7 @@ use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
 use little_exif::rational::uR64;
+use rayon::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,7 +61,7 @@ use crate::ai_processing::{
     generate_image_embeddings, get_or_init_ai_models, run_sam_decoder, run_sky_seg_model,
     run_u2netp_model,
 };
-use crate::file_management::{AppSettings, get_sidecar_path, load_settings};
+use crate::file_management::{AppSettings, get_sidecar_path,read_file_mapped, load_settings};
 use crate::formats::is_raw_file;
 use crate::image_loader::{
     composite_patches_on_image, load_and_composite, load_base_image_from_bytes,
@@ -147,15 +148,6 @@ struct ExportSettings {
     keep_metadata: bool,
     strip_gps: bool,
     filename_template: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct GitHubContent {
-    name: String,
-    path: String,
-    download_url: String,
-    #[serde(rename = "type")]
-    content_type: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -941,131 +933,143 @@ async fn batch_export_images(
         let output_folder_path = std::path::Path::new(&output_folder);
         let total_paths = paths.len();
 
-        for (i, image_path_str) in paths.iter().enumerate() {
-            if app_handle
-                .state::<AppState>()
-                .export_task_handle
-                .lock()
-                .unwrap()
-                .is_none()
-            {
-                println!("Export cancelled during batch processing.");
-                let _ = app_handle.emit("export-cancelled", ());
-                return;
-            }
 
-            let _ = app_handle.emit(
-                "batch-export-progress",
-                serde_json::json!({ "current": i, "total": total_paths, "path": image_path_str }),
-            );
-
-            let processing_result: Result<(), String> = (|| {
-                let sidecar_path = get_sidecar_path(image_path_str);
-                let metadata: ImageMetadata = if sidecar_path.exists() {
-                    let file_content =
-                        fs::read_to_string(sidecar_path).map_err(|e| e.to_string())?;
-                    serde_json::from_str(&file_content).unwrap_or_default()
-                } else {
-                    ImageMetadata::default()
-                };
-                let js_adjustments = metadata.adjustments;
-
-                let base_image = load_and_composite(image_path_str, &js_adjustments, false)
-                    .map_err(|e| e.to_string())?;
-
-                let final_image = process_image_for_export(
-                    image_path_str,
-                    &base_image,
-                    &js_adjustments,
-                    &export_settings,
-                    &context,
-                    &state,
-                )?;
-
-                let original_path = std::path::Path::new(image_path_str);
-
-                let file_date: DateTime<Utc> = Metadata::new_from_path(original_path)
-                    .ok()
-                    .and_then(|metadata| {
-                        metadata
-                            .get_tag(&ExifTag::DateTimeOriginal("".to_string()))
-                            .next()
-                            .and_then(|tag| {
-                                if let &ExifTag::DateTimeOriginal(ref dt_str) = tag {
-                                    chrono::NaiveDateTime::parse_from_str(
-                                        dt_str,
-                                        "%Y:%m:%d %H:%M:%S",
-                                    )
-                                    .ok()
-                                    .map(|dt| DateTime::from_naive_utc_and_offset(dt, Utc))
-                                } else {
-                                    None
-                                }
-                            })
-                    })
-                    .unwrap_or_else(|| {
-                        fs::metadata(original_path)
-                            .ok()
-                            .and_then(|m| m.created().ok())
-                            .map(DateTime::<Utc>::from)
-                            .unwrap_or_else(Utc::now)
-                    });
-
-                let filename_template = export_settings
-                    .filename_template
-                    .as_deref()
-                    .unwrap_or("{original_filename}_edited");
-                let new_stem = crate::file_management::generate_filename_from_template(
-                    filename_template,
-                    original_path,
-                    i + 1,
-                    total_paths,
-                    &file_date,
+        let results: Vec<Result<(), String>> = paths
+            .par_iter()
+            .enumerate()
+            .map(|(global_index, image_path_str)| {
+                if app_handle.state::<AppState>().export_task_handle.lock().unwrap().is_none() {
+                    return Err("Export cancelled".to_string());
+                }
+        
+                let _ = app_handle.emit(
+                    "batch-export-progress",
+                    serde_json::json!({
+                        "current": global_index,
+                        "total": total_paths,
+                        "path": image_path_str
+                    }),
                 );
-                let new_filename = format!("{}.{}", new_stem, output_format);
-                let output_path = output_folder_path.join(new_filename);
 
-                let mut image_bytes = encode_image_to_bytes(
-                    &final_image,
-                    &output_format,
-                    export_settings.jpeg_quality,
-                )?;
+                    
+                    let result: Result<(), String> = (|| {
+                        let sidecar_path = get_sidecar_path(image_path_str);
+                        let metadata: ImageMetadata = if sidecar_path.exists() {
+                            let file_content = fs::read_to_string(sidecar_path)
+                                .map_err(|e| format!("Failed to read sidecar: {}", e))?;
+                            serde_json::from_str(&file_content).unwrap_or_default()
+                        } else {
+                            ImageMetadata::default()
+                        };
+                        let js_adjustments = metadata.adjustments;
+                        
+                        
+                        let mmap = read_file_mapped(Path::new(image_path_str))
+                            .map_err(|e| format!("Failed to mmap file {}: {}", image_path_str, e))?;
+                        
+                        let base_image = load_and_composite(&mmap[..], image_path_str, &js_adjustments, false)
+                            .map_err(|e| format!("Failed to load image: {}", e))?;
 
-                write_image_with_metadata(
-                    &mut image_bytes,
-                    image_path_str,
-                    &output_format,
-                    export_settings.keep_metadata,
-                    export_settings.strip_gps,
-                )?;
+                        let final_image = process_image_for_export(
+                            image_path_str,
+                            &base_image,
+                            &js_adjustments,
+                            &export_settings,
+                            &context,
+                            &state,
+                        )?;
 
-                fs::write(&output_path, image_bytes).map_err(|e| e.to_string())?;
+                        let original_path = std::path::Path::new(image_path_str);
 
-                Ok(())
-            })();
+                        let file_date: DateTime<Utc> = Metadata::new_from_path(original_path)
+                            .ok()
+                            .and_then(|metadata| {
+                                metadata
+                                    .get_tag(&ExifTag::DateTimeOriginal("".to_string()))
+                                    .next()
+                                    .and_then(|tag| {
+                                        if let &ExifTag::DateTimeOriginal(ref dt_str) = tag {
+                                            chrono::NaiveDateTime::parse_from_str(
+                                                dt_str,
+                                                "%Y:%m:%d %H:%M:%S",
+                                            )
+                                            .ok()
+                                            .map(|dt| DateTime::from_naive_utc_and_offset(dt, Utc))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                            })
+                            .unwrap_or_else(|| {
+                                fs::metadata(original_path)
+                                    .ok()
+                                    .and_then(|m| m.created().ok())
+                                    .map(DateTime::<Utc>::from)
+                                    .unwrap_or_else(Utc::now)
+                            });
 
-            if let Err(e) = processing_result {
-                eprintln!("Failed to export {}: {}", image_path_str, e);
+                        let filename_template = export_settings
+                            .filename_template
+                            .as_deref()
+                            .unwrap_or("{original_filename}_edited");
+                        let new_stem = crate::file_management::generate_filename_from_template(
+                            filename_template,
+                            original_path,
+                            global_index + 1,
+                            total_paths,
+                            &file_date,
+                        );
+                        let new_filename = format!("{}.{}", new_stem, output_format);
+                        let output_path = output_folder_path.join(new_filename);
+
+                        let mut image_bytes = encode_image_to_bytes(
+                            &final_image,
+                            &output_format,
+                            export_settings.jpeg_quality,
+                        )?;
+
+                        write_image_with_metadata(
+                            &mut image_bytes,
+                            image_path_str,
+                            &output_format,
+                            export_settings.keep_metadata,
+                            export_settings.strip_gps,
+                        )?;
+
+                        fs::write(&output_path, image_bytes)
+                            .map_err(|e| format!("Failed to write output: {}", e))?;
+
+                        Ok(())
+                    })();
+
+                    result
+            })
+            .collect();
+
+        
+        let mut error_count = 0;
+        for result in results {
+            if let Err(e) = result {
+                error_count += 1;
+                eprintln!("Export error: {}", e);
                 let _ = app_handle.emit("export-error", e);
-                *app_handle
-                    .state::<AppState>()
-                    .export_task_handle
-                    .lock()
-                    .unwrap() = None;
-                return;
             }
         }
 
-        let _ = app_handle.emit(
-            "batch-export-progress",
-            serde_json::json!({ "current": total_paths, "total": total_paths, "path": "" }),
-        );
-        let _ = app_handle.emit("export-complete", ());
-        *app_handle
-            .state::<AppState>()
-            .export_task_handle
-            .lock()
-            .unwrap() = None;
+        if error_count > 0 {
+            let _ = app_handle.emit(
+                "export-complete-with-errors", 
+                serde_json::json!({ "errors": error_count, "total": total_paths })
+            );
+        } else {
+            let _ = app_handle.emit(
+                "batch-export-progress",
+                serde_json::json!({ "current": total_paths, "total": total_paths, "path": "" }),
+            );
+            let _ = app_handle.emit("export-complete", ());
+        }
+
+        *app_handle.state::<AppState>().export_task_handle.lock().unwrap() = None;
     });
 
     *state.export_task_handle.lock().unwrap() = Some(task);
@@ -1136,9 +1140,9 @@ async fn estimate_batch_export_size(
         ImageMetadata::default()
     };
     let js_adjustments = metadata.adjustments;
-
+    let img_bytes = read_file_mapped(Path::new(first_path)).expect("Failed to read file");
     let base_image =
-        load_and_composite(first_path, &js_adjustments, false).map_err(|e| e.to_string())?;
+        load_and_composite(&img_bytes[..], first_path, &js_adjustments, false).map_err(|e| e.to_string())?;
 
     let final_image = process_image_for_export(
         first_path,
@@ -2040,7 +2044,9 @@ fn generate_preview_for_path(
     state: tauri::State<AppState>,
 ) -> Result<Response, String> {
     let context = get_or_init_gpu_context(&state)?;
-    let base_image = load_and_composite(&path, &js_adjustments, false)
+    let new_path = Path::new(&path);
+    let image = read_file_mapped(&new_path).map_err(|e| e.to_string())?;
+    let base_image = load_and_composite(&image[..], &path, &js_adjustments, false)
         .map_err(|e| e.to_string())?;
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(&base_image, &js_adjustments, 1.0);
@@ -2212,11 +2218,14 @@ fn main() {
                     "libonnxruntime.dylib"
                 }
             };
-
-            let ort_library_path = resource_path.join(ort_library_name);
-            // TODO: Audit that the environment access only happens in single-threaded code.
-            unsafe { std::env::set_var("ORT_DYLIB_PATH", &ort_library_path) };
-            log::info!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
+            let ort_library_path = Mutex::new(resource_path.join(ort_library_name));
+            {
+                let path = ort_library_path.lock().unwrap();
+                unsafe {
+                    std::env::set_var("ORT_DYLIB_PATH", &*path);
+                }
+                println!("Set ORT_DYLIB_PATH to: {}", path.display());
+            }
 
             let settings: AppSettings = load_settings(app_handle.clone()).unwrap_or_default();
             let window_cfg = app.config().app.windows.get(0).unwrap().clone();

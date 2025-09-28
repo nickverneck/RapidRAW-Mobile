@@ -11,7 +11,6 @@ use rawler::Orientation;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde_json::{Value, from_value};
-use std::fs;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,12 +24,12 @@ struct PatchMaskInfo {
 }
 
 pub fn load_and_composite(
+    base_image: &[u8],
     path: &str,
     adjustments: &Value,
     use_fast_raw_dev: bool,
 ) -> Result<DynamicImage> {
-    let file_bytes = fs::read(path)?;
-    let base_image = load_base_image_from_bytes(&file_bytes, path, use_fast_raw_dev)?;
+    let base_image = load_base_image_from_bytes(base_image, path, use_fast_raw_dev)?;
     composite_patches_on_image(&base_image, adjustments)
 }
 
