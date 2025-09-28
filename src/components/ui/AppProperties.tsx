@@ -49,6 +49,7 @@ export enum Invokes {
   LoadPresets = 'load_presets',
   LoadSettings = 'load_settings',
   MoveFiles = 'move_files',
+  ReadExifForPaths = 'read_exif_for_paths',
   RenameFiles = 'rename_files',
   RenameFolder = 'rename_folder',
   ResetAdjustmentsForPaths = 'reset_adjustments_for_paths',
@@ -126,6 +127,7 @@ export interface AppSettings {
   comfyuiWorkflowConfig?: ComfyUIWorkflowConfig;
   decorations?: any;
   enableAiTagging?: boolean;
+  enableExifReading?: boolean;
   filterCriteria?: FilterCriteria;
   lastFolderState?: any;
   lastRootPath: string | null;

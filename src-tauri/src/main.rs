@@ -2291,6 +2291,7 @@ fn main() {
             image_processing::generate_histogram,
             image_processing::generate_waveform,
             image_processing::calculate_auto_adjustments,
+            file_management::read_exif_for_paths,
             file_management::list_images_in_dir,
             file_management::get_folder_tree,
             file_management::generate_thumbnails,

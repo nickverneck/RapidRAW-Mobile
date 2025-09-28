@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::io::BufReader;
 
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
@@ -199,6 +200,7 @@ pub struct AppSettings {
     pub ai_provider: Option<String>,
     #[serde(default = "default_adjustment_visibility")]
     pub adjustment_visibility: HashMap<String, bool>,
+    pub enable_exif_reading: Option<bool>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -238,6 +240,7 @@ impl Default for AppSettings {
             thumbnail_aspect_ratio: Some("cover".to_string()),
             ai_provider: Some("cpu".to_string()),
             adjustment_visibility: default_adjustment_visibility(),
+            enable_exif_reading: Some(false),
         }
     }
 }
@@ -258,6 +261,40 @@ pub struct ImportSettings {
     pub organize_by_date: bool,
     pub date_folder_format: String,
     pub delete_after_import: bool,
+}
+
+#[tauri::command]
+pub async fn read_exif_for_paths(paths: Vec<String>) -> Result<HashMap<String, HashMap<String, String>>, String> {
+    let exif_data: HashMap<String, HashMap<String, String>> = paths
+        .par_iter()
+        .filter_map(|path_str| {
+            let path = Path::new(path_str);
+            let file = match fs::File::open(path) {
+                Ok(f) => f,
+                Err(_) => return None,
+            };
+            let mut buf_reader = BufReader::new(&file);
+            let exif_reader = exif::Reader::new();
+
+            if let Ok(exif) = exif_reader.read_from_container(&mut buf_reader) {
+                let mut exif_map = HashMap::new();
+                for field in exif.fields() {
+                    exif_map.insert(
+                        field.tag.to_string(),
+                        field.display_value().with_unit(&exif).to_string(),
+                    );
+                }
+                if exif_map.is_empty() {
+                    None
+                } else {
+                    Some((path_str.clone(), exif_map))
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(exif_data)
 }
 
 #[tauri::command]
@@ -301,33 +338,12 @@ pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
                 (false, None)
             };
 
-            // commented out as TIFF parsing by exif-rs reads the file to the end, causing a huge UI slowdown: https://github.com/kamadak/exif-rs/issues/42
-            /*
-            let exif = {
-                let mut exif_data = HashMap::new();
-                if let Ok(file) = fs::File::open(&path) {
-                    let mut buf_reader = BufReader::new(&file);
-                    let exif_reader = exif::Reader::new();
-                    if let Ok(exif) = exif_reader.read_from_container(&mut buf_reader) {
-                        for field in exif.fields() {
-                            exif_data.insert(
-                                field.tag.to_string(),
-                                field.display_value().with_unit(&exif).to_string(),
-                            );
-                        }
-                    }
-                }
-                Some(exif_data)
-            };
-            */
-            let exif = Some(HashMap::new()); // Return empty EXIF data for now :(
-
             ImageFile {
                 path: path_str,
                 modified,
                 is_edited,
                 tags,
-                exif,
+                exif: None,
             }
         })
         .collect();

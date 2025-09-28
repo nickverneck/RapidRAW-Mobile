@@ -887,6 +887,14 @@ function App() {
       return numVal === null || isNaN(numVal) ? null : numVal;
     };
 
+    const parseFocalLength = (val: string | undefined): number | null => {
+      if (!val) return null;
+      const match = val.match(/(\d+(\.\d+)?)/);
+      if (!match) return null;
+      const numVal = parseFloat(match[0]);
+      return isNaN(numVal) ? null : numVal;
+    };
+
     list.sort((a, b) => {
       const { key, order } = sortCriteria;
       let comparison = 0;
@@ -933,6 +941,12 @@ function App() {
           const apertureA = parseAperture(a.exif?.FNumber);
           const apertureB = parseAperture(b.exif?.FNumber);
           comparison = compareNullable(apertureA, apertureB);
+          break;
+        }
+        case 'focal_length': {
+          const focalA = parseFocalLength(a.exif?.FocalLength);
+          const focalB = parseFocalLength(b.exif?.FocalLength);
+          comparison = compareNullable(focalA, focalB);
           break;
         }
         case 'date':
@@ -1271,7 +1285,6 @@ function App() {
           });
         }
 
-        const imageListPromise = invoke(Invokes.ListImagesInDir, { path });
         if (isNewRoot) {
           setIsTreeLoading(true);
           handleSettingsChange({ ...appSettings, lastRootPath: path } as AppSettings);
@@ -1285,8 +1298,8 @@ function App() {
             setIsTreeLoading(false);
           }
         }
-        const [files]: any = await Promise.all([imageListPromise]);
-        setImageList(files);
+
+        setImageList([]);
         setImageRatings({});
         setMultiSelectedPaths([]);
         setLibraryActivePath(null);
@@ -1296,6 +1309,40 @@ function App() {
           setUncroppedAdjustedPreviewUrl(null);
           setHistogram(null);
         }
+        const files: ImageFile[] = await invoke(Invokes.ListImagesInDir, { path });
+        const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
+        const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
+        const shouldReadExif = appSettings?.enableExifReading ?? true;
+
+        if (shouldReadExif && files.length > 0) {
+          const paths = files.map((f: ImageFile) => f.path);
+
+          if (isExifSortActive) {
+            const exifDataMap: Record<string, any> = await invoke(Invokes.ReadExifForPaths, { paths });
+            const finalImageList = files.map((image) => ({
+              ...image,
+              exif: exifDataMap[image.path] || image.exif || null,
+            }));
+            setImageList(finalImageList);
+          } else {
+            setImageList(files);
+            invoke(Invokes.ReadExifForPaths, { paths })
+              .then((exifDataMap: any) => {
+                setImageList((currentImageList) =>
+                  currentImageList.map((image) => ({
+                    ...image,
+                    exif: exifDataMap[image.path] || image.exif || null,
+                  })),
+                );
+              })
+              .catch((err) => {
+                console.error('Failed to read EXIF data in background:', err);
+              });
+          }
+        } else {
+          setImageList(files);
+        }
+
         invoke(Invokes.StartBackgroundIndexing, { folderPath: path }).catch((err) => {
           console.error('Failed to start background indexing:', err);
         });
@@ -1307,7 +1354,7 @@ function App() {
         setIsViewLoading(false);
       }
     },
-    [appSettings, handleSettingsChange, selectedImage, rootPath],
+    [appSettings, handleSettingsChange, selectedImage, rootPath, sortCriteria.key],
   );
 
   const handleLibraryRefresh = useCallback(() => {

@@ -116,6 +116,7 @@ interface SearchInputProps {
 interface SortOptionsProps {
   sortCriteria: SortCriteria;
   setSortCriteria(criteria: SortCriteria): void;
+  sortOptions: Array<Omit<SortCriteria, 'order'> & { label?: string; disabled?: boolean }>;
 }
 
 interface ThumbnailProps {
@@ -159,19 +160,10 @@ interface ViewOptionsProps {
   setFilterCriteria(criteria: Partial<FilterCriteria>): void;
   setSortCriteria(criteria: SortCriteria): void;
   sortCriteria: SortCriteria;
+  sortOptions: Array<Omit<SortCriteria, 'order'> & { label?: string; disabled?: boolean }>;
   thumbnailSize: ThumbnailSize;
   thumbnailAspectRatio: ThumbnailAspectRatio;
 }
-
-const sortOptions: Array<Omit<SortCriteria, 'order'>> = [
-  { key: 'name', label: 'File Name' },
-  { key: 'date', label: 'Date Modified' },
-  { key: 'rating', label: 'Rating' },
-  /*{ key: 'iso', label: 'ISO' }, COMMENTED OUT BECAUSE OF https://github.com/kamadak/exif-rs/issues/42 -> see more in file_management.rs
-  { key: 'date_taken', label: 'Date Taken' },
-  { key: 'shutter_speed', label: 'Shutter Speed' },
-  { key: 'aperture', label: 'Aperture' },*/
-];
 
 const ratingFilterOptions: Array<KeyValueLabel> = [
   { value: 0, label: 'Show All' },
@@ -506,7 +498,7 @@ function FilterOptions({ filterCriteria, setFilterCriteria }: FilterOptionProps)
   );
 }
 
-function SortOptions({ sortCriteria, setSortCriteria }: SortOptionsProps) {
+function SortOptions({ sortCriteria, setSortCriteria, sortOptions }: SortOptionsProps) {
   const handleKeyChange = (key: string) => {
     setSortCriteria((prev: SortCriteria) => ({ ...prev, key }));
   };
@@ -536,16 +528,18 @@ function SortOptions({ sortCriteria, setSortCriteria }: SortOptionsProps) {
           )}
         </button>
       </div>
-      {sortOptions.map((option: Omit<SortCriteria, 'order'>) => {
+      {sortOptions.map((option) => {
         const isSelected = sortCriteria.key === option.key;
         return (
           <button
             className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${
               isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'
-            }`}
+            } ${option.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             key={option.key}
-            onClick={() => handleKeyChange(option.key)}
+            onClick={() => !option.disabled && handleKeyChange(option.key)}
             role="menuitem"
+            disabled={option.disabled}
+            title={option.disabled ? 'Enable EXIF Reading in Settings to use this option.' : undefined}
           >
             <span>{option.label}</span>
             {isSelected && <Check size={16} />}
@@ -563,6 +557,7 @@ function ViewOptionsDropdown({
   setFilterCriteria,
   setSortCriteria,
   sortCriteria,
+  sortOptions,
   thumbnailSize,
   thumbnailAspectRatio,
 }: ViewOptionsProps) {
@@ -596,7 +591,7 @@ function ViewOptionsDropdown({
           <FilterOptions filterCriteria={filterCriteria} setFilterCriteria={setFilterCriteria} />
         </div>
         <div className="w-1/4 p-2">
-          <SortOptions sortCriteria={sortCriteria} setSortCriteria={setSortCriteria} />
+          <SortOptions sortCriteria={sortCriteria} setSortCriteria={setSortCriteria} sortOptions={sortOptions} />
         </div>
       </div>
     </DropdownMenu>
@@ -788,6 +783,30 @@ export default function MainLibrary({
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
   const hideTimeoutRef = useRef<number | null>(null);
   const showTimeoutRef = useRef<number | null>(null);
+
+  const sortOptions = useMemo(() => {
+    const exifEnabled = appSettings?.enableExifReading ?? true;
+    return [
+      { key: 'name', label: 'File Name' },
+      { key: 'date', label: 'Date Modified' },
+      { key: 'rating', label: 'Rating' },
+      { key: 'date_taken', label: 'Date Taken', disabled: !exifEnabled },
+      { key: 'focal_length', label: 'Focal Length', disabled: !exifEnabled },
+      { key: 'iso', label: 'ISO', disabled: !exifEnabled },
+      { key: 'shutter_speed', label: 'Shutter Speed', disabled: !exifEnabled },
+      { key: 'aperture', label: 'Aperture', disabled: !exifEnabled },
+    ];
+  }, [appSettings?.enableExifReading]);
+
+  useEffect(() => {
+    const exifEnabled = appSettings?.enableExifReading ?? true;
+    const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
+    const isCurrentSortExif = exifSortKeys.includes(sortCriteria.key);
+
+    if (!exifEnabled && isCurrentSortExif) {
+      setSortCriteria({ key: 'name', order: SortDirection.Ascending });
+    }
+  }, [appSettings?.enableExifReading, sortCriteria.key, setSortCriteria]);
 
   useEffect(() => {
     if (isThumbnailsLoading) {
@@ -1082,6 +1101,7 @@ export default function MainLibrary({
             setFilterCriteria={setFilterCriteria}
             setSortCriteria={setSortCriteria}
             sortCriteria={sortCriteria}
+            sortOptions={sortOptions}
             thumbnailSize={thumbnailSize}
             thumbnailAspectRatio={thumbnailAspectRatio}
           />

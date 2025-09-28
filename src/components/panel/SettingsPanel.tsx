@@ -543,6 +543,18 @@ export default function SettingsPanel({
               </SettingItem>
 
               <SettingItem
+                label="EXIF Library Sorting"
+                description="Read EXIF data (ISO, aperture, etc.) on folder load at the cost of slower folder loading when using EXIF sorting."
+                >
+                <Switch
+                  checked={appSettings?.enableExifReading ?? false}
+                  id="exif-reading-toggle"
+                  label="Enable EXIF Reading"
+                  onChange={(checked) => onSettingsChange({ ...appSettings, enableExifReading: checked })}
+                />
+              </SettingItem>
+
+              <SettingItem
                 description="Enables or disables transparency effects for the application window. Relaunch required."
                 label="Window Effects"
               >
