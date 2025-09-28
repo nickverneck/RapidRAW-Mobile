@@ -537,7 +537,7 @@ export default function SettingsPanel({
                 <Switch
                   checked={appSettings?.enableAiTagging ?? false}
                   id="ai-tagging-toggle"
-                  label="Enable Automatic AI Tagging"
+                  label="Automatic AI Tagging"
                   onChange={(checked) => onSettingsChange({ ...appSettings, enableAiTagging: checked })}
                 />
               </SettingItem>
@@ -549,7 +549,7 @@ export default function SettingsPanel({
                 <Switch
                   checked={appSettings?.enableExifReading ?? false}
                   id="exif-reading-toggle"
-                  label="Enable EXIF Reading"
+                  label="EXIF Reading"
                   onChange={(checked) => onSettingsChange({ ...appSettings, enableExifReading: checked })}
                 />
               </SettingItem>
