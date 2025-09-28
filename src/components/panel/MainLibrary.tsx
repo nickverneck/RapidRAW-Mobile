@@ -786,7 +786,7 @@ export default function MainLibrary({
   const showTimeoutRef = useRef<number | null>(null);
 
   const sortOptions = useMemo(() => {
-    const exifEnabled = appSettings?.enableExifReading ?? true;
+    const exifEnabled = appSettings?.enableExifReading ?? false;
     return [
       { key: 'name', label: 'File Name' },
       { key: 'date', label: 'Date Modified' },
