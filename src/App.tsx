@@ -20,6 +20,7 @@ import {
   FolderInput,
   FolderPlus,
   Images,
+  LayoutTemplate,
   Redo,
   RotateCcw,
   Star,
@@ -54,6 +55,7 @@ import ConfirmModal from './components/modals/ConfirmModal';
 import ImportSettingsModal from './components/modals/ImportSettingsModal';
 import RenameFileModal from './components/modals/RenameFileModal';
 import PanoramaModal from './components/modals/PanoramaModal';
+import CollageModal from './components/modals/CollageModal';
 import CullingModal from './components/modals/CullingModal';
 import { useHistoryState } from './hooks/useHistoryState';
 import Resizer from './components/ui/Resizer';
@@ -135,6 +137,11 @@ interface MultiSelectOptions {
   onSimpleClick(p: any): void;
   updateLibraryActivePath: boolean;
   shiftAnchor: string | null;
+}
+
+interface CollageModalState {
+  isOpen: boolean;
+  sourceImages: ImageFile[];
 }
 
 interface PanoramaModalState {
@@ -325,6 +332,10 @@ function App() {
     error: null,
     pathsToCull: [],
   });
+  const [collageModalState, setCollageModalState] = useState<CollageModalState>({
+    isOpen: false,
+    sourceImages: [],
+  });
   const [customEscapeHandler, setCustomEscapeHandler] = useState(null);
   const [isGeneratingAiMask, setIsGeneratingAiMask] = useState(false);
   const [isComfyUiConnected, setIsComfyUiConnected] = useState(false);
@@ -334,7 +345,7 @@ function App() {
   const { showContextMenu } = useContextMenu();
   const imagePathList = useMemo(() => imageList.map((f: ImageFile) => f.path), [imageList]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
-  useThumbnails(imageList, setThumbnails);
+  const { loading: isThumbnailsLoading } = useThumbnails(imageList, setThumbnails);
   const transformWrapperRef = useRef<any>(null);
   const isProgrammaticZoom = useRef(false);
   const isInitialMount = useRef(true);
@@ -856,16 +867,85 @@ function App() {
 
     const list = [...filteredBySearch];
 
+    const parseShutter = (val: string | undefined): number | null => {
+      if (!val) return null;
+      const cleanVal = val.replace(/s/i, '').trim();
+      const parts = cleanVal.split('/');
+      if (parts.length === 2) {
+        const num = parseFloat(parts[0]);
+        const den = parseFloat(parts[1]);
+        return den !== 0 ? num / den : null;
+      }
+      const numVal = parseFloat(cleanVal);
+      return isNaN(numVal) ? null : numVal;
+    };
+
+    const parseAperture = (val: string | undefined): number | null => {
+      if (!val) return null;
+      const match = val.match(/(\d+(\.\d+)?)/);
+      const numVal = match ? parseFloat(match[0]) : null;
+      return numVal === null || isNaN(numVal) ? null : numVal;
+    };
+
     list.sort((a, b) => {
       const { key, order } = sortCriteria;
       let comparison = 0;
-      if (key === 'date') {
-        comparison = a.modified - b.modified;
-      } else if (key === 'rating') {
-        comparison = (imageRatings[a.path] || 0) - (imageRatings[b.path] || 0);
-      } else {
-        comparison = a.path.localeCompare(b.path);
+
+      const compareNullable = (valA: any, valB: any) => {
+        if (valA !== null && valB !== null) {
+          if (valA < valB) return -1;
+          if (valA > valB) return 1;
+          return 0;
+        }
+        if (valA !== null) return -1;
+        if (valB !== null) return 1;
+        return 0;
+      };
+
+      switch (key) {
+        case 'date_taken': {
+          const dateA = a.exif?.DateTimeOriginal;
+          const dateB = b.exif?.DateTimeOriginal;
+          comparison = compareNullable(dateA, dateB);
+          if (comparison === 0) comparison = a.modified - b.modified;
+          break;
+        }
+        case 'iso': {
+          const getIso = (exif: { [key: string]: string } | null): number | null => {
+            if (!exif) return null;
+            const isoStr = exif.PhotographicSensitivity || exif.ISOSpeedRatings;
+            if (!isoStr) return null;
+            const isoNum = parseInt(isoStr, 10);
+            return isNaN(isoNum) ? null : isoNum;
+          };
+          const isoA = getIso(a.exif);
+          const isoB = getIso(b.exif);
+          comparison = compareNullable(isoA, isoB);
+          break;
+        }
+        case 'shutter_speed': {
+          const shutterA = parseShutter(a.exif?.ExposureTime);
+          const shutterB = parseShutter(b.exif?.ExposureTime);
+          comparison = compareNullable(shutterA, shutterB);
+          break;
+        }
+        case 'aperture': {
+          const apertureA = parseAperture(a.exif?.FNumber);
+          const apertureB = parseAperture(b.exif?.FNumber);
+          comparison = compareNullable(apertureA, apertureB);
+          break;
+        }
+        case 'date':
+          comparison = a.modified - b.modified;
+          break;
+        case 'rating':
+          comparison = (imageRatings[a.path] || 0) - (imageRatings[b.path] || 0);
+          break;
+        default:
+          comparison = a.path.localeCompare(b.path);
+          break;
       }
+
       return order === SortDirection.Ascending ? comparison : -comparison;
     });
     return list;
@@ -2091,6 +2171,21 @@ function App() {
     }
   };
 
+  const handleSaveCollage = async (base64Data: string, firstPath: string): Promise<string> => {
+    try {
+      const savedPath: string = await invoke(Invokes.SaveCollage, {
+        base64Data,
+        firstPathStr: firstPath,
+      });
+      handleLibraryRefresh();
+      return savedPath;
+    } catch (err) {
+      console.error('Failed to save collage:', err);
+      setError(`Failed to save collage: ${err}`);
+      throw err;
+    }
+  };
+
   useEffect(() => {
     if (selectedImage?.isReady) {
       applyAdjustments(adjustments);
@@ -2147,21 +2242,20 @@ function App() {
       }
 
       setIsTreeLoading(true);
-      try {
-        const treeData = await invoke(Invokes.GetFolderTree, { path: root });
-        setFolderTree(treeData);
-      } catch (err) {
-        console.error('Failed to load folder tree:', err);
-        setError(`Failed to load folder tree: ${err}.`);
-      } finally {
-        setIsTreeLoading(false);
-      }
+      const treeData = await invoke(Invokes.GetFolderTree, { path: root });
+      setFolderTree(treeData);
+      setIsTreeLoading(false);
 
       await handleSelectSubfolder(pathToSelect, false);
     };
     restore().catch((err) => {
-      console.error('Failed to restore session:', err);
-      setError('Failed to restore session.');
+      console.error('Failed to restore session, folder might be missing:', err);
+      setError('Failed to restore session. The last used folder may have been moved or deleted.');
+      if (appSettings) {
+        handleSettingsChange({ ...appSettings, lastRootPath: null, lastFolderState: null });
+      }
+      handleGoHome();
+      setIsTreeLoading(false);
     });
   };
 
@@ -2571,9 +2665,51 @@ function App() {
     const resetLabel = isSingleSelection ? 'Reset Adjustments' : `Reset Adjustments on ${selectionCount} Images`;
     const deleteLabel = isSingleSelection ? 'Delete Image' : `Delete ${selectionCount} Images`;
     const copyLabel = isSingleSelection ? 'Copy Image' : `Copy ${selectionCount} Images`;
-    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust ${selectionCount} Images`;
+    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust Images`;
     const renameLabel = isSingleSelection ? 'Rename Image' : `Rename ${selectionCount} Images`;
-    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull ${selectionCount} Images`;
+    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull Images`;
+    const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
+    const stitchLabel = `Stitch Panorama`;
+
+    const hasAssociatedFiles = finalSelection.some((selectedPath) => {
+      const lastDotIndex = selectedPath.lastIndexOf('.');
+      if (lastDotIndex === -1) return false;
+      const basePath = selectedPath.substring(0, lastDotIndex);
+      return imageList.some(
+        (image) => image.path.startsWith(basePath + '.') && image.path !== selectedPath,
+      );
+    });
+
+    const deleteOption = {
+      label: deleteLabel,
+      icon: Trash2,
+      isDestructive: true,
+      submenu: hasAssociatedFiles
+        ? [
+            { label: 'Cancel', icon: X, onClick: () => {} },
+            {
+              label: 'Delete Selected Only',
+              icon: Check,
+              isDestructive: true,
+              onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+            },
+            {
+              label: 'Delete + Associated (RAW/JPEG)',
+              icon: Check,
+              isDestructive: true,
+              onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
+            },
+          ]
+        : [
+            { label: 'Cancel', icon: X, onClick: () => {} },
+            {
+              label: 'Confirm',
+              icon: Check,
+              isDestructive: true,
+              onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+            },
+          ],
+    };
 
     const handleApplyAutoAdjustmentsToSelection = () => {
       if (finalSelection.length === 0) {
@@ -2657,9 +2793,9 @@ function App() {
             onClick: handleApplyAutoAdjustmentsToSelection,
           },
           {
-            disabled: selectionCount < 2,
+            disabled: selectionCount < 2  || selectionCount > 9,
             icon: Images,
-            label: isSingleSelection ? 'Stitch Image' : `Stitch ${selectionCount} Images`,
+            label: stitchLabel,
             onClick: () => {
               setPanoramaModalState({
                 error: null,
@@ -2677,6 +2813,18 @@ function App() {
                 }));
               });
             },
+          },
+          {
+            icon: LayoutTemplate,
+            label: collageLabel,
+            onClick: () => {
+              const imagesForCollage = imageList.filter(img => finalSelection.includes(img.path));
+              setCollageModalState({
+                isOpen: true,
+                sourceImages: imagesForCollage,
+              });
+            },
+            disabled: selectionCount === 0 || selectionCount > 9,
           },
           {
             label: cullLabel,
@@ -2750,26 +2898,7 @@ function App() {
         },
       },
       { label: resetLabel, icon: RotateCcw, onClick: () => handleResetAdjustments(finalSelection) },
-      {
-        label: deleteLabel,
-        icon: Trash2,
-        isDestructive: true,
-        submenu: [
-          { label: 'Cancel', icon: X, onClick: () => {} },
-          {
-            label: 'Delete Selected Only',
-            icon: Check,
-            isDestructive: true,
-            onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
-          },
-          {
-            label: 'Delete + Associated (RAW/JPEG)',
-            icon: Check,
-            isDestructive: true,
-            onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
-          },
-        ],
-      },
+      deleteOption,
     ];
     showContextMenu(event.clientX, event.clientY, options);
   };
@@ -3210,6 +3339,7 @@ function App() {
               importState={importState}
               indexingProgress={indexingProgress}
               isIndexing={isIndexing}
+              isThumbnailsLoading={isThumbnailsLoading}
               isLoading={isViewLoading}
               isTreeLoading={isTreeLoading}
               libraryScrollTop={libraryScrollTop}
@@ -3399,6 +3529,13 @@ function App() {
         onError={(err) => {
           setCullingModalState((prev) => ({ ...prev, error: err, progress: null }));
         }}
+      />
+      <CollageModal
+        isOpen={collageModalState.isOpen}
+        onClose={() => setCollageModalState({ isOpen: false, sourceImages: [] })}
+        onSave={handleSaveCollage}
+        sourceImages={collageModalState.sourceImages}
+        thumbnails={thumbnails}
       />
     </div>
   );

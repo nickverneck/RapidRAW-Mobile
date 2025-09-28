@@ -75,6 +75,7 @@ interface MainLibraryProps {
   importState: ImportState;
   indexingProgress: Progress;
   isLoading: boolean;
+  isThumbnailsLoading?: boolean;
   isIndexing: boolean;
   isTreeLoading: boolean;
   libraryScrollTop: number;
@@ -162,13 +163,14 @@ interface ViewOptionsProps {
   thumbnailAspectRatio: ThumbnailAspectRatio;
 }
 
-const sortOptions: Array<SortCriteria> = [
-  { key: 'name', order: SortDirection.Ascending, label: 'File Name (A-Z)' },
-  { key: 'name', order: SortDirection.Descening, label: 'File Name (Z-A)' },
-  { key: 'date', order: SortDirection.Descening, label: 'Date (Newest)' },
-  { key: 'date', order: SortDirection.Ascending, label: 'Date (Oldest)' },
-  { key: 'rating', order: SortDirection.Descening, label: 'Rating (Highest)' },
-  { key: 'rating', order: SortDirection.Ascending, label: 'Rating (Lowest)' },
+const sortOptions: Array<Omit<SortCriteria, 'order'>> = [
+  { key: 'name', label: 'File Name' },
+  { key: 'date_taken', label: 'Date Taken' },
+  { key: 'date', label: 'Date Modified' },
+  { key: 'rating', label: 'Rating' },
+  { key: 'iso', label: 'ISO' },
+  { key: 'shutter_speed', label: 'Shutter Speed' },
+  { key: 'aperture', label: 'Aperture' },
 ];
 
 const ratingFilterOptions: Array<KeyValueLabel> = [
@@ -505,18 +507,44 @@ function FilterOptions({ filterCriteria, setFilterCriteria }: FilterOptionProps)
 }
 
 function SortOptions({ sortCriteria, setSortCriteria }: SortOptionsProps) {
+  const handleKeyChange = (key: string) => {
+    setSortCriteria((prev: SortCriteria) => ({ ...prev, key }));
+  };
+
+  const handleOrderToggle = () => {
+    setSortCriteria((prev: SortCriteria) => ({
+      ...prev,
+      order: prev.order === SortDirection.Ascending ? SortDirection.Descening : SortDirection.Ascending,
+    }));
+  };
+
   return (
     <>
-      <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Sort by</div>
-      {sortOptions.map((option: SortCriteria) => {
-        const isSelected = sortCriteria.key === option.key && sortCriteria.order === option.order;
+      <div className="px-3 py-2 relative flex items-center">
+        <div className="text-xs font-semibold text-text-secondary uppercase">Sort by</div>
+        <button
+          onClick={handleOrderToggle}
+          title={`Sort ${
+            sortCriteria.order === SortDirection.Ascending ? 'Descending' : 'Ascending'
+          }`}
+          className="absolute top-1/2 right-3 -translate-y-1/2 p-1 bg-transparent border-none text-text-secondary hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-accent rounded"
+        >
+          {sortCriteria.order === SortDirection.Ascending ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          )}
+        </button>
+      </div>
+      {sortOptions.map((option: Omit<SortCriteria, 'order'>) => {
+        const isSelected = sortCriteria.key === option.key;
         return (
           <button
             className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${
               isSelected ? 'bg-card-active text-text-primary font-semibold' : 'text-text-primary hover:bg-bg-primary'
             }`}
-            key={`${option.key}-${option.order}`}
-            onClick={() => setSortCriteria({ key: option.key, order: option.order })}
+            key={option.key}
+            onClick={() => handleKeyChange(option.key)}
             role="menuitem"
           >
             <span>{option.label}</span>
@@ -722,6 +750,7 @@ export default function MainLibrary({
   importState,
   indexingProgress,
   isIndexing,
+  isThumbnailsLoading,
   isTreeLoading,
   libraryScrollTop,
   multiSelectedPaths,
@@ -756,6 +785,35 @@ export default function MainLibrary({
   const libraryContainerRef = useRef<HTMLDivElement>(null);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
+  const [isLoaderVisible, setIsLoaderVisible] = useState(false);
+  const hideTimeoutRef = useRef<number | null>(null);
+  const showTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isThumbnailsLoading) {
+      showTimeoutRef.current = window.setTimeout(() => {
+        setIsLoaderVisible(true);
+      }, 1000);
+    } else {
+      if (showTimeoutRef.current) {
+        clearTimeout(showTimeoutRef.current);
+      }
+      if (isLoaderVisible) {
+        hideTimeoutRef.current = window.setTimeout(() => {
+          setIsLoaderVisible(false);
+        }, 500);
+      }
+    }
+
+    return () => {
+      if (showTimeoutRef.current) {
+        clearTimeout(showTimeoutRef.current);
+      }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, [isThumbnailsLoading]);
 
   useEffect(() => {
     const compareVersions = (v1: string, v2: string) => {
@@ -979,7 +1037,16 @@ export default function MainLibrary({
       <header className="p-4 flex-shrink-0 flex justify-between items-center border-b border-border-color">
         <div>
           <h2 className="text-2xl font-bold text-primary">Library</h2>
-          <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                isLoaderVisible ? 'max-w-[1rem] opacity-100' : 'max-w-0 opacity-0'
+              }`}
+            >
+              <Loader2 size={14} className="animate-spin text-text-secondary" />
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {importState.status === Status.Importing && (

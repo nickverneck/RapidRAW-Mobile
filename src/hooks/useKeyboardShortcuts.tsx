@@ -219,10 +219,6 @@ export const useKeyboardShortcuts = ({
       }
 
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        if (isViewLoading) {
-          event.preventDefault();
-          return;
-        }
         event.preventDefault();
 
         if (selectedImage) {

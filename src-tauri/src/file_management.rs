@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
-use std::io::{self, BufRead};
 
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
@@ -249,6 +248,7 @@ pub struct ImageFile {
     modified: u64,
     is_edited: bool,
     tags: Option<Vec<String>>,
+    exif: Option<HashMap<String, String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -258,6 +258,20 @@ pub struct ImportSettings {
     pub organize_by_date: bool,
     pub date_folder_format: String,
     pub delete_after_import: bool,
+}
+
+fn read_exif_data(file_bytes: &[u8]) -> HashMap<String, String> {
+    let mut exif_data = HashMap::new();
+    let exif_reader = exif::Reader::new();
+    if let Ok(exif) = exif_reader.read_from_container(&mut Cursor::new(file_bytes)) {
+        for field in exif.fields() {
+            exif_data.insert(
+                field.tag.to_string(),
+                field.display_value().with_unit(&exif).to_string(),
+            );
+        }
+    }
+    exif_data
 }
 
 #[tauri::command]
@@ -301,11 +315,16 @@ pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
                 (false, None)
             };
 
+            let exif = fs::read(&path)
+                .ok()
+                .map(|bytes| read_exif_data(&bytes));
+
             ImageFile {
                 path: path_str,
                 modified,
                 is_edited,
                 tags,
+                exif,
             }
         })
         .collect();
@@ -326,7 +345,7 @@ fn scan_dir_recursive(path: &Path) -> Result<Vec<FolderNode>, std::io::Error> {
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,
         Err(e) => {
-            eprintln!("Could not scan directory '{}': {}", path.display(), e);
+            log::warn!("Could not scan directory '{}': {}", path.display(), e);
             return Ok(Vec::new());
         }
     };
@@ -360,6 +379,9 @@ fn scan_dir_recursive(path: &Path) -> Result<Vec<FolderNode>, std::io::Error> {
 
 fn get_folder_tree_sync(path: String) -> Result<FolderNode, String> {
     let root_path = Path::new(&path);
+    if !root_path.is_dir() {
+        return Err(format!("Could not scan directory '{}': No such file or directory (os error 2)", path));
+    }
     let name = root_path
         .file_name()
         .unwrap_or_default()
