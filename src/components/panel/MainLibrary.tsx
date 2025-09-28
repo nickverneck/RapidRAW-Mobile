@@ -745,6 +745,7 @@ export default function MainLibrary({
   importState,
   indexingProgress,
   isIndexing,
+  isLoading,
   isThumbnailsLoading,
   isTreeLoading,
   libraryScrollTop,
@@ -812,7 +813,7 @@ export default function MainLibrary({
     let showTimer: number | undefined;
     let hideTimer: number | undefined;
   
-    if (isThumbnailsLoading) {
+    if (isThumbnailsLoading || isLoading) {
       showTimer = window.setTimeout(() => {
         setIsLoaderVisible(true);
       }, 1000);
@@ -825,7 +826,7 @@ export default function MainLibrary({
       clearTimeout(showTimer);
       clearTimeout(hideTimer);
     };
-  }, [isThumbnailsLoading]);
+  }, [isThumbnailsLoading, isLoading]);
 
   useEffect(() => {
     const compareVersions = (v1: string, v2: string) => {
