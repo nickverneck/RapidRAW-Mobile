@@ -42,18 +42,18 @@
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.0</url>
         <description translate="no">
             <p>This update introduces several new tools and foundational improvements to the software.</p>
-            <p><strong>New Features</strong></p>
+            <p>New Features</p>
             <ul>
-                <li><strong>Auto Culling:</strong> Scans your selection for duplicates and blurry photos, then lets you flag or delete them in a batch to speed up your workflow.</li>
-                <li><strong>Collage Maker:</strong> An integrated collage maker with multiple layouts, allowing you to control spacing, border radius, and background color.</li>
-                <li><strong>Color Calibration:</strong> A new panel to directly modify the hue and saturation of the primary RGB channels, enabling more significant and stylized color shifts.</li>
-                <li><strong>Universal Preset Importer:</strong> Import presets from other common photo editors. While not a 1:1 conversion, it provides a solid starting point for your edits.</li>
-                <li><strong>Adjustments Visibility:</strong> A new setting lets you hide advanced adjustments you don't use, allowing you to maintain a simpler interface.</li>
-                <li><strong>Sort Library by EXIF Data:</strong> Organize your photo library by ISO, aperture, focal length, and other EXIF tags.</li>
+                <li>Auto Culling: Scans your selection for duplicates and blurry photos, then lets you flag or delete them in a batch to speed up your workflow.</li>
+                <li>Collage Maker: An integrated collage maker with multiple layouts, allowing you to control spacing, border radius, and background color.</li>
+                <li>Color Calibration: A new panel to directly modify the hue and saturation of the primary RGB channels, enabling more significant and stylized color shifts.</li>
+                <li>Universal Preset Importer: Import presets from other common photo editors. While not a 1:1 conversion, it provides a solid starting point for your edits.</li>
+                <li>Adjustments Visibility: A new setting lets you hide advanced adjustments you don't use, allowing you to maintain a simpler interface.</li>
+                <li>Sort Library by EXIF Data: Organize your photo library by ISO, aperture, focal length, and other EXIF tags.</li>
             </ul>
-            <p><strong>Core Improvements</strong></p>
+            <p>Core Improvements</p>
             <ul>
-                <li><strong>Reworked Local Contrast Tools:</strong> The local contrast tools (Sharpness, Clarity, Structure) have been re-engineered to provide higher quality results and interact more predictably with other adjustments like exposure.</li>
+                <li>Reworked Local Contrast Tools: The local contrast tools (Sharpness, Clarity, Structure) have been re-engineered to provide higher quality results and interact more predictably with other adjustments like exposure.</li>
                 <li>Improved performance when loading library folders.</li>
                 <li>Various shader optimizations and bug fixes.</li>
                 <li>General improvements to application stability and logging.</li>
