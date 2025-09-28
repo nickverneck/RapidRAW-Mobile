@@ -809,28 +809,21 @@ export default function MainLibrary({
   }, [appSettings?.enableExifReading, sortCriteria.key, setSortCriteria]);
 
   useEffect(() => {
+    let showTimer: number | undefined;
+    let hideTimer: number | undefined;
+  
     if (isThumbnailsLoading) {
-      showTimeoutRef.current = window.setTimeout(() => {
+      showTimer = window.setTimeout(() => {
         setIsLoaderVisible(true);
       }, 1000);
     } else {
-      if (showTimeoutRef.current) {
-        clearTimeout(showTimeoutRef.current);
-      }
-      if (isLoaderVisible) {
-        hideTimeoutRef.current = window.setTimeout(() => {
-          setIsLoaderVisible(false);
-        }, 500);
-      }
+      hideTimer = window.setTimeout(() => {
+        setIsLoaderVisible(false);
+      }, 500);
     }
-
     return () => {
-      if (showTimeoutRef.current) {
-        clearTimeout(showTimeoutRef.current);
-      }
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
     };
   }, [isThumbnailsLoading]);
 
