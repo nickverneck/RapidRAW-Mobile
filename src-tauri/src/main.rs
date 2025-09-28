@@ -2147,7 +2147,7 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
         eprintln!("Failed to create log directory at {:?}: {}", log_dir, e);
     }
 
-    let log_file_path = log_dir.join("app.log");
+    let log_file_path = log_dir.join("RapidRaw.log");
 
     let log_file = fs::OpenOptions::new()
         .write(true)
@@ -2184,8 +2184,9 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
     panic::set_hook(Box::new(|error| {
         log::error!("PANIC! {:#?}", error);
     }));
-
+    
     log::info!("Logger initialized successfully. Log file at: {:?}", log_file_path);
+    dbg!("Logger initialized successfully. Log file at: {:?}", log_file_path);
 }
 
 fn main() {
