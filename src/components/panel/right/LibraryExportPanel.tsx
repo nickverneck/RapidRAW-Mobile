@@ -83,10 +83,6 @@ export default function LibraryExportPanel({
   const debouncedEstimateSize = useMemo(
     () =>
       debounce(async (paths, exportSettings, format) => {
-        if (paths.length === 0) {
-          setEstimatedSize(null);
-          return;
-        }
         setIsEstimating(true);
         try {
           const size: number = await invoke(Invokes.EstimateBatchExportSize, {
@@ -106,6 +102,12 @@ export default function LibraryExportPanel({
   );
 
   useEffect(() => {
+    if (!isVisible || multiSelectedPaths.length === 0) {
+      setEstimatedSize(null);
+      debouncedEstimateSize.cancel();
+      return;
+    }
+
     const exportSettings: ExportSettings = {
       filenameTemplate,
       jpegQuality,
@@ -118,6 +120,7 @@ export default function LibraryExportPanel({
 
     return () => debouncedEstimateSize.cancel();
   }, [
+    isVisible,
     multiSelectedPaths,
     fileFormat,
     jpegQuality,

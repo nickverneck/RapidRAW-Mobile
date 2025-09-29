@@ -578,6 +578,7 @@ pub fn generate_thumbnail_data(
                 gpu_adjustments,
                 &mask_bitmaps,
                 lut,
+                "generate_thumbnail_data",
             ) {
                 return Ok(processed_image);
             } else {
