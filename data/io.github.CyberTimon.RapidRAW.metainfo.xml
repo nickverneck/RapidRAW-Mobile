@@ -68,12 +68,12 @@
                 <li>Crucially, all of your saved presets will be gone.</li>
             </ul>
             <p>To avoid losing your data, please choose one of the migration options below before you launch the new version for the first time.</p>
-            <h3>Option A: Full Migration (Recommended)</h3>
+            <p>Option A: Full Migration (Recommended)</p>
             <p>This method migrates everything: your settings, presets, and cached data. To do this, you'll need to manually rename the application's data folder.</p>
             <ul>
                 <li>Linux: The location can vary, but typically check <code>~/.config/</code> and <code>~/.local/share/</code>. Rename the <code>com.rapidraw.app</code> folder in each relevant location to <code>io.github.CyberTimon.RapidRAW</code>.</li>
             </ul>
-            <h3>Option B: Migrate Presets Only</h3>
+            <p>Option B: Migrate Presets Only</p>
             <p>If you only care about saving your presets and don't mind re-caching thumbnails and models, this is a simpler alternative.</p>
             <ol>
                 <li>In your old version of RapidRAW, export all your presets to a safe location.</li>
