@@ -106,6 +106,9 @@ impl Default for FilterCriteria {
 pub enum ReadFileError {
     Io(std::io::Error),
     Locked,
+    Empty,
+    NotFound,
+    Invalid
 }
 
 impl fmt::Display for ReadFileError {
@@ -113,6 +116,9 @@ impl fmt::Display for ReadFileError {
         match self {
             ReadFileError::Io(err) => write!(f, "IO error: {}", err),
             ReadFileError::Locked => write!(f, "File is locked"),
+            ReadFileError::Empty => write!(f, "File is empty"),
+            ReadFileError::NotFound => write!(f, "File not found"),
+            ReadFileError::Invalid => write!(f, "Invalid file")
         }
     }
 }
@@ -432,6 +438,15 @@ pub fn get_sidecar_path(image_path: &str) -> PathBuf {
 }
 
 pub fn read_file_mapped(path: &Path) -> Result<Mmap, ReadFileError> {
+    if !path.is_file() {
+        return Err(ReadFileError::Invalid);
+    }
+    if !path.exists() {
+        return Err(ReadFileError::NotFound);
+    }
+    if path.metadata().map_err(ReadFileError::Io)?.len() == 0 {
+        return Err(ReadFileError::Empty);
+    }
     let file = fs::File::open(path).map_err(ReadFileError::Io)?;
     if file.try_lock_shared().is_err() {
         return Err(ReadFileError::Locked);
@@ -449,7 +464,6 @@ pub fn read_file_mapped(path: &Path) -> Result<Mmap, ReadFileError> {
     img.to_rgba8().into_raw()
 }
 */
-
 
 pub fn generate_thumbnail_data(
     path_str: &str,
@@ -470,8 +484,9 @@ pub fn generate_thumbnail_data(
             
             image_loader::composite_patches_on_image(img, &adjustments)?
         } else {
+            let mmap = read_file_mapped(Path::new(path_str)).
+                map_err(|e| anyhow::anyhow!("Failed to map file {}: {:?}", path_str, e))?;
             
-            let mmap = read_file_mapped(Path::new(path_str)).expect("Failed to map file");
             image_loader::load_and_composite(&mmap, path_str, &adjustments, true)?
         };
 
