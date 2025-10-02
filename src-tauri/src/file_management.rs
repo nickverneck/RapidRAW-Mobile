@@ -465,7 +465,6 @@ pub fn read_file_mapped(path: &Path) -> Result<Mmap, ReadFileError> {
 }
 */
 
-
 pub fn generate_thumbnail_data(
     path_str: &str,
     gpu_context: Option<&GpuContext>,
