@@ -164,7 +164,6 @@ fn apply_all_transformations(
     image: &DynamicImage,
     adjustments: &serde_json::Value,
 ) -> (DynamicImage, (f32, f32)) {
-    // --- START MEASUREMENT ---
     let start_time = std::time::Instant::now();
 
     let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
@@ -172,25 +171,18 @@ fn apply_all_transformations(
     let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
     let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
 
-    // 1. Apply coarse, lossless transformations
     let coarse_rotated_image = apply_coarse_rotation(image.clone(), orientation_steps);
     let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
-
-    // 2. Apply fine rotation. This must happen BEFORE the crop.
     let rotated_image = apply_rotation(&flipped_image, rotation_degrees);
 
-    // 3. Now, apply the crop to the fully rotated image.
     let crop_data: Option<Crop> = serde_json::from_value(adjustments["crop"].clone()).ok();
     let crop_json = serde_json::to_value(crop_data.clone()).unwrap_or(serde_json::Value::Null);
     let cropped_image = apply_crop(rotated_image, &crop_json);
 
-    // The offset is still based on the crop data for mask calculations.
     let unscaled_crop_offset = crop_data.map_or((0.0, 0.0), |c| (c.x as f32, c.y as f32));
 
-    // --- END MEASUREMENT ---
     let duration = start_time.elapsed();
     log::info!("apply_all_transformations took: {:?}", duration);
-
     (cropped_image, unscaled_crop_offset)
 }
 
