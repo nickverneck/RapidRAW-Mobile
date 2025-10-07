@@ -6,6 +6,7 @@ import debounce from 'lodash.debounce';
 import Switch from '../../ui/Switch';
 import Dropdown from '../../ui/Dropdown';
 import Slider from '../../ui/Slider';
+import ImagePicker from '../../ui/ImagePicker';
 import {
   FileFormat,
   FILE_FORMATS,
@@ -14,8 +15,9 @@ import {
   ExportSettings,
   ExportState,
   FileFormats,
+  WatermarkAnchor,
 } from './ExportImportProperties';
-import { Invokes } from '../../ui/AppProperties';
+import { Invokes, ImageFile } from '../../ui/AppProperties';
 
 interface LibraryExportPanelProps {
   exportState: ExportState;
@@ -23,6 +25,7 @@ interface LibraryExportPanelProps {
   multiSelectedPaths: Array<string>;
   onClose(): void;
   setExportState(state: any): void;
+  imageList: ImageFile[];
 }
 
 interface SectionProps {
@@ -35,6 +38,104 @@ function Section({ title, children }: SectionProps) {
     <div>
       <h3 className="text-sm font-semibold text-text-primary mb-3 border-b border-surface pb-2">{title}</h3>
       <div className="space-y-4">{children}</div>
+    </div>
+  );
+}
+
+function WatermarkPreview({
+  anchor,
+  scale,
+  spacing,
+  opacity,
+  watermarkPath,
+  imageAspectRatio,
+  watermarkImageAspectRatio,
+}: {
+  anchor: WatermarkAnchor;
+  scale: number;
+  spacing: number;
+  opacity: number;
+  watermarkPath: string | null;
+  imageAspectRatio: number;
+  watermarkImageAspectRatio: number;
+}) {
+  const getPositionStyles = () => {
+    const minDimPercent = imageAspectRatio > 1 ? 100 / imageAspectRatio : 100;
+    const watermarkSizePercent = minDimPercent * (scale / 100);
+    const spacingPercent = minDimPercent * (spacing / 100);
+
+    const styles: React.CSSProperties = {
+      width: `${watermarkSizePercent}%`,
+      opacity: opacity / 100,
+      position: 'absolute',
+    };
+
+    const spacingString = `${spacingPercent}%`;
+
+    switch (anchor) {
+      case WatermarkAnchor.TopLeft:
+        styles.top = spacingString;
+        styles.left = spacingString;
+        break;
+      case WatermarkAnchor.TopCenter:
+        styles.top = spacingString;
+        styles.left = '50%';
+        styles.transform = 'translateX(-50%)';
+        break;
+      case WatermarkAnchor.TopRight:
+        styles.top = spacingString;
+        styles.right = spacingString;
+        break;
+      case WatermarkAnchor.CenterLeft:
+        styles.top = '50%';
+        styles.left = spacingString;
+        styles.transform = 'translateY(-50%)';
+        break;
+      case WatermarkAnchor.Center:
+        styles.top = '50%';
+        styles.left = '50%';
+        styles.transform = 'translate(-50%, -50%)';
+        break;
+      case WatermarkAnchor.CenterRight:
+        styles.top = '50%';
+        styles.right = spacingString;
+        styles.transform = 'translateY(-50%)';
+        break;
+      case WatermarkAnchor.BottomLeft:
+        styles.bottom = spacingString;
+        styles.left = spacingString;
+        break;
+      case WatermarkAnchor.BottomCenter:
+        styles.bottom = spacingString;
+        styles.left = '50%';
+        styles.transform = 'translateX(-50%)';
+        break;
+      case WatermarkAnchor.BottomRight:
+        styles.bottom = spacingString;
+        styles.right = spacingString;
+        break;
+    }
+    return styles;
+  };
+
+  return (
+    <div
+      className="w-full bg-bg-primary rounded-md relative overflow-hidden border border-surface"
+      style={{ aspectRatio: imageAspectRatio }}
+    >
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-text-tertiary text-sm">Preview</span>
+      </div>
+      {watermarkPath && (
+        <div style={getPositionStyles()}>
+          <div
+            className="w-full bg-accent/50 border-2 border-dashed border-accent rounded-sm flex items-center justify-center"
+            style={{ aspectRatio: watermarkImageAspectRatio }}
+          >
+            <span className="text-white text-[8px] font-bold">Logo</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -61,6 +162,7 @@ export default function LibraryExportPanel({
   multiSelectedPaths,
   onClose,
   setExportState,
+  imageList,
 }: LibraryExportPanelProps) {
   const [fileFormat, setFileFormat] = useState('jpeg');
   const [jpegQuality, setJpegQuality] = useState(90);
@@ -73,12 +175,87 @@ export default function LibraryExportPanel({
   const [filenameTemplate, setFilenameTemplate] = useState('{original_filename}_edited');
   const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
   const [isEstimating, setIsEstimating] = useState<boolean>(false);
+  const [enableWatermark, setEnableWatermark] = useState<boolean>(false);
+  const [watermarkPath, setWatermarkPath] = useState<string | null>(null);
+  const [watermarkAnchor, setWatermarkAnchor] = useState<WatermarkAnchor>(WatermarkAnchor.BottomRight);
+  const [watermarkScale, setWatermarkScale] = useState<number>(10);
+  const [watermarkSpacing, setWatermarkSpacing] = useState<number>(5);
+  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(75);
+  const [watermarkImageAspectRatio, setWatermarkImageAspectRatio] = useState(1);
   const filenameInputRef = useRef<HTMLInputElement>(null);
 
   const { status, progress, errorMessage } = exportState;
   const isExporting = status === Status.Exporting;
 
   const numImages = multiSelectedPaths.length;
+  const [imageAspectRatio, setImageAspectRatio] = useState(16 / 9);
+
+  useEffect(() => {
+    const fetchAspectRatio = async () => {
+      if (multiSelectedPaths.length > 0) {
+        const firstPath = multiSelectedPaths[0];
+        const image = imageList.find((img) => img.path === firstPath);
+
+        if (image && image.width > 0 && image.height > 0) {
+          setImageAspectRatio(image.width / image.height);
+          return;
+        }
+
+        try {
+          const dimensions: { width: number; height: number } = await invoke('get_image_dimensions', {
+            path: firstPath,
+          });
+          if (dimensions && dimensions.height > 0) {
+            setImageAspectRatio(dimensions.width / dimensions.height);
+          } else {
+            setImageAspectRatio(16 / 9);
+          }
+        } catch (error) {
+          console.error('Failed to get image dimensions for watermark preview:', error);
+          setImageAspectRatio(16 / 9);
+        }
+      } else {
+        setImageAspectRatio(16 / 9);
+      }
+    };
+
+    fetchAspectRatio();
+  }, [multiSelectedPaths, imageList]);
+
+  useEffect(() => {
+    const fetchWatermarkDimensions = async () => {
+      if (watermarkPath) {
+        try {
+          const dimensions: { width: number; height: number } = await invoke('get_image_dimensions', {
+            path: watermarkPath,
+          });
+          if (dimensions.height > 0) {
+            setWatermarkImageAspectRatio(dimensions.width / dimensions.height);
+          } else {
+            setWatermarkImageAspectRatio(1);
+          }
+        } catch (error) {
+          console.error('Failed to get watermark dimensions:', error);
+          setWatermarkImageAspectRatio(1);
+        }
+      } else {
+        setWatermarkImageAspectRatio(1);
+      }
+    };
+    fetchWatermarkDimensions();
+  }, [watermarkPath]);
+
+  const anchorOptions = [
+    { label: 'Top Left', value: WatermarkAnchor.TopLeft },
+    { label: 'Top Center', value: WatermarkAnchor.TopCenter },
+    { label: 'Top Right', value: WatermarkAnchor.TopRight },
+    { label: 'Center Left', value: WatermarkAnchor.CenterLeft },
+    { label: 'Center', value: WatermarkAnchor.Center },
+    { label: 'Center Right', value: WatermarkAnchor.CenterRight },
+    { label: 'Bottom Left', value: WatermarkAnchor.BottomLeft },
+    { label: 'Bottom Center', value: WatermarkAnchor.BottomCenter },
+    { label: 'Bottom Right', value: WatermarkAnchor.BottomRight },
+  ];
 
   const debouncedEstimateSize = useMemo(
     () =>
@@ -114,6 +291,16 @@ export default function LibraryExportPanel({
       keepMetadata,
       resize: enableResize ? { mode: resizeMode, value: resizeValue, dontEnlarge } : null,
       stripGps,
+      watermark:
+        enableWatermark && watermarkPath
+          ? {
+              path: watermarkPath,
+              anchor: watermarkAnchor,
+              scale: watermarkScale,
+              spacing: watermarkSpacing,
+              opacity: watermarkOpacity,
+            }
+          : null,
     };
     const format = FILE_FORMATS.find((f: FileFormat) => f.id === fileFormat)?.extensions[0] || 'jpeg';
     debouncedEstimateSize(multiSelectedPaths, exportSettings, format);
@@ -131,6 +318,12 @@ export default function LibraryExportPanel({
     keepMetadata,
     stripGps,
     filenameTemplate,
+    enableWatermark,
+    watermarkPath,
+    watermarkAnchor,
+    watermarkScale,
+    watermarkSpacing,
+    watermarkOpacity,
     debouncedEstimateSize,
   ]);
 
@@ -162,11 +355,7 @@ export default function LibraryExportPanel({
     setExportState({ status: Status.Exporting, progress: { current: 0, total: numImages }, errorMessage: '' });
 
     let finalFilenameTemplate = filenameTemplate;
-    if (
-      numImages > 1 &&
-      !filenameTemplate.includes('{sequence}') &&
-      !filenameTemplate.includes('{original_filename}')
-    ) {
+    if (numImages > 1 && !filenameTemplate.includes('{sequence}') && !filenameTemplate.includes('{original_filename}')) {
       finalFilenameTemplate = `${filenameTemplate}_{sequence}`;
       setFilenameTemplate(finalFilenameTemplate);
     }
@@ -177,6 +366,16 @@ export default function LibraryExportPanel({
       keepMetadata,
       resize: enableResize ? { mode: resizeMode, value: resizeValue, dontEnlarge } : null,
       stripGps,
+      watermark:
+        enableWatermark && watermarkPath
+          ? {
+              path: watermarkPath,
+              anchor: watermarkAnchor,
+              scale: watermarkScale,
+              spacing: watermarkSpacing,
+              opacity: watermarkOpacity,
+            }
+          : null,
     };
 
     try {
@@ -322,6 +521,71 @@ export default function LibraryExportPanel({
               {keepMetadata && (
                 <div className="pl-2 border-l-2 border-surface">
                   <Switch label="Remove GPS Data" checked={stripGps} onChange={setStripGps} disabled={isExporting} />
+                </div>
+              )}
+            </Section>
+
+            <Section title="Watermark">
+              <Switch
+                label="Add Watermark"
+                checked={enableWatermark}
+                onChange={setEnableWatermark}
+                disabled={isExporting}
+              />
+              {enableWatermark && (
+                <div className="space-y-4 pl-2 border-l-2 border-surface">
+                  <ImagePicker
+                    label="Watermark Image"
+                    imageName={watermarkPath ? watermarkPath.split(/[\\/]/).pop() || null : null}
+                    onImageSelect={setWatermarkPath}
+                    onClear={() => setWatermarkPath(null)}
+                  />
+                  {watermarkPath && (
+                    <>
+                      <div className={`w-full ${isExporting ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <Dropdown options={anchorOptions} value={watermarkAnchor} onChange={setWatermarkAnchor} />
+                      </div>
+                      <Slider
+                        label="Scale"
+                        min={1}
+                        max={50}
+                        step={1}
+                        value={watermarkScale}
+                        onChange={(e) => setWatermarkScale(parseInt(e.target.value))}
+                        disabled={isExporting}
+                        defaultValue={10}
+                      />
+                      <Slider
+                        label="Spacing"
+                        min={0}
+                        max={25}
+                        step={1}
+                        value={watermarkSpacing}
+                        onChange={(e) => setWatermarkSpacing(parseInt(e.target.value))}
+                        disabled={isExporting}
+                        defaultValue={5}
+                      />
+                      <Slider
+                        label="Opacity"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={watermarkOpacity}
+                        onChange={(e) => setWatermarkOpacity(parseInt(e.target.value))}
+                        disabled={isExporting}
+                        defaultValue={75}
+                      />
+                      <WatermarkPreview
+                        imageAspectRatio={imageAspectRatio}
+                        watermarkImageAspectRatio={watermarkImageAspectRatio}
+                        watermarkPath={watermarkPath}
+                        anchor={watermarkAnchor}
+                        scale={watermarkScale}
+                        spacing={watermarkSpacing}
+                        opacity={watermarkOpacity}
+                      />
+                    </>
+                  )}
                 </div>
               )}
             </Section>

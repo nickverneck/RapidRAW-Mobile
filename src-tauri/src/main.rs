@@ -146,6 +146,7 @@ struct ExportSettings {
     keep_metadata: bool,
     strip_gps: bool,
     filename_template: Option<String>,
+    watermark: Option<WatermarkSettings>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -158,6 +159,36 @@ pub struct CommunityPreset {
 #[derive(Serialize)]
 struct LutParseResult {
     size: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum WatermarkAnchor {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WatermarkSettings {
+    path: String,
+    anchor: WatermarkAnchor,
+    scale: f32,
+    spacing: f32,
+    opacity: f32,
+}
+
+#[derive(serde::Serialize)]
+struct ImageDimensions {
+    width: u32,
+    height: u32,
 }
 
 fn apply_all_transformations(
@@ -386,10 +417,78 @@ async fn load_image(
 }
 
 #[tauri::command]
+fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
+    image::image_dimensions(&path)
+        .map(|(width, height)| ImageDimensions { width, height })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn cancel_thumbnail_generation(state: tauri::State<AppState>) -> Result<(), String> {
     state
         .thumbnail_cancellation_token
         .store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+fn apply_watermark(
+    base_image: &mut DynamicImage,
+    watermark_settings: &WatermarkSettings,
+) -> Result<(), String> {
+    let watermark_img = image::open(&watermark_settings.path)
+        .map_err(|e| format!("Failed to open watermark image: {}", e))?;
+
+    let (base_w, base_h) = base_image.dimensions();
+    let base_min_dim = base_w.min(base_h) as f32;
+
+    let watermark_scale_factor = (base_min_dim * (watermark_settings.scale / 100.0))
+        / watermark_img.width().max(1) as f32;
+    let new_wm_w = (watermark_img.width() as f32 * watermark_scale_factor).round() as u32;
+    let new_wm_h = (watermark_img.height() as f32 * watermark_scale_factor).round() as u32;
+
+    if new_wm_w == 0 || new_wm_h == 0 {
+        return Ok(());
+    }
+
+    let scaled_watermark =
+        watermark_img.resize_exact(new_wm_w, new_wm_h, image::imageops::FilterType::Lanczos3);
+    let mut scaled_watermark_rgba = scaled_watermark.to_rgba8();
+
+    let opacity_factor = (watermark_settings.opacity / 100.0).clamp(0.0, 1.0);
+    for pixel in scaled_watermark_rgba.pixels_mut() {
+        pixel[3] = (pixel[3] as f32 * opacity_factor) as u8;
+    }
+    let final_watermark = DynamicImage::ImageRgba8(scaled_watermark_rgba);
+
+    let spacing_pixels = (base_min_dim * (watermark_settings.spacing / 100.0)) as i64;
+    let (wm_w, wm_h) = final_watermark.dimensions();
+
+    let x = match watermark_settings.anchor {
+        WatermarkAnchor::TopLeft | WatermarkAnchor::CenterLeft | WatermarkAnchor::BottomLeft => {
+            spacing_pixels
+        }
+        WatermarkAnchor::TopCenter | WatermarkAnchor::Center | WatermarkAnchor::BottomCenter => {
+            (base_w as i64 - wm_w as i64) / 2
+        }
+        WatermarkAnchor::TopRight | WatermarkAnchor::CenterRight | WatermarkAnchor::BottomRight => {
+            base_w as i64 - wm_w as i64 - spacing_pixels
+        }
+    };
+
+    let y = match watermark_settings.anchor {
+        WatermarkAnchor::TopLeft | WatermarkAnchor::TopCenter | WatermarkAnchor::TopRight => {
+            spacing_pixels
+        }
+        WatermarkAnchor::CenterLeft | WatermarkAnchor::Center | WatermarkAnchor::CenterRight => {
+            (base_h as i64 - wm_h as i64) / 2
+        }
+        WatermarkAnchor::BottomLeft | WatermarkAnchor::BottomCenter | WatermarkAnchor::BottomRight => {
+            base_h as i64 - wm_h as i64 - spacing_pixels
+        }
+    };
+
+    image::imageops::overlay(base_image, &final_watermark, x, y);
+
     Ok(())
 }
 
@@ -803,6 +902,11 @@ fn process_image_for_export(
             };
         }
     }
+
+    if let Some(watermark_settings) = &export_settings.watermark {
+        apply_watermark(&mut final_image, watermark_settings)?;
+    }
+
     Ok(final_image)
 }
 
@@ -2383,6 +2487,7 @@ fn main() {
             fetch_community_presets,
             generate_all_community_previews,
             save_temp_file,
+            get_image_dimensions,
             image_processing::generate_histogram,
             image_processing::generate_waveform,
             image_processing::calculate_auto_adjustments,

@@ -27,11 +27,36 @@ export const FILENAME_VARIABLES: Array<string> = [
 ];
 
 export interface ExportSettings {
-  filenameTemplate: string;
+  filenameTemplate: string | null;
   jpegQuality: number;
   keepMetadata: boolean;
-  resize: any;
+  resize: {
+    mode: string;
+    value: number;
+    dontEnlarge: boolean;
+  } | null;
   stripGps: boolean;
+  watermark: WatermarkSettings | null;
+}
+
+export enum WatermarkAnchor {
+  TopLeft = 'topLeft',
+  TopCenter = 'topCenter',
+  TopRight = 'topRight',
+  CenterLeft = 'centerLeft',
+  Center = 'center',
+  CenterRight = 'centerRight',
+  BottomLeft = 'bottomLeft',
+  BottomCenter = 'bottomCenter',
+  BottomRight = 'bottomRight',
+}
+
+export interface WatermarkSettings {
+  path: string;
+  anchor: WatermarkAnchor;
+  scale: number;
+  spacing: number;
+  opacity: number;
 }
 
 export interface ExportState {

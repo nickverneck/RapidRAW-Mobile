@@ -3496,6 +3496,7 @@ function App() {
           >
             <LibraryExportPanel
               exportState={exportState}
+              imageList={sortedImageList}
               isVisible={isLibraryExportPanelVisible}
               multiSelectedPaths={multiSelectedPaths}
               onClose={() => setIsLibraryExportPanelVisible(false)}
