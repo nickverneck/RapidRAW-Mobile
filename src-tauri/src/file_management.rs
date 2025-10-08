@@ -488,10 +488,22 @@ pub fn generate_thumbnail_data(
     let composite_image = if let Some(img) = preloaded_image {
         image_loader::composite_patches_on_image(img, &adjustments)?
     } else {
-        let mmap = read_file_mapped(Path::new(path_str))
-            .map_err(|e| anyhow::anyhow!("Failed to map file {}: {:?}", path_str, e))?;
-
-        image_loader::load_and_composite(&mmap, path_str, &adjustments, true)?
+        match read_file_mapped(Path::new(path_str)) {
+            Ok(mmap) => {
+                image_loader::load_and_composite(&mmap, path_str, &adjustments, true)?
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to memory-map file '{}': {}. Falling back to standard read.",
+                    path_str,
+                    e
+                );
+                let file_bytes = fs::read(path_str).map_err(|io_err| {
+                    anyhow::anyhow!("Fallback read failed for {}: {}", path_str, io_err)
+                })?;
+                image_loader::load_and_composite(&file_bytes, path_str, &adjustments, true)?
+            }
+        }
     };
 
     if let (Some(context), Some(meta)) = (gpu_context, metadata) {
