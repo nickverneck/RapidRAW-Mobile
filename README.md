@@ -370,9 +370,8 @@ cd RapidRAW
 # 2. Install frontend dependencies
 npm install
 
-# 3. Build and run the application in development mode
-# Use --release for a build that runs much faster (image loading etc.)
-npx tauri dev --release
+# 3. Build and run the application
+npm start
 ```
 
 ## System Requirements
