@@ -29,7 +29,7 @@
   <launchable type="desktop-id">io.github.CyberTimon.RapidRAW.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/refs/tags/v1.4.1/.github/assets/editor.png</image>
+      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/refs/tags/v1.4.2/.github/assets/editor.png</image>
         <caption>Editor interface</caption>
     </screenshot>
   </screenshots>
@@ -38,6 +38,12 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.2" date="tbd">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.2</url>
+        <description translate="no">
+            <p>TBD</p>
+        </description>
+    </release>
     <release version="v1.4.1" date="2025-09-28">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.1</url>
         <description translate="no">
