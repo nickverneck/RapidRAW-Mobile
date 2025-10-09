@@ -29,7 +29,7 @@
   <launchable type="desktop-id">io.github.CyberTimon.RapidRAW.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/refs/tags/v1.3.13/.github/assets/editor.png</image>
+      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/refs/tags/v1.4.1/.github/assets/editor.png</image>
         <caption>Editor interface</caption>
     </screenshot>
   </screenshots>
@@ -38,6 +38,14 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.1" date="2025-09-28">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.1</url>
+        <description translate="no">
+            <p>Performance Hotfix</p>
+            <p>Version 1.4.1 addresses critical performance issues introduced in v1.4.0, where using local contrast tools could cause severe slowdowns and even crashes.</p>
+            <p>I strongly recommend skipping v1.4.0 and upgrading directly to v1.4.1.</p>
+        </description>
+    </release>
     <release version="v1.4.0" date="2025-09-28">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.0</url>
         <description translate="no">
