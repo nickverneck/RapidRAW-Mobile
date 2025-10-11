@@ -379,6 +379,32 @@ fn apply_tonal_adjustments(color: vec3<f32>, con: f32, sh: f32, wh: f32, bl: f32
     return rgb;
 }
 
+fn apply_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
+    if (exposure_adj == 0.0) {
+        return color_in;
+    }
+    const RATIONAL_CURVE_MIX: f32 = 0.95;
+    const MIDTONE_STRENGTH: f32 = 1.2;
+    let original_luma = get_luma(color_in);
+    if (abs(original_luma) < 0.00001) {
+        return color_in;
+    }
+    let direct_adj = exposure_adj * (1.0 - RATIONAL_CURVE_MIX);
+    let rational_adj = exposure_adj * RATIONAL_CURVE_MIX;
+    let scale = pow(2.0, direct_adj);
+    let k = pow(2.0, -rational_adj * MIDTONE_STRENGTH);
+    let luma_abs = abs(original_luma);
+    let luma_floor = floor(luma_abs);
+    let luma_fract = luma_abs - luma_floor;
+    let shaped_fract = luma_fract / (luma_fract + (1.0 - luma_fract) * k);
+    let shaped_luma_abs = luma_floor + shaped_fract;
+    let new_luma = sign(original_luma) * shaped_luma_abs * scale;
+    let chroma = color_in - vec3<f32>(original_luma);
+    let total_luma_scale = new_luma / original_luma;
+    let chroma_scale = pow(total_luma_scale, 0.7);
+    return vec3<f32>(new_luma) + chroma * chroma_scale;
+}
+
 fn apply_highlights_adjustment(
     color_in: vec3<f32>, 
     highlights_adj: f32, 
@@ -717,15 +743,13 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
-    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
-    processed_rgb = processed_rgb * pow(2.0, adj.exposure);
-
+    processed_rgb = apply_exposure(processed_rgb, adj.exposure);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
+    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
     processed_rgb = apply_color_calibration(processed_rgb, adj.color_calibration);
-
     processed_rgb = apply_hsl_panel(processed_rgb, adj.hsl, coords_i);
     processed_rgb = apply_color_grading(processed_rgb, adj.color_grading_shadows, adj.color_grading_midtones, adj.color_grading_highlights, adj.color_grading_blending, adj.color_grading_balance);
     processed_rgb = apply_creative_color(processed_rgb, adj.saturation, adj.vibrance);
@@ -744,11 +768,10 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
-    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
-    processed_rgb = processed_rgb * pow(2.0, adj.exposure);
-    
+    processed_rgb = apply_exposure(processed_rgb, adj.exposure);
+    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
 
     processed_rgb = apply_hsl_panel(processed_rgb, adj.hsl, coords_i);
