@@ -336,7 +336,7 @@ fn apply_curve(val: f32, points: array<Point, 16>, count: u32) -> f32 {
     return local_points[count - 1u].y / 255.0;
 }
 
-fn apply_tonal_adjustments(color: vec3<f32>, con: f32, hi: f32, sh: f32, wh: f32, bl: f32) -> vec3<f32> {
+fn apply_tonal_adjustments(color: vec3<f32>, con: f32, sh: f32, wh: f32, bl: f32) -> vec3<f32> {
     var rgb = color;
     if (wh != 0.0) {
         let white_level = 1.0 - wh * 0.25;
@@ -353,15 +353,6 @@ fn apply_tonal_adjustments(color: vec3<f32>, con: f32, hi: f32, sh: f32, wh: f32
         }
     }
     let luma = get_luma(max(rgb, vec3(0.0)));
-    if (hi != 0.0) {
-        let mask = smoothstep(0.2, 0.8, luma);
-        if (mask > 0.001) {
-            let adjustment = hi * 1.5;
-            let factor = pow(2.0, adjustment);
-            let adjusted = rgb * factor;
-            rgb = mix(rgb, adjusted, mask);
-        }
-    }
     if (sh != 0.0) {
         let mask = pow(1.0 - smoothstep(0.0, 0.4, luma), 3.0);
         if (mask > 0.001) {
@@ -386,6 +377,40 @@ fn apply_tonal_adjustments(color: vec3<f32>, con: f32, hi: f32, sh: f32, wh: f32
         rgb = mix(contrast_adjusted_rgb, rgb, mix_factor);
     }
     return rgb;
+}
+
+fn apply_highlights_adjustment(
+    color_in: vec3<f32>, 
+    highlights_adj: f32, 
+    structure_blurred_srgb: vec3<f32>
+) -> vec3<f32> {
+    if (highlights_adj == 0.0) {
+        return color_in;
+    }
+    let luma = get_luma(max(color_in, vec3(0.0)));
+    let highlight_mask = smoothstep(0.3, 0.9, luma);
+    if (highlight_mask < 0.001) {
+        return color_in;
+    }
+    var tonally_adjusted_color: vec3<f32>;
+    if (highlights_adj < 0.0) {
+        let gamma = 1.0 - highlights_adj * 1.5;
+        let new_luma = pow(luma, gamma);
+        tonally_adjusted_color = color_in * (new_luma / max(luma, 0.0001));
+    } else {
+        let adjustment = highlights_adj * 1.5;
+        let factor = pow(2.0, adjustment);
+        tonally_adjusted_color = color_in * factor;
+    }
+    let local_contrast_amount = abs(highlights_adj) * 0.7;
+    let blurred_color_linear = srgb_to_linear(structure_blurred_srgb);
+    let blurred_luma = get_luma(blurred_color_linear);
+    let safe_adjusted_luma = max(get_luma(tonally_adjusted_color), 0.0001);
+    let blurred_color_rescaled = tonally_adjusted_color * (blurred_luma / safe_adjusted_luma);
+    let detail_vector = tonally_adjusted_color - blurred_color_rescaled;
+    let final_combined_color = tonally_adjusted_color + detail_vector * local_contrast_amount;
+
+    return mix(color_in, final_combined_color, highlight_mask);
 }
 
 fn apply_color_calibration(color: vec3<f32>, cal: ColorCalibrationSettings) -> vec3<f32> {
@@ -695,7 +720,9 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = processed_rgb * pow(2.0, adj.exposure);
-    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.highlights, adj.shadows, adj.whites, adj.blacks);
+
+    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
+    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, structure_blurred);
 
     processed_rgb = apply_color_calibration(processed_rgb, adj.color_calibration);
 
@@ -720,7 +747,9 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = processed_rgb * pow(2.0, adj.exposure);
-    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.highlights, adj.shadows, adj.whites, adj.blacks);
+    
+    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
+    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, structure_blurred);
 
     processed_rgb = apply_hsl_panel(processed_rgb, adj.hsl, coords_i);
     processed_rgb = apply_color_grading(processed_rgb, adj.color_grading_shadows, adj.color_grading_midtones, adj.color_grading_highlights, adj.color_grading_blending, adj.color_grading_balance);
