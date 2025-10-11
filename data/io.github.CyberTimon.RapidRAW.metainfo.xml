@@ -41,7 +41,23 @@
     <release version="v1.4.2" date="tbd">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.2</url>
         <description translate="no">
-            <p>TBD</p>
+            <p>Exposure and Highlights Improvements</p>
+            <ul>
+                <li>Completely reworked Exposure and Highlights sliders for more natural, realistic image adjustments.</li>
+                <li>Exposure adjustments now feature smoother rolloff and prevent oversaturation.</li>
+                <li>Highlights recovery produces significantly better detail and tonal balance.</li>
+            </ul>
+            <p>Watermarking Support</p>
+            <ul>
+                <li>Added a new Watermark feature in the export panel.</li>
+                <li>Users can add custom logos or branding to exported images.</li>
+                <li>Full control over position, anchor, scale, spacing, and opacity.</li>
+            </ul>
+            <p>Other Improvements</p>
+            <ul>
+                <li>Various bug fixes and better crash handling.</li>
+                <li>Thumbnails in the filmstrip now update more smoothly.</li>
+            </ul>
         </description>
     </release>
     <release version="v1.4.1" date="2025-09-28">
