@@ -388,17 +388,17 @@ fn apply_highlights_adjustment(
         return color_in;
     }
     let luma = get_luma(max(color_in, vec3(0.0)));
-    let highlight_mask = smoothstep(0.3, 0.9, luma);
+    let highlight_mask = smoothstep(0.25, 0.92, luma);
     if (highlight_mask < 0.001) {
         return color_in;
     }
     var tonally_adjusted_color: vec3<f32>;
     if (highlights_adj < 0.0) {
-        let gamma = 1.0 - highlights_adj * 1.5;
+        let gamma = 1.0 - highlights_adj * 1.75;
         let new_luma = pow(luma, gamma);
         tonally_adjusted_color = color_in * (new_luma / max(luma, 0.0001));
     } else {
-        let adjustment = highlights_adj * 1.5;
+        let adjustment = highlights_adj * 1.75;
         let factor = pow(2.0, adjustment);
         tonally_adjusted_color = color_in * factor;
     }
@@ -717,12 +717,12 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
+    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = processed_rgb * pow(2.0, adj.exposure);
 
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
-    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, structure_blurred);
 
     processed_rgb = apply_color_calibration(processed_rgb, adj.color_calibration);
 
@@ -744,12 +744,12 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
+    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = processed_rgb * pow(2.0, adj.exposure);
     
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
-    processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, structure_blurred);
 
     processed_rgb = apply_hsl_panel(processed_rgb, adj.hsl, coords_i);
     processed_rgb = apply_color_grading(processed_rgb, adj.color_grading_shadows, adj.color_grading_midtones, adj.color_grading_highlights, adj.color_grading_blending, adj.color_grading_balance);
