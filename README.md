@@ -51,6 +51,8 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2025-10-11:** Realistic, complex & non-dulling exposure & highlights slider
+*   **2025-10-11:** Smooth thumbnail updates
 *   **2025-10-07:** New watermarking support
 *   **2025-10-06:** Improve crop quality by transforming before scaling
 *   **2025-10-XX:** Many small improvements - ongoing...
@@ -59,12 +61,12 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2025-09-23:** Color calibration tool to adjust RGB primaries & adjustments visibility settings
 *   **2025-09-22:** Issue template & CI/CD improvements
 *   **2025-09-20:** Universal presets importer, prioritize dGPU & improved local contrast tools (sharpness, clarity etc.)
-*   **2025-09-17:** Automatic image culling (duplicate & blur detection)
-*   **2025-09-14:** Grid previews in community panel & improved ComfyUi workflow
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2025-09-17:** Automatic image culling (duplicate & blur detection)
+*   **2025-09-14:** Grid previews in community panel & improved ComfyUi workflow
 *   **2025-09-12:** New community presets panel to share & showcase presets
 *   **2025-09-10:** Extended generative AI roadmap & started building RapidRAW website
 *   **2025-09-09:** Many shader improvements & bug fixes, invert tint slider
