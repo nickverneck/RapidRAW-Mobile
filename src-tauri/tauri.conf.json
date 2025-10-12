@@ -43,7 +43,8 @@
       "nsis": {
         "installerIcon": "icons/icon.ico"
       }
-    }
+    },
+    "category": "Photography"
   },
   "version": "1.4.2"
 }
