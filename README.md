@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/editor.png" alt="RapidRAW Editor">
+  <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/editor.png" alt="RapidRAW Editor">
 </p>
 
 <div align="center">
@@ -206,43 +206,43 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 Here's RapidRAW in action.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/editor.gif" alt="The main editor interface in action"></img><br>
+  <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/editor.gif" alt="The main editor interface in action"></img><br>
   <em>The main editor interface in action.</em>
 </p>
 <br>
 <table width="100%">
   <tr>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/batch.gif" alt="Powerful batch operations and export" style="max-width: 100%;">
+      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/batch.gif" alt="Powerful batch operations and export" style="max-width: 100%;">
       <br>
       <em>Powerful batch operations and export.</em>
     </td>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/customization.gif" alt="Customizable editor layout and panels" style="max-width: 100%;">
+      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/customization.gif" alt="Customizable editor layout and panels" style="max-width: 100%;">
       <br>
       <em>Customizable editor layout and panels.</em>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/masks.gif" alt="Advanced masking to speedup workflow" style="max-width: 100%;">
+      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/masks.gif" alt="Advanced masking to speedup workflow" style="max-width: 100%;">
       <br>
       <em>Advanced masking to speedup workflow.</em>
     </td>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/ai.gif" alt="Experimental generative AI features" style="max-width: 100%;">
+      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/ai.gif" alt="Experimental generative AI features" style="max-width: 100%;">
       <br>
       <em>Experimental generative AI features.</em>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/library.gif" alt="Library navigation and folder management" style="max-width: 100%;">
+      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/library.gif" alt="Library navigation and folder management" style="max-width: 100%;">
       <br>
       <em>Library navigation and folder management.</em>
     </td>
     <td width="50%" align="center">
-      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/themes.gif" alt="Beautiful themes and UI customization" style="max-width: 100%;">
+      <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/themes.gif" alt="Beautiful themes and UI customization" style="max-width: 100%;">
       <br>
       <em>Beautiful themes and UI customization.</em>
     </td>
@@ -316,7 +316,7 @@ This is purely a **convenience service**. It provides the **same high-quality re
 <summary><strong>Click to see the Generative AI features in action</strong></summary>
 <br>
 <p align="center">
-  <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/.github/assets/ai.gif" alt="Experimental generative AI features" style="max-width: 100%;">
+  <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/ai.gif" alt="Experimental generative AI features" style="max-width: 100%;">
   <br>
   <em>Generative Replace, which can be powered by either a local ComfyUI backend or the upcoming optional cloud service.</em>
 </p>
