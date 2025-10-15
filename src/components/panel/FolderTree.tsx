@@ -1,6 +1,7 @@
 import { Folder, FolderOpen, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 
 export interface FolderTree {
   children: any;
@@ -10,32 +11,50 @@ export interface FolderTree {
 }
 
 interface FolderTreeProps {
-  expandedFolders: any;
+  expandedFolders: Set<string>;
   isLoading: boolean;
   isResizing: boolean;
   isVisible: boolean;
-  onContextMenu(event: any, path: string | null): void;
+  onContextMenu(event: any, path: string | null, isPinned?: boolean): void;
   onFolderSelect(folder: string): void;
   onToggleFolder(folder: string): void;
   selectedPath: string | null;
   setIsVisible(visible: boolean): void;
   style: any;
-  tree: any;
+  tree: FolderTree | null;
+  pinnedFolderTrees: FolderTree[];
+  pinnedFolders: string[];
+  activeSection: string | null;
+  onActiveSectionChange(section: string | null): void;
 }
 
 interface TreeNodeProps {
-  expandedFolders: any;
+  expandedFolders: Set<string>;
   isExpanded: boolean;
-  node: any;
-  onContextMenu(event: any, path: string): void;
+  node: FolderTree;
+  onContextMenu(event: any, path: string, isPinned?: boolean): void;
   onFolderSelect(folder: string): void;
   onToggle(path: string): void;
   selectedPath: string | null;
+  pinnedFolders: string[];
+  isRootPinnedNode?: boolean;
 }
 
 interface VisibleProps {
   index: number;
   total: number;
+}
+
+function SectionHeader({ title, isOpen, onToggle }: { title: string; isOpen: boolean; onToggle: () => void }) {
+  return (
+    <button
+      className="flex items-center w-full text-left p-2 rounded-md hover:bg-surface transition-colors"
+      onClick={onToggle}
+    >
+      {isOpen ? <ChevronDown size={16} className="mr-2" /> : <ChevronRight size={16} className="mr-2" />}
+      <span className="text-xs font-bold uppercase text-text-secondary">{title}</span>
+    </button>
+  );
 }
 
 function TreeNode({
@@ -46,10 +65,12 @@ function TreeNode({
   onFolderSelect,
   onToggle,
   selectedPath,
+  pinnedFolders,
+  isRootPinnedNode = false,
 }: TreeNodeProps) {
   const hasChildren = node.children && node.children.length > 0;
-  const childFolders = node.children && node.children.map((item: FolderTree) => item.is_dir).length > 0;
   const isSelected = node.path === selectedPath;
+  const isPinned = pinnedFolders.includes(node.path);
 
   const handleFolderIconClick = (e: any) => {
     e.stopPropagation();
@@ -94,7 +115,7 @@ function TreeNode({
           'hover:bg-surface': !isSelected,
         })}
         onClick={handleNameClick}
-        onContextMenu={(e: any) => onContextMenu(e, node.path)}
+        onContextMenu={(e: any) => onContextMenu(e, node.path, isPinned)}
       >
         <div
           className={clsx('cursor-pointer p-0.5 rounded hover:bg-surface', {
@@ -102,38 +123,30 @@ function TreeNode({
           })}
           onClick={handleFolderIconClick}
         >
-          {hasChildren ? (
-            isExpanded ? (
-              <FolderOpen size={16} className="text-hover-color flex-shrink-0" />
-            ) : (
-              <Folder size={16} className="text-text-secondary flex-shrink-0" />
-            )
+          {isExpanded ? (
+            <FolderOpen size={16} className="text-hover-color flex-shrink-0" />
           ) : (
             <Folder size={16} className="text-text-secondary flex-shrink-0" />
           )}
         </div>
-        <span onDoubleClick={handleNameDoubleClick} className="truncate select-none cursor-pointer flex-1">
+        <span
+          onDoubleClick={handleNameDoubleClick}
+          className="truncate select-none cursor-pointer flex-1"
+        >
           {node.name}
         </span>
-        <div onClick={handleFolderIconClick}>
+        {hasChildren && (
           <div
-            className={clsx('p-0.5 rounded hover:bg-surface', {
-              'cursor-pointer': childFolders,
-              'cursor-default': !childFolders,
-            })}
+            className="p-0.5 rounded hover:bg-surface cursor-pointer"
             onClick={handleFolderIconClick}
           >
-            {childFolders ? (
-              isExpanded ? (
-                <ChevronUp size={16} className="text-text-secondary flex-shrink-0" />
-              ) : (
-                <ChevronDown size={16} className="text-text-secondary flex-shrink-0" />
-              )
+            {isExpanded ? (
+              <ChevronUp size={16} className="text-text-secondary flex-shrink-0" />
             ) : (
-              <span className="w-4 h-4 inline-block" />
+              <ChevronDown size={16} className="text-text-secondary flex-shrink-0" />
             )}
           </div>
-        </div>
+        )}
       </div>
 
       <AnimatePresence initial={false}>
@@ -166,6 +179,7 @@ function TreeNode({
                       onFolderSelect={onFolderSelect}
                       onToggle={onToggle}
                       selectedPath={selectedPath}
+                      pinnedFolders={pinnedFolders}
                     />
                   </motion.div>
                 ))}
@@ -190,12 +204,19 @@ export default function FolderTree({
   setIsVisible,
   style,
   tree,
+  pinnedFolderTrees,
+  pinnedFolders,
+  activeSection,
+  onActiveSectionChange,
 }: FolderTreeProps) {
   const handleEmptyAreaContextMenu = (e: any) => {
     if (e.target === e.currentTarget) {
-      onContextMenu(e, null);
+      onContextMenu(e, null, false);
     }
   };
+
+  const isPinnedOpen = activeSection === 'pinned';
+  const isCurrentOpen = activeSection === 'current';
 
   return (
     <div
@@ -215,26 +236,81 @@ export default function FolderTree({
 
       {isVisible && (
         <div className="p-2 flex flex-col overflow-y-auto h-full" onContextMenu={handleEmptyAreaContextMenu}>
-          {tree ? (
-            <>
-              <TreeNode
-                expandedFolders={expandedFolders}
-                isExpanded={expandedFolders.has(tree.path)}
-                node={tree}
-                onContextMenu={onContextMenu}
-                onFolderSelect={onFolderSelect}
-                onToggle={onToggleFolder}
-                selectedPath={selectedPath}
+          {pinnedFolderTrees && pinnedFolderTrees.length > 0 && (
+            <div className="mb-2">
+              <SectionHeader
+                title="Pinned"
+                isOpen={isPinnedOpen}
+                onToggle={() => onActiveSectionChange(isPinnedOpen ? null : 'pinned')}
               />
-              {tree.children.length === 0 && (
-                <div className="text-xs text-text-secondary mt-2 px-2">No subfolders found.</div>
-              )}
-            </>
-          ) : isLoading ? (
-            <p className="text-text-secondary text-sm animate-pulse p-2">Loading folder structure...</p>
-          ) : (
-            <p className="text-text-secondary text-sm p-2">Open a folder to see its structure.</p>
+              <AnimatePresence initial={false}>
+                {isPinnedOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="pt-1">
+                      {pinnedFolderTrees.map((pinnedTree) => (
+                        <TreeNode
+                          key={pinnedTree.path}
+                          expandedFolders={expandedFolders}
+                          isExpanded={expandedFolders.has(pinnedTree.path)}
+                          node={pinnedTree}
+                          onContextMenu={onContextMenu}
+                          onFolderSelect={onFolderSelect}
+                          onToggle={onToggleFolder}
+                          selectedPath={selectedPath}
+                          pinnedFolders={pinnedFolders}
+                          isRootPinnedNode
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           )}
+
+          <div>
+            <SectionHeader
+              title="Base Folder"
+              isOpen={isCurrentOpen}
+              onToggle={() => onActiveSectionChange(isCurrentOpen ? null : 'current')}
+            />
+            <AnimatePresence initial={false}>
+              {isCurrentOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-1">
+                    {tree ? (
+                      <TreeNode
+                        expandedFolders={expandedFolders}
+                        isExpanded={expandedFolders.has(tree.path)}
+                        node={tree}
+                        onContextMenu={onContextMenu}
+                        onFolderSelect={onFolderSelect}
+                        onToggle={onToggleFolder}
+                        selectedPath={selectedPath}
+                        pinnedFolders={pinnedFolders}
+                      />
+                    ) : isLoading ? (
+                      <p className="text-text-secondary text-sm animate-pulse p-2">Loading folder structure...</p>
+                    ) : (
+                      <p className="text-text-secondary text-sm p-2">Open a folder to see its structure.</p>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       )}
     </div>

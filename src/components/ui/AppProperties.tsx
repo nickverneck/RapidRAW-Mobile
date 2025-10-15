@@ -36,6 +36,7 @@ export enum Invokes {
   GenerateUncroppedPreview = 'generate_uncropped_preview',
   GenerateWaveform = 'image_processing::generate_waveform',
   GetFolderTree = 'get_folder_tree',
+  GetPinnedFolderTrees = 'get_pinned_folder_trees',
   GetSupportedFileTypes = 'get_supported_file_types',
   HandleExportPresetsToFile = 'handle_export_presets_to_file',
   HandleImportPresetsFromFile = 'handle_import_presets_from_file',
@@ -130,6 +131,7 @@ export interface AppSettings {
   enableExifReading?: boolean;
   filterCriteria?: FilterCriteria;
   lastFolderState?: any;
+  pinnedFolders?: any;
   lastRootPath: string | null;
   sortCriteria?: SortCriteria;
   theme: Theme;
@@ -137,6 +139,7 @@ export interface AppSettings {
   thumbnailAspectRatio?: ThumbnailAspectRatio;
   uiVisibility?: UiVisibility;
   adjustmentVisibility?: { [key: string]: boolean };
+  activeTreeSection?: string | null;
 }
 
 export interface BrushSettings {

@@ -2494,6 +2494,7 @@ fn main() {
             file_management::read_exif_for_paths,
             file_management::list_images_in_dir,
             file_management::get_folder_tree,
+            file_management::get_pinned_folder_trees,
             file_management::generate_thumbnails,
             file_management::generate_thumbnails_progressive,
             cancel_thumbnail_generation,

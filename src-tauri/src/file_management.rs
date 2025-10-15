@@ -187,6 +187,8 @@ impl Default for ComfyUIWorkflowConfig {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub last_root_path: Option<String>,
+    #[serde(default)]
+    pub pinned_folders: Vec<String>,
     pub editor_preview_resolution: Option<u32>,
     pub sort_criteria: Option<SortCriteria>,
     pub filter_criteria: Option<FilterCriteria>,
@@ -207,6 +209,8 @@ pub struct AppSettings {
     #[serde(default = "default_adjustment_visibility")]
     pub adjustment_visibility: HashMap<String, bool>,
     pub enable_exif_reading: Option<bool>,
+    #[serde(default)]
+    pub active_tree_section: Option<String>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -226,6 +230,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             last_root_path: None,
+            pinned_folders: Vec::new(),
             editor_preview_resolution: Some(1920),
             sort_criteria: None,
             filter_criteria: None,
@@ -247,6 +252,7 @@ impl Default for AppSettings {
             ai_provider: Some("cpu".to_string()),
             adjustment_visibility: default_adjustment_visibility(),
             enable_exif_reading: Some(false),
+            active_tree_section: Some("current".to_string()),
         }
     }
 }
@@ -433,6 +439,23 @@ pub async fn get_folder_tree(path: String) -> Result<FolderNode, String> {
         Ok(Err(e)) => Err(e),
         Err(e) => Err(format!("Failed to execute folder tree task: {}", e)),
     }
+}
+
+#[tauri::command]
+pub async fn get_pinned_folder_trees(paths: Vec<String>) -> Result<Vec<FolderNode>, String> {
+    let results: Vec<Result<FolderNode, String>> = paths
+        .par_iter()
+        .map(|path| get_folder_tree_sync(path.clone()))
+        .collect();
+
+    let mut folder_nodes = Vec::new();
+    for result in results {
+        match result {
+            Ok(node) => folder_nodes.push(node),
+            Err(e) => log::warn!("Failed to get tree for pinned folder: {}", e),
+        }
+    }
+    Ok(folder_nodes)
 }
 
 pub fn get_sidecar_path(image_path: &str) -> PathBuf {

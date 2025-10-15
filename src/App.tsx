@@ -28,6 +28,8 @@ import {
   Trash2,
   Undo,
   X,
+  Pin,
+  PinOff,
   Users,
   Gauge,
 } from 'lucide-react';
@@ -198,8 +200,9 @@ function App() {
   const [activeView, setActiveView] = useState('library');
   const [isWindowFullScreen, setIsWindowFullScreen] = useState(false);
   const [currentFolderPath, setCurrentFolderPath] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState(new Set());
+  const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
   const [folderTree, setFolderTree] = useState<any>(null);
+  const [pinnedFolderTrees, setPinnedFolderTrees] = useState<any[]>([]);
   const [imageList, setImageList] = useState<Array<ImageFile>>([]);
   const [imageRatings, setImageRatings] = useState<Record<string, number>>({});
   const [sortCriteria, setSortCriteria] = useState<SortCriteria>({ key: 'name', order: SortDirection.Ascending });
@@ -290,6 +293,7 @@ function App() {
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(256);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(320);
   const [bottomPanelHeight, setBottomPanelHeight] = useState<number>(144);
+  const [activeTreeSection, setActiveTreeSection] = useState<string | null>('current');
   const [isResizing, setIsResizing] = useState(false);
   const [thumbnailSize, setThumbnailSize] = useState(ThumbnailSize.Medium);
   const [thumbnailAspectRatio, setThumbnailAspectRatio] = useState(ThumbnailAspectRatio.Cover);
@@ -1098,7 +1102,7 @@ function App() {
 
   useEffect(() => {
     invoke(Invokes.LoadSettings)
-      .then((settings: any) => {
+      .then(async (settings: any) => {
         setAppSettings(settings);
         if (settings?.sortCriteria) setSortCriteria(settings.sortCriteria);
         if (settings?.filterCriteria) {
@@ -1120,6 +1124,17 @@ function App() {
         }
         if (settings?.thumbnailAspectRatio) {
           setThumbnailAspectRatio(settings.thumbnailAspectRatio);
+        }
+        if (settings?.activeTreeSection) {
+          setActiveTreeSection(settings.activeTreeSection);
+        }
+        if (settings?.pinnedFolders && settings.pinnedFolders.length > 0) {
+          try {
+            const trees = await invoke(Invokes.GetPinnedFolderTrees, { paths: settings.pinnedFolders });
+            setPinnedFolderTrees(trees);
+          } catch (err) {
+            console.error('Failed to load pinned folder trees:', err);
+          }
         }
       })
       .catch((err) => {
@@ -1250,6 +1265,37 @@ function App() {
     }
   }, [rootPath]);
 
+  const pinnedFolders = useMemo(() => appSettings?.pinnedFolders || [], [appSettings]);
+
+  const handleTogglePinFolder = useCallback(async (path: string) => {
+    if (!appSettings) return;
+    const currentPins = appSettings.pinnedFolders || [];
+    const isPinned = currentPins.includes(path);
+    const newPins = isPinned
+      ? currentPins.filter(p => p !== path)
+      : [...currentPins, path].sort((a, b) => a.localeCompare(b));
+
+    if (!isPinned && path === currentFolderPath) {
+      handleActiveTreeSectionChange('pinned');
+    }
+
+    handleSettingsChange({ ...appSettings, pinnedFolders: newPins });
+
+    try {
+      const trees = await invoke(Invokes.GetPinnedFolderTrees, { paths: newPins });
+      setPinnedFolderTrees(trees);
+    } catch (err) {
+      console.error('Failed to refresh pinned folders:', err);
+    }
+  }, [appSettings, handleSettingsChange]);
+
+  const handleActiveTreeSectionChange = (section: string | null) => {
+    setActiveTreeSection(section);
+    if (appSettings) {
+      handleSettingsChange({ ...appSettings, activeTreeSection: section });
+    }
+  };
+
   const handleSelectSubfolder = useCallback(
     async (path: string | null, isNewRoot = false) => {
       await invoke('cancel_thumbnail_generation');
@@ -1286,6 +1332,9 @@ function App() {
         }
 
         if (isNewRoot) {
+          if (path && !pinnedFolders.includes(path)) {
+            handleActiveTreeSectionChange('current');
+          }
           setIsTreeLoading(true);
           handleSettingsChange({ ...appSettings, lastRootPath: path } as AppSettings);
           try {
@@ -2976,7 +3025,7 @@ function App() {
     }
   };
 
-  const handleFolderTreeContextMenu = (event: any, path: string) => {
+  const handleFolderTreeContextMenu = (event: any, path: string, isCurrentlyPinned?: boolean) => {
     event.preventDefault();
     event.stopPropagation();
     const targetPath = path || rootPath;
@@ -2987,7 +3036,22 @@ function App() {
     const numCopied = copiedFilePaths.length;
     const copyPastedLabel = numCopied === 1 ? 'Copy image here' : `Copy ${numCopied} images here`;
     const movePastedLabel = numCopied === 1 ? 'Move image here' : `Move ${numCopied} images here`;
+
+    const pinOption = isCurrentlyPinned
+      ? {
+          icon: PinOff,
+          label: 'Unpin Folder',
+          onClick: () => handleTogglePinFolder(targetPath),
+        }
+      : {
+          icon: Pin,
+          label: 'Pin Folder',
+          onClick: () => handleTogglePinFolder(targetPath),
+        };
+
     const options = [
+      pinOption,
+      { type: OPTION_SEPARATOR },
       {
         icon: FolderPlus,
         label: 'New Folder',
@@ -3083,7 +3147,16 @@ function App() {
     const numCopied = copiedFilePaths.length;
     const copyPastedLabel = numCopied === 1 ? 'Copy image here' : `Copy ${numCopied} images here`;
     const movePastedLabel = numCopied === 1 ? 'Move image here' : `Move ${numCopied} images here`;
+    const isCurrentFolderAlreadyPinned = currentFolderPath && pinnedFolders.includes(currentFolderPath);
+
     const options = [
+      {
+        label: isCurrentFolderAlreadyPinned ? 'Unpin Current Folder' : 'Pin Current Folder',
+        icon: isCurrentFolderAlreadyPinned ? PinOff : Pin,
+        onClick: () => handleTogglePinFolder(currentFolderPath as string),
+        disabled: !currentFolderPath,
+      },
+      { type: OPTION_SEPARATOR },
       {
         label: 'Paste',
         icon: ClipboardPaste,
@@ -3468,7 +3541,7 @@ function App() {
                 isResizing={isResizing}
                 isVisible={uiVisibility.folderTree}
                 onContextMenu={handleFolderTreeContextMenu}
-                onFolderSelect={handleSelectSubfolder}
+                onFolderSelect={(path) => handleSelectSubfolder(path, false)}
                 onToggleFolder={handleToggleFolder}
                 selectedPath={currentFolderPath}
                 setIsVisible={(value: boolean) =>
@@ -3476,6 +3549,10 @@ function App() {
                 }
                 style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
                 tree={folderTree}
+                pinnedFolderTrees={pinnedFolderTrees}
+                pinnedFolders={pinnedFolders}
+                activeSection={activeTreeSection}
+                onActiveSectionChange={handleActiveTreeSectionChange}
               />
               <Resizer
                 direction={Orientation.Vertical}
