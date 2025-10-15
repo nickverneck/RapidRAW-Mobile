@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, forwardRef, useMemo } from 'react';
+import { useState, useEffect, useRef, forwardRef, useMemo, useCallback } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
@@ -119,13 +119,20 @@ interface SortOptionsProps {
   sortOptions: Array<Omit<SortCriteria, 'order'> & { label?: string; disabled?: boolean }>;
 }
 
+interface ImageLayer {
+  id: string;
+  url: string;
+  opacity: number;
+}
+
 interface ThumbnailProps {
-  data: any;
+  data: string | undefined;
   isActive: boolean;
   isSelected: boolean;
   onContextMenu(e: any): void;
   onImageClick(path: string, event: any): void;
   onImageDoubleClick(path: string): void;
+  onLoad(): void;
   path: string;
   rating: number;
   tags: Array<string>;
@@ -605,18 +612,67 @@ function Thumbnail({
   onContextMenu,
   onImageClick,
   onImageDoubleClick,
+  onLoad,
   path,
   rating,
   tags,
-  aspectRatio,
+  aspectRatio: thumbnailAspectRatio,
 }: ThumbnailProps) {
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [showPlaceholder, setShowPlaceholder] = useState(false);
+  const [layers, setLayers] = useState<ImageLayer[]>([]);
+  const latestThumbDataRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (data) {
-      setIsLoaded(true);
+      setShowPlaceholder(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShowPlaceholder(true);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [data]);
+
+  useEffect(() => {
+    if (!data) {
+      setLayers([]);
+      latestThumbDataRef.current = undefined;
+      return;
+    }
+
+    if (data !== latestThumbDataRef.current) {
+      latestThumbDataRef.current = data;
+
+      setLayers((prev) => {
+        if (prev.some((l) => l.id === data)) {
+          return prev;
+        }
+        return [...prev, { id: data, url: data, opacity: 0 }];
+      });
     }
   }, [data]);
+
+  useEffect(() => {
+    const layerToFadeIn = layers.find((l) => l.opacity === 0);
+    if (layerToFadeIn) {
+      const timer = setTimeout(() => {
+        setLayers((prev) => prev.map((l) => (l.id === layerToFadeIn.id ? { ...l, opacity: 1 } : l)));
+        onLoad();
+      }, 10);
+
+      return () => clearTimeout(timer);
+    }
+  }, [layers, onLoad]);
+
+  const handleTransitionEnd = useCallback((finishedId: string) => {
+    setLayers((prev) => {
+      const finishedIndex = prev.findIndex((l) => l.id === finishedId);
+      if (finishedIndex < 0 || prev.length <= 1) {
+        return prev;
+      }
+      return prev.slice(finishedIndex);
+    });
+  }, []);
 
   const ringClass = isActive
     ? 'ring-2 ring-accent'
@@ -625,10 +681,6 @@ function Thumbnail({
     : 'hover:ring-2 hover:ring-hover-color';
   const colorTag = tags?.find((t: string) => t.startsWith('color:'))?.substring(6);
   const colorLabel = COLOR_LABELS.find((c: Color) => c.name === colorTag);
-
-  const imageClasses = `w-full h-full group-hover:scale-[1.02] transition ease-in-out duration-300 ${
-    isLoaded ? 'opacity-100' : 'opacity-0'
-  }`;
 
   return (
     <div
@@ -641,29 +693,49 @@ function Thumbnail({
       onDoubleClick={() => onImageDoubleClick(path)}
       title={path.split(/[\\/]/).pop()}
     >
-      {data ? (
-        <>
-          {aspectRatio === ThumbnailAspectRatio.Contain && (
-            <img
-              alt=""
-              className="absolute inset-0 w-full h-full object-cover blur-md scale-110"
-              src={data}
-            />
-          )}
-          <img
-            alt={path}
-            className={`${imageClasses} ${
-              aspectRatio === ThumbnailAspectRatio.Contain ? 'object-contain' : 'object-cover'
-            } relative`}
-            loading="lazy"
-            src={data}
-          />
-        </>
-      ) : (
-        <div className="w-full h-full flex items-center justify-center bg-surface">
-          <ImageIcon className="text-text-secondary animate-pulse" />
+      {layers.length > 0 && (
+        <div className="absolute inset-0 w-full h-full">
+          {layers.map((layer) => (
+            <div
+              key={layer.id}
+              className="absolute inset-0 w-full h-full"
+              style={{
+                opacity: layer.opacity,
+                transition: 'opacity 300ms ease-in-out',
+              }}
+              onTransitionEnd={() => handleTransitionEnd(layer.id)}
+            >
+              {thumbnailAspectRatio === ThumbnailAspectRatio.Contain && (
+                <img alt="" className="absolute inset-0 w-full h-full object-cover blur-md scale-110" src={layer.url} />
+              )}
+              <img
+                alt={path.split(/[\\/]/).pop()}
+                className={`w-full h-full group-hover:scale-[1.02] transition-transform duration-300 ${
+                  thumbnailAspectRatio === ThumbnailAspectRatio.Contain ? 'object-contain' : 'object-cover'
+                } relative`}
+                decoding="async"
+                loading="lazy"
+                src={layer.url}
+              />
+            </div>
+          ))}
         </div>
       )}
+
+      <AnimatePresence>
+        {layers.length === 0 && showPlaceholder && (
+          <motion.div
+            className="absolute inset-0 w-full h-full flex items-center justify-center bg-surface"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+          >
+            <ImageIcon className="text-text-secondary animate-pulse" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {(colorLabel || rating > 0) && (
         <div className="absolute top-1.5 right-1.5 bg-bg-primary/50 rounded-full px-1.5 py-0.5 text-xs text-text-primary flex items-center gap-1 backdrop-blur-sm">
           {colorLabel && (
@@ -700,6 +772,7 @@ const Cell = ({ columnIndex, rowIndex, style, data }: CellProps) => {
     onImageDoubleClick,
     thumbnails,
     thumbnailAspectRatio,
+    loadedThumbnails,
   } = data;
   const index = rowIndex * columnCount + columnIndex;
   if (index >= imageList.length) {
@@ -707,6 +780,9 @@ const Cell = ({ columnIndex, rowIndex, style, data }: CellProps) => {
   }
 
   const imageFile = imageList[index];
+  const handleLoad = useCallback(() => {
+    loadedThumbnails.add(imageFile.path);
+  }, [loadedThumbnails, imageFile.path]);
 
   return (
     <div style={style}>
@@ -721,9 +797,11 @@ const Cell = ({ columnIndex, rowIndex, style, data }: CellProps) => {
           data={thumbnails[imageFile.path]}
           isActive={activePath === imageFile.path}
           isSelected={multiSelectedPaths.includes(imageFile.path)}
+          // isInitiallyLoaded prop is removed
           onContextMenu={(e: any) => onContextMenu(e, imageFile.path)}
           onImageClick={onImageClick}
           onImageDoubleClick={onImageDoubleClick}
+          onLoad={handleLoad}
           path={imageFile.path}
           rating={imageRatings?.[imageFile.path] || 0}
           tags={imageFile.tags}
@@ -782,8 +860,7 @@ export default function MainLibrary({
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
-  const hideTimeoutRef = useRef<number | null>(null);
-  const showTimeoutRef = useRef<number | null>(null);
+  const loadedThumbnailsRef = useRef(new Set<string>());
 
   const sortOptions = useMemo(() => {
     const exifEnabled = appSettings?.enableExifReading ?? false;
@@ -1175,10 +1252,11 @@ export default function MainLibrary({
                     onImageDoubleClick,
                     thumbnails,
                     thumbnailAspectRatio,
+                    loadedThumbnails: loadedThumbnailsRef.current,
                   }}
                   key={`${sortCriteria.key}-${sortCriteria.order}-${filterCriteria.rating}-${
                     filterCriteria.rawStatus || RawStatus.All
-                  }`}
+                  }-${searchQuery}`}
                   onScroll={({ scrollTop }) => setLibraryScrollTop(scrollTop)}
                   outerElementType={customOuterElement}
                   rowCount={rowCount}
