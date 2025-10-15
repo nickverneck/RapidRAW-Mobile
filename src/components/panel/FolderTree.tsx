@@ -47,13 +47,22 @@ interface VisibleProps {
 
 function SectionHeader({ title, isOpen, onToggle }: { title: string; isOpen: boolean; onToggle: () => void }) {
   return (
-    <button
-      className="flex items-center w-full text-left p-2 rounded-md hover:bg-surface transition-colors"
+    <div
+      className="flex items-center w-full text-left px-1 py-1.5 cursor-pointer group"
       onClick={onToggle}
+      title={isOpen ? `Collapse ${title}` : `Expand ${title}`}
     >
-      {isOpen ? <ChevronDown size={16} className="mr-2" /> : <ChevronRight size={16} className="mr-2" />}
-      <span className="text-xs font-bold uppercase text-text-secondary">{title}</span>
-    </button>
+      <div className="p-0.5 rounded-md transition-colors">
+        {isOpen ? (
+          <ChevronDown size={14} className="text-text-secondary" />
+        ) : (
+          <ChevronRight size={14} className="text-text-secondary" />
+        )}
+      </div>
+      <span className="ml-1 text-xs font-bold uppercase text-text-secondary tracking-wider select-none">
+        {title}
+      </span>
+    </div>
   );
 }
 
