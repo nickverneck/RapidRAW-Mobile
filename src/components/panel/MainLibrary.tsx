@@ -797,7 +797,6 @@ const Cell = ({ columnIndex, rowIndex, style, data }: CellProps) => {
           data={thumbnails[imageFile.path]}
           isActive={activePath === imageFile.path}
           isSelected={multiSelectedPaths.includes(imageFile.path)}
-          // isInitiallyLoaded prop is removed
           onContextMenu={(e: any) => onContextMenu(e, imageFile.path)}
           onImageClick={onImageClick}
           onImageDoubleClick={onImageDoubleClick}

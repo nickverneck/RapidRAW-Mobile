@@ -1307,26 +1307,36 @@ function App() {
 
         if (isNewRoot) {
           setExpandedFolders(new Set([path]));
-        } else if (rootPath && path !== rootPath) {
+        } else if (path) {
           setExpandedFolders((prev) => {
             const newSet = new Set(prev);
-            let current: string | undefined | null = path;
-            const separator = current?.includes('/') ? '/' : '\\';
+            const allRoots = [rootPath, ...pinnedFolders].filter(Boolean) as string[];
+            const relevantRoot = allRoots.find(r => path.startsWith(r));
 
-            const lastSeparatorIndex = current?.lastIndexOf(separator);
-            if (lastSeparatorIndex && lastSeparatorIndex > -1 && lastSeparatorIndex >= rootPath.length) {
-              current = current?.substring(0, lastSeparatorIndex);
-            } else {
-              current = null;
-            }
+            if (relevantRoot) {
+              // --- START: REFINED FIX ---
+              const separator = path.includes('/') ? '/' : '\\';
+              const parentSeparatorIndex = path.lastIndexOf(separator);
 
-            while (current && current.startsWith(rootPath) && current !== rootPath) {
-              newSet.add(current);
-              const parentSeparatorIndex = current.lastIndexOf(separator);
-              if (parentSeparatorIndex === -1 || parentSeparatorIndex < rootPath.length) break;
-              current = current.substring(0, parentSeparatorIndex);
+              // Check if the clicked folder is not a root folder itself.
+              if (parentSeparatorIndex > -1 && path.length > relevantRoot.length) {
+                // Start the traversal from the *parent* of the clicked folder.
+                let current = path.substring(0, parentSeparatorIndex);
+
+                // Walk up the tree from the parent to its root, expanding each one.
+                while (current && current.length >= relevantRoot.length) {
+                  newSet.add(current);
+                  const nextParentIndex = current.lastIndexOf(separator);
+                  if (nextParentIndex === -1 || current === relevantRoot) {
+                    break; // Stop if we've reached the root or can't go further up.
+                  }
+                  current = current.substring(0, nextParentIndex);
+                }
+              }
+              // Always ensure the root of the relevant tree is expanded.
+              newSet.add(relevantRoot);
+              // --- END: REFINED FIX ---
             }
-            newSet.add(rootPath);
             return newSet;
           });
         }
@@ -1403,7 +1413,7 @@ function App() {
         setIsViewLoading(false);
       }
     },
-    [appSettings, handleSettingsChange, selectedImage, rootPath, sortCriteria.key],
+    [appSettings, handleSettingsChange, selectedImage, rootPath, sortCriteria.key, pinnedFolders],
   );
 
   const handleLibraryRefresh = useCallback(() => {
@@ -2322,10 +2332,7 @@ function App() {
 
       const root = appSettings.lastRootPath;
       const folderState = appSettings.lastFolderState;
-      const pathToSelect =
-        folderState?.currentFolderPath && folderState.currentFolderPath.startsWith(root)
-          ? folderState.currentFolderPath
-          : root;
+      const pathToSelect = folderState?.currentFolderPath || root;
 
       setRootPath(root);
 
@@ -2338,9 +2345,14 @@ function App() {
       }
 
       setIsTreeLoading(true);
-      const treeData = await invoke(Invokes.GetFolderTree, { path: root });
-      setFolderTree(treeData);
-      setIsTreeLoading(false);
+      try {
+        const treeData = await invoke(Invokes.GetFolderTree, { path: root });
+        setFolderTree(treeData);
+      } catch (err) {
+        console.error('Failed to restore folder tree:', err);
+      } finally {
+        setIsTreeLoading(false);
+      }
 
       await handleSelectSubfolder(pathToSelect, false);
     };
