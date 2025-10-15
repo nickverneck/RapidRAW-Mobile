@@ -23,12 +23,18 @@ I developed this project as a personal challenge at the age of 18. My goal was t
 <table width="100%">
   <tr>
     <td width="50%" valign="top" align="center">
+      <a href="https://github.com/CyberTimon/RapidRAW/releases/latest">
+        <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/src-tauri/icons/full_res_original.png" alt="Download RapidRAW" height="96">
+      </a>
       <h3>Download RapidRAW</h3>
       <p>Get the latest release for Windows, macOS, and Linux. Packaged and ready to run.</p>
       <strong><a href="https://github.com/CyberTimon/RapidRAW/releases/latest">Download Latest Version →</a></strong>
       <br><br>
     </td>
     <td width="50%" valign="top" align="center">
+      <a href="https://github.com/CyberTimon/RapidRAW-Docs">
+        <img src="https://raw.githubusercontent.com/CyberTimon/RapidRAW/main/src-tauri/icons/docs.png" alt="Read the Docs" height="96">
+      </a>
       <h3>Read the Docs</h3>
       <p>Learn how to use RapidRAW with step-by-step tutorials, from adjustments to masking.</p>
       <strong><a href="https://github.com/CyberTimon/RapidRAW-Docs">View Tutorials & Examples →</a></strong>
