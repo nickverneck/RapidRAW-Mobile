@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect, type JSX } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle, XCircle, Loader2, Save, Crop, Proportions, LayoutTemplate, Shuffle, RectangleHorizontal, RectangleVertical, Palette } from 'lucide-react';
