@@ -1276,7 +1276,66 @@ async fn estimate_export_size(
     )?;
     let preview_byte_size = preview_bytes.len();
 
-    let (final_full_w, final_full_h) = loaded_image.image.dimensions();
+    let (transformed_full_res, _unscaled_crop_offset) =
+        apply_all_transformations(&loaded_image.image, &js_adjustments);
+    let (mut final_full_w, mut final_full_h) = transformed_full_res.dimensions();
+
+    if let Some(resize_opts) = &export_settings.resize {
+        let should_resize = if resize_opts.dont_enlarge {
+            match resize_opts.mode {
+                ResizeMode::LongEdge => final_full_w.max(final_full_h) > resize_opts.value,
+                ResizeMode::ShortEdge => final_full_w.min(final_full_h) > resize_opts.value,
+                ResizeMode::Width => final_full_w > resize_opts.value,
+                ResizeMode::Height => final_full_h > resize_opts.value,
+            }
+        } else {
+            true
+        };
+
+        if should_resize {
+            match resize_opts.mode {
+                ResizeMode::LongEdge => {
+                    if final_full_w > final_full_h {
+                        final_full_h = (resize_opts.value as f32
+                            * (final_full_h as f32 / final_full_w as f32))
+                            .round() as u32;
+                        final_full_w = resize_opts.value;
+                    } else {
+                        final_full_w = (resize_opts.value as f32
+                            * (final_full_w as f32 / final_full_h as f32))
+                            .round() as u32;
+                        final_full_h = resize_opts.value;
+                    }
+                }
+                ResizeMode::ShortEdge => {
+                    if final_full_w < final_full_h {
+                        final_full_h = (resize_opts.value as f32
+                            * (final_full_h as f32 / final_full_w as f32))
+                            .round() as u32;
+                        final_full_w = resize_opts.value;
+                    } else {
+                        final_full_w = (resize_opts.value as f32
+                            * (final_full_w as f32 / final_full_h as f32))
+                            .round() as u32;
+                        final_full_h = resize_opts.value;
+                    }
+                }
+                ResizeMode::Width => {
+                    final_full_h = (resize_opts.value as f32
+                        * (final_full_h as f32 / final_full_w as f32))
+                        .round() as u32;
+                    final_full_w = resize_opts.value;
+                }
+                ResizeMode::Height => {
+                    final_full_w = (resize_opts.value as f32
+                        * (final_full_w as f32 / final_full_h as f32))
+                        .round() as u32;
+                    final_full_h = resize_opts.value;
+                }
+            };
+        }
+    }
+
     let (processed_preview_w, processed_preview_h) = processed_preview.dimensions();
 
     let pixel_ratio = if processed_preview_w > 0 && processed_preview_h > 0 {
@@ -1317,29 +1376,114 @@ async fn estimate_batch_export_size(
     let img_bytes = read_file_mapped(Path::new(first_path)).map_err(|e| e.to_string())?;
     let original_image =
         load_base_image_from_bytes(&img_bytes, first_path, true).map_err(|e| e.to_string())?;
+
     let base_image_preview = original_image.thumbnail(ESTIMATE_DIM, ESTIMATE_DIM);
 
-    let final_image_preview = process_image_for_export(
-        first_path,
-        &base_image_preview,
-        &js_adjustments,
-        &export_settings,
+    let (transformed_preview, unscaled_crop_offset) =
+        apply_all_transformations(&base_image_preview, &js_adjustments);
+    let (preview_w, preview_h) = transformed_preview.dimensions();
+
+    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+        .get("masks")
+        .and_then(|m| serde_json::from_value(m.clone()).ok())
+        .unwrap_or_else(Vec::new);
+
+    let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
+        .iter()
+        .filter_map(|def| generate_mask_bitmap(def, preview_w, preview_h, 1.0, unscaled_crop_offset))
+        .collect();
+
+    let mut all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    all_adjustments.global.show_clipping = 0;
+
+    let lut_path = js_adjustments["lutPath"].as_str();
+    let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
+
+    let unique_hash = calculate_full_job_hash(first_path, &js_adjustments).wrapping_add(1);
+
+    let processed_preview = process_and_get_dynamic_image(
         &context,
         &state,
+        &transformed_preview,
+        unique_hash,
+        all_adjustments,
+        &mask_bitmaps,
+        lut,
+        "estimate_batch_export_size",
     )?;
 
     let preview_bytes = encode_image_to_bytes(
-        &final_image_preview,
+        &processed_preview,
         &output_format,
         export_settings.jpeg_quality,
     )?;
     let single_image_estimated_size = preview_bytes.len();
 
-    let (full_w, full_h) = original_image.dimensions();
-    let (preview_w, preview_h) = final_image_preview.dimensions();
+    let (transformed_full_res, _unscaled_crop_offset) =
+        apply_all_transformations(&original_image, &js_adjustments);
+    let (mut final_full_w, mut final_full_h) = transformed_full_res.dimensions();
 
-    let pixel_ratio = if preview_w > 0 && preview_h > 0 {
-        (full_w as f64 * full_h as f64) / (preview_w as f64 * preview_h as f64)
+    if let Some(resize_opts) = &export_settings.resize {
+        let should_resize = if resize_opts.dont_enlarge {
+            match resize_opts.mode {
+                ResizeMode::LongEdge => final_full_w.max(final_full_h) > resize_opts.value,
+                ResizeMode::ShortEdge => final_full_w.min(final_full_h) > resize_opts.value,
+                ResizeMode::Width => final_full_w > resize_opts.value,
+                ResizeMode::Height => final_full_h > resize_opts.value,
+            }
+        } else {
+            true
+        };
+
+        if should_resize {
+            match resize_opts.mode {
+                ResizeMode::LongEdge => {
+                    if final_full_w > final_full_h {
+                        final_full_h = (resize_opts.value as f32
+                            * (final_full_h as f32 / final_full_w as f32))
+                            .round() as u32;
+                        final_full_w = resize_opts.value;
+                    } else {
+                        final_full_w = (resize_opts.value as f32
+                            * (final_full_w as f32 / final_full_h as f32))
+                            .round() as u32;
+                        final_full_h = resize_opts.value;
+                    }
+                }
+                ResizeMode::ShortEdge => {
+                    if final_full_w < final_full_h {
+                        final_full_h = (resize_opts.value as f32
+                            * (final_full_h as f32 / final_full_w as f32))
+                            .round() as u32;
+                        final_full_w = resize_opts.value;
+                    } else {
+                        final_full_w = (resize_opts.value as f32
+                            * (final_full_w as f32 / final_full_h as f32))
+                            .round() as u32;
+                        final_full_h = resize_opts.value;
+                    }
+                }
+                ResizeMode::Width => {
+                    final_full_h = (resize_opts.value as f32
+                        * (final_full_h as f32 / final_full_w as f32))
+                        .round() as u32;
+                    final_full_w = resize_opts.value;
+                }
+                ResizeMode::Height => {
+                    final_full_w = (resize_opts.value as f32
+                        * (final_full_w as f32 / final_full_h as f32))
+                        .round() as u32;
+                    final_full_h = resize_opts.value;
+                }
+            };
+        }
+    }
+
+    let (processed_preview_w, processed_preview_h) = processed_preview.dimensions();
+
+    let pixel_ratio = if processed_preview_w > 0 && processed_preview_h > 0 {
+        (final_full_w as f64 * final_full_h as f64)
+            / (processed_preview_w as f64 * processed_preview_h as f64)
     } else {
         1.0
     };
