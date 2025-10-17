@@ -2377,8 +2377,23 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
         eprintln!("Failed to apply logger configuration: {}", e);
     }
 
-    panic::set_hook(Box::new(|error| {
-        log::error!("PANIC! {:#?}", error);
+    panic::set_hook(Box::new(|info| {
+        let payload = info.payload();
+        let message = if let Some(s) = payload.downcast_ref::<&'static str>() {
+            *s
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.as_str()
+        } else {
+            log::error!("PANIC! (with non-string payload): {:#?}", info);
+            return;
+        };
+
+        let location = info.location().map_or_else(
+            || "at an unknown location".to_string(),
+            |loc| format!("at {}:{}:{}", loc.file(), loc.line(), loc.column())
+        );
+
+        log::error!("PANIC! {} - {}", location, message);
     }));
 
     log::info!(
