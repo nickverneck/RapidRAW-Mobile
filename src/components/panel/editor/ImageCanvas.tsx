@@ -565,8 +565,6 @@ const ImageCanvas = memo(
         const initialUrl = thumbnailUrl || originalUrl;
         if (initialUrl) {
           setLayers([{ id: initialUrl, url: initialUrl, opacity: 1 }]);
-        } else {
-          setLayers([]);
         }
         return;
       }

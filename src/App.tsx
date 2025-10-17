@@ -1314,28 +1314,21 @@ function App() {
             const relevantRoot = allRoots.find(r => path.startsWith(r));
 
             if (relevantRoot) {
-              // --- START: REFINED FIX ---
               const separator = path.includes('/') ? '/' : '\\';
               const parentSeparatorIndex = path.lastIndexOf(separator);
 
-              // Check if the clicked folder is not a root folder itself.
               if (parentSeparatorIndex > -1 && path.length > relevantRoot.length) {
-                // Start the traversal from the *parent* of the clicked folder.
                 let current = path.substring(0, parentSeparatorIndex);
-
-                // Walk up the tree from the parent to its root, expanding each one.
                 while (current && current.length >= relevantRoot.length) {
                   newSet.add(current);
                   const nextParentIndex = current.lastIndexOf(separator);
                   if (nextParentIndex === -1 || current === relevantRoot) {
-                    break; // Stop if we've reached the root or can't go further up.
+                    break;
                   }
                   current = current.substring(0, nextParentIndex);
                 }
               }
-              // Always ensure the root of the relevant tree is expanded.
               newSet.add(relevantRoot);
-              // --- END: REFINED FIX ---
             }
             return newSet;
           });
