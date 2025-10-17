@@ -601,7 +601,7 @@ fn apply_adjustments(
             let mut buf = Cursor::new(Vec::new());
             if final_processed_image
                 .to_rgb8()
-                .write_with_encoder(JpegEncoder::new_with_quality(&mut buf, 80))
+                .write_with_encoder(JpegEncoder::new_with_quality(&mut buf, 85))
                 .is_ok()
             {
                 let _ = app_handle.emit("preview-update-final", buf.get_ref());

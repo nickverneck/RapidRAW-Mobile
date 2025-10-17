@@ -287,6 +287,11 @@ fn gradient_noise(p: vec2<f32>) -> f32 {
     return final_interp;
 }
 
+fn dither(coords: vec2<u32>) -> f32 {
+    let p = vec2<f32>(coords);
+    return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453) - 0.5;
+}
+
 fn interpolate_cubic_hermite(x: f32, p1: Point, p2: Point, m1: f32, m2: f32) -> f32 {
     let dx = p2.x - p1.x;
     if (dx <= 0.0) { return p1.y; }
@@ -955,6 +960,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             final_rgb = SHADOW_WARNING_COLOR;
         }
     }
+
+    let dither_amount = 1.0 / 255.0;
+    final_rgb += dither(id.xy) * dither_amount;
 
     textureStore(output_texture, id.xy, vec4<f32>(clamp(final_rgb, vec3<f32>(0.0), vec3<f32>(1.0)), original_alpha));
 }
