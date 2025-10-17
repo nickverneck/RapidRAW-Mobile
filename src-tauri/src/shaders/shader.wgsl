@@ -48,6 +48,7 @@ struct GlobalAdjustments {
     clarity: f32,
     dehaze: f32,
     structure: f32,
+    centre: f32,
     vignette_amount: f32,
     vignette_midpoint: f32,
     vignette_roundness: f32,
@@ -75,6 +76,9 @@ struct GlobalAdjustments {
     lut_intensity: f32,
     _pad_lut1: f32,
     _pad_lut2: f32,
+    _pad_lut3: f32,
+    _pad_lut4: f32,
+    _pad_lut5: f32,
 
     color_grading_shadows: ColorGradeSettings,
     color_grading_midtones: ColorGradeSettings,
@@ -616,6 +620,44 @@ fn apply_local_contrast(
     return mix(processed_color_linear, final_color, midtone_mask);
 }
 
+fn apply_centre_effect(
+    color_in: vec3<f32>, 
+    centre_amount: f32, 
+    coords_i: vec2<i32>, 
+    blurred_color_srgb: vec3<f32>
+) -> vec3<f32> {
+    if (centre_amount == 0.0) {
+        return color_in;
+    }
+    let full_dims_f = vec2<f32>(textureDimensions(input_texture));
+    let coord_f = vec2<f32>(coords_i);
+    let midpoint = 0.4;
+    let feather = 0.375;
+    let aspect = full_dims_f.y / full_dims_f.x;
+    let uv_centered = (coord_f / full_dims_f - 0.5) * 2.0;
+    let d = length(uv_centered * vec2<f32>(1.0, aspect)) * 0.5;
+    let vignette_mask = smoothstep(midpoint - feather, midpoint + feather, d);
+    let centre_mask = 1.0 - vignette_mask;
+    const CLARITY_SCALE: f32 = 0.9;
+    const EXPOSURE_SCALE: f32 = 0.5;
+    const VIBRANCE_SCALE: f32 = 0.4;
+    const SATURATION_CENTER_SCALE: f32 = 0.3;
+    const SATURATION_EDGE_SCALE: f32 = 0.8;
+    var processed_color = color_in;
+    let clarity_strength = centre_amount * (2.0 * centre_mask - 1.0) * CLARITY_SCALE;
+    if (abs(clarity_strength) > 0.001) {
+        processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength);
+    }
+    let exposure_boost = centre_mask * centre_amount * EXPOSURE_SCALE;
+    processed_color = apply_exposure(processed_color, exposure_boost);
+    let vibrance_center_boost = centre_mask * centre_amount * VIBRANCE_SCALE;
+    let saturation_center_boost = centre_mask * centre_amount * SATURATION_CENTER_SCALE;
+    let saturation_edge_effect = -(1.0 - centre_mask) * centre_amount * SATURATION_EDGE_SCALE;
+    let total_saturation_effect = saturation_center_boost + saturation_edge_effect;
+    processed_color = apply_creative_color(processed_color, total_saturation_effect, vibrance_center_boost);
+    return processed_color;
+}
+
 fn apply_dehaze(color: vec3<f32>, amount: f32) -> vec3<f32> {
     if (amount == 0.0) { return color; }
     let atmospheric_light = vec3<f32>(0.95, 0.97, 1.0);
@@ -743,6 +785,7 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
+    processed_rgb = apply_centre_effect(processed_rgb, adj.centre, coords_i, clarity_blurred);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = apply_exposure(processed_rgb, adj.exposure);

@@ -59,6 +59,14 @@ export default function DetailsPanel({ adjustments, setAdjustments, appSettings 
             step={1}
             value={adjustments.structure}
           />
+          <Slider
+            label="Centré"
+            max={100}
+            min={-100}
+            onChange={(e: any) => handleAdjustmentChange(Effect.Centré, e.target.value)}
+            step={1}
+            value={adjustments.centré}
+          />
         </div>
       )}
 

@@ -70,6 +70,7 @@ export enum Effect {
   VignetteFeather = 'vignetteFeather',
   VignetteMidpoint = 'vignetteMidpoint',
   VignetteRoundness = 'vignetteRoundness',
+  Centré = 'centré',
 }
 
 export interface ColorCalibration {
@@ -87,6 +88,7 @@ export interface Adjustments {
   aiPatches: Array<AiPatch>;
   aspectRatio: number | null;
   blacks: number;
+  centré: number;
   clarity: number;
   chromaticAberrationBlueYellow: number;
   chromaticAberrationRedCyan: number;
@@ -338,6 +340,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   aiPatches: [],
   aspectRatio: null,
   blacks: 0,
+  centré: 0,
   clarity: 0,
   chromaticAberrationBlueYellow: 0,
   chromaticAberrationRedCyan: 0,
@@ -475,6 +478,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
 export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   BasicAdjustment.Blacks,
   Effect.Clarity,
+  Effect.Centré,
   DetailsAdjustment.ChromaticAberrationBlueYellow,
   DetailsAdjustment.ChromaticAberrationRedCyan,
   'colorCalibration',
@@ -544,6 +548,7 @@ export const ADJUSTMENT_SECTIONS: Sections = {
   effects: [
     Effect.Clarity,
     Effect.Dehaze,
+    Effect.Centré,
     Effect.EnableNegativeConversion,
     Effect.FilmBaseColor,
     Effect.GrainAmount,

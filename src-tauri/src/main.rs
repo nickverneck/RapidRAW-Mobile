@@ -2378,22 +2378,22 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
     }
 
     panic::set_hook(Box::new(|info| {
-        let payload = info.payload();
-        let message = if let Some(s) = payload.downcast_ref::<&'static str>() {
-            *s
-        } else if let Some(s) = payload.downcast_ref::<String>() {
-            s.as_str()
+        let message = if let Some(s) = info.payload().downcast_ref::<&'static str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
         } else {
-            log::error!("PANIC! (with non-string payload): {:#?}", info);
-            return;
+            format!("{:?}", info.payload())
         };
-
         let location = info.location().map_or_else(
             || "at an unknown location".to_string(),
-            |loc| format!("at {}:{}:{}", loc.file(), loc.line(), loc.column())
+            |loc| format!("at {}:{}:{}", loc.file(), loc.line(), loc.column()),
         );
-
-        log::error!("PANIC! {} - {}", location, message);
+        log::error!(
+            "PANIC! {} - {}",
+            location,
+            message.trim()
+        );
     }));
 
     log::info!(

@@ -186,6 +186,7 @@ pub struct GlobalAdjustments {
     pub clarity: f32,
     pub dehaze: f32,
     pub structure: f32,
+    pub centré: f32,
     pub vignette_amount: f32,
     pub vignette_midpoint: f32,
     pub vignette_roundness: f32,
@@ -213,6 +214,9 @@ pub struct GlobalAdjustments {
     pub lut_intensity: f32,
     _pad_lut1: f32,
     _pad_lut2: f32,
+    _pad_lut3: f32,
+    _pad_lut4: f32,
+    _pad_lut5: f32,
 
     pub color_grading_shadows: ColorGradeSettings,
     pub color_grading_midtones: ColorGradeSettings,
@@ -309,6 +313,7 @@ struct AdjustmentScales {
     clarity: f32,
     dehaze: f32,
     structure: f32,
+    centré: f32,
 
     vignette_amount: f32,
     vignette_midpoint: f32,
@@ -345,12 +350,13 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     tint: 100.0,
     vibrance: 100.0,
 
-    sharpness: 40.0,
+    sharpness: 100.0,
     luma_noise_reduction: 100.0,
     color_noise_reduction: 100.0,
-    clarity: 100.0,
+    clarity: 250.0,
     dehaze: 750.0,
-    structure: 100.0,
+    structure: 250.0,
+    centré: 250.0,
 
     vignette_amount: 100.0,
     vignette_midpoint: 100.0,
@@ -554,6 +560,7 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
         clarity: get_val("effects", "clarity", SCALES.clarity, None),
         dehaze: get_val("effects", "dehaze", SCALES.dehaze, None),
         structure: get_val("effects", "structure", SCALES.structure, None),
+        centré: get_val("effects", "centré", SCALES.centré, None),
         vignette_amount: get_val("effects", "vignetteAmount", SCALES.vignette_amount, None),
         vignette_midpoint: get_val(
             "effects",
@@ -626,6 +633,9 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
         lut_intensity: js_adjustments["lutIntensity"].as_f64().unwrap_or(100.0) as f32 / 100.0,
         _pad_lut1: 0.0,
         _pad_lut2: 0.0,
+        _pad_lut3: 0.0,
+        _pad_lut4: 0.0,
+        _pad_lut5: 0.0,
 
         color_grading_shadows: if is_visible("color") {
             parse_color_grade_settings(&cg_obj["shadows"])
