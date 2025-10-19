@@ -38,6 +38,24 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.3" date="2025-10-19">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.3</url>
+        <description translate="no">
+            <p>New Features</p>
+            <ul>
+                <li>Pin Folders: Tired of constantly navigating between folders on different drives? Now you can right click any folder to pin it to a dedicated section in the sidebar for quick access.</li>
+                <li>Apply Presets To Masks: Apply any saved preset directly to a mask. This is a huge time saver for applying targeted adjustments like a "Clarity Boost" to a subject mask.</li>
+                <li>Centré Adjustment: A new slider that acts like an inverted vignette, subtly boosting clarity, brightness, and contrast in the middle of the frame to draw attention to your subject.</li>
+                <li>Whole Image Mask Type: Added a new mask type that covers the entire image, useful as a base for subtracting or inverting other mask components. This also lays the groundwork for future mask types without cluttering the UI.</li>
+            </ul>
+            <p>Core Improvements</p>
+            <ul>
+                <li>Library thumbnail updating is now much smoother.</li>
+                <li>Rawler is now a submodule, thanks to @william-sy.</li>
+                <li>The logger has been improved to output the full traceback for better debugging.</li>
+            </ul>
+        </description>
+    </release>
     <release version="v1.4.2" date="2025-10-11">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.2</url>
         <description translate="no">
