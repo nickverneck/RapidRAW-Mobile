@@ -10,17 +10,17 @@ interface ContextMenuProviderProps {
 
 interface MenuItemProps {
   hideContextMenu(): void;
-  index: number;
-  isSubmenuItem?: boolean;
+  path: number[];
   option: Option;
 }
 
 interface SubMenuProps {
   cancelCloseSubmenu(): void;
-  closeSubmenu(): void;
+  closeSubmenu(path: number[]): void;
   hideContextMenu(): void;
   options: Array<Option>;
   parentRef: any;
+  parentPath: number[];
 }
 
 const ContextMenuContext = createContext('dark');
@@ -29,7 +29,7 @@ export const useContextMenu = (): any => {
   return useContext(ContextMenuContext);
 };
 
-function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, parentRef }: SubMenuProps) {
+function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, parentRef, parentPath }: SubMenuProps) {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [style, setStyle] = useState<any>({ opacity: 0 });
   const [isClient, setIsClient] = useState(false);
@@ -79,14 +79,19 @@ function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, p
       initial={{ opacity: 0, scale: 0.95 }}
       onContextMenu={(e: any) => e.preventDefault()}
       onMouseEnter={cancelCloseSubmenu}
-      onMouseLeave={closeSubmenu}
+      onMouseLeave={() => closeSubmenu(parentPath)}
       ref={menuRef}
       style={style}
       transition={{ duration: 0.1, ease: 'easeOut' }}
     >
       <div className="bg-surface/90 backdrop-blur-md rounded-lg shadow-xl p-2 w-56" role="menu">
         {options.map((option: any, index: number) => (
-          <MenuItem hideContextMenu={hideContextMenu} index={index} isSubmenuItem={true} key={index} option={option} />
+          <MenuItem
+            hideContextMenu={hideContextMenu}
+            key={index}
+            option={option}
+            path={[...parentPath, index]}
+          />
         ))}
       </div>
     </motion.div>
@@ -99,28 +104,34 @@ function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, p
   return createPortal(menuMarkup, document.body);
 }
 
-function MenuItem({ option, index, isSubmenuItem = false, hideContextMenu }: MenuItemProps) {
+function MenuItem({ option, path, hideContextMenu }: MenuItemProps) {
   const { activeSubmenu, openSubmenu, closeSubmenu, cancelCloseSubmenu } = useContextMenu();
   const itemRef = useRef(null);
 
-  const isSubmenuOpen = !isSubmenuItem && activeSubmenu === index;
+  const isSubmenuOpen =
+    option.submenu &&
+    activeSubmenu &&
+    activeSubmenu.length >= path.length &&
+    path.every((val, i) => val === activeSubmenu[i]);
 
   const handleMouseEnter = () => {
     cancelCloseSubmenu();
     if (option.disabled) {
-      if (!isSubmenuItem) closeSubmenu();
+      const parentPath = path.slice(0, -1);
+      openSubmenu(parentPath.length > 0 ? parentPath : null);
       return;
     }
     if (option.submenu) {
-      openSubmenu(index);
-    } else if (!isSubmenuItem) {
-      closeSubmenu();
+      openSubmenu(path);
+    } else {
+      const parentPath = path.slice(0, -1);
+      openSubmenu(parentPath.length > 0 ? parentPath : null);
     }
   };
 
   const handleMouseLeave = () => {
     if (option.submenu && !option.disabled) {
-      closeSubmenu();
+      closeSubmenu(path);
     }
   };
 
@@ -148,7 +159,6 @@ function MenuItem({ option, index, isSubmenuItem = false, hideContextMenu }: Men
         role="menuitem"
       >
         <div className="flex items-center gap-3">
-          {/* Change is here: Moved color swatch to the beginning of the div */}
           {option.color && <div className="w-3 h-3 rounded-full" style={{ backgroundColor: option.color }}></div>}
           {option.icon && <option.icon size={16} />}
           <span>{option.label}</span>
@@ -157,13 +167,14 @@ function MenuItem({ option, index, isSubmenuItem = false, hideContextMenu }: Men
       </button>
 
       <AnimatePresence>
-        {isSubmenuOpen && option.submenu && (
+        {isSubmenuOpen && (
           <SubMenu
             cancelCloseSubmenu={cancelCloseSubmenu}
             closeSubmenu={closeSubmenu}
             hideContextMenu={hideContextMenu}
             options={option.submenu}
             parentRef={itemRef}
+            parentPath={path}
           />
         )}
       </AnimatePresence>
@@ -191,7 +202,12 @@ function ContextMenu() {
         >
           <div className="bg-surface/90 backdrop-blur-md rounded-lg shadow-xl p-2 w-64" role="menu">
             {options.map((option: any, index: number) => (
-              <MenuItem hideContextMenu={hideContextMenu} index={index} key={index} option={option} />
+              <MenuItem
+                hideContextMenu={hideContextMenu}
+                key={index}
+                option={option}
+                path={[index]}
+              />
             ))}
           </div>
         </motion.div>
@@ -202,7 +218,7 @@ function ContextMenu() {
 
 export function ContextMenuProvider({ children }: ContextMenuProviderProps) {
   const [menuState, setMenuState] = useState<any>({ isVisible: false, x: 0, y: 0, options: [] });
-  const [activeSubmenu, setActiveSubmenu] = useState<number | null>(null);
+  const [activeSubmenu, setActiveSubmenu] = useState<number[] | null>(null);
   const [menuId, setMenuId] = useState<number>(0);
   const menuRef = useRef<any>(null);
   const submenuTimeoutRef = useRef<any>(null);
@@ -224,14 +240,20 @@ export function ContextMenuProvider({ children }: ContextMenuProviderProps) {
     setActiveSubmenu(null);
   }, []);
 
-  const openSubmenu = useCallback((index: number) => {
+  const openSubmenu = useCallback((path: number[] | null) => {
     clearTimeout(submenuTimeoutRef.current);
-    setActiveSubmenu(index);
+    setActiveSubmenu(path);
   }, []);
 
-  const closeSubmenu = useCallback(() => {
+  const closeSubmenu = useCallback((path: number[]) => {
     submenuTimeoutRef.current = setTimeout(() => {
-      setActiveSubmenu(null);
+      setActiveSubmenu((currentActivePath) => {
+        if (currentActivePath && currentActivePath.join('-').startsWith(path.join('-'))) {
+          const parentPath = path.slice(0, -1);
+          return parentPath.length > 0 ? parentPath : null;
+        }
+        return currentActivePath;
+      });
     }, 200);
   }, []);
 

@@ -3,23 +3,18 @@ import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
-  Brush,
   ChevronsRight,
-  Circle,
   ClipboardPaste,
-  Cloud,
   Copy,
-  Droplet,
   Edit,
   Eye,
   EyeOff,
   FileEdit,
+  Folder as FolderIcon,
   PlusSquare,
   RotateCcw,
-  Sparkles,
   Trash2,
-  TriangleRight,
-  User,
+  Bookmark,
 } from 'lucide-react';
 import MaskControls from './MaskControls';
 import {
@@ -32,6 +27,7 @@ import { useContextMenu } from '../../../context/ContextMenuContext';
 import { Mask, MaskType, SubMask, MASK_PANEL_CREATION_TYPES } from './Masks';
 import { BrushSettings, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
 import { createSubMask } from '../../../utils/maskUtils';
+import { usePresets } from '../../../hooks/usePresets';
 
 interface MasksPanelProps {
   activeMaskContainerId: string | null;
@@ -87,6 +83,7 @@ export default function MasksPanel({
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [renamingContainerId, setRenamingContainerId] = useState(null);
   const [tempName, setTempName] = useState('');
+  const { presets } = usePresets(adjustments);
   const { showContextMenu } = useContextMenu();
   const isInitialRender = useRef(true);
 
@@ -241,9 +238,59 @@ export default function MasksPanel({
     }));
   };
 
+  const handleApplyPresetToMask = (containerId: string, presetAdjustments: Partial<Adjustments>) => {
+    setAdjustments((prev: Adjustments) => ({
+      ...prev,
+      masks: prev.masks.map((c: MaskContainer) => {
+        if (c.id === containerId) {
+          const newMaskAdjustments = {
+            ...c.adjustments,
+            ...presetAdjustments,
+          };
+          newMaskAdjustments.sectionVisibility = {
+            ...c.adjustments.sectionVisibility,
+            ...presetAdjustments.sectionVisibility,
+          };
+          return { ...c, adjustments: newMaskAdjustments };
+        }
+        return c;
+      }),
+    }));
+  };
+
+  const generatePresetSubmenu = (presetList: any[], containerId: string): any[] => {
+    return presetList
+      .map((item: any) => {
+        if (item.folder) {
+          return {
+            label: item.folder.name,
+            icon: FolderIcon,
+            submenu: generatePresetSubmenu(item.folder.children, containerId),
+          };
+        }
+        if (item.preset) {
+          return {
+            label: item.preset.name,
+            onClick: () => handleApplyPresetToMask(containerId, item.preset.adjustments),
+          };
+        }
+        if (item.adjustments) {
+          return {
+            label: item.name,
+            onClick: () => handleApplyPresetToMask(containerId, item.adjustments),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  };
+
   const handleContainerContextMenu = (event: any, container: MaskContainer) => {
     event.preventDefault();
     event.stopPropagation();
+
+    const presetSubmenu = generatePresetSubmenu(presets, container.id);
+
     showContextMenu(event.clientX, event.clientY, [
       { label: 'Edit Mask', icon: Edit, onClick: () => handleOpenContainerForEditing(container) },
       { label: 'Rename Mask', icon: FileEdit, onClick: () => handleStartRename(container) },
@@ -255,6 +302,11 @@ export default function MasksPanel({
         icon: ClipboardPaste,
         disabled: !copiedMask,
         onClick: () => handlePasteContainerAdjustments(container.id),
+      },
+      {
+        label: 'Apply Preset',
+        icon: Bookmark,
+        submenu: presetSubmenu.length > 0 ? presetSubmenu : [{ label: 'No presets found', disabled: true }],
       },
       { type: OPTION_SEPARATOR },
       { label: 'Delete Mask', icon: Trash2, isDestructive: true, onClick: () => handleDeleteContainer(container.id) },

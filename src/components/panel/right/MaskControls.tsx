@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RotateCcw, Copy, ClipboardPaste, Circle, Trash2, Eye, EyeOff, Plus, Minus } from 'lucide-react';
+import {
+  RotateCcw,
+  Copy,
+  ClipboardPaste,
+  Circle,
+  Trash2,
+  Eye,
+  EyeOff,
+  Plus,
+  Minus,
+  Folder as FolderIcon,
+} from 'lucide-react';
 import CollapsibleSection from '../../ui/CollapsibleSection';
 import Switch from '../../ui/Switch';
 import Slider from '../../ui/Slider';
@@ -22,6 +33,7 @@ import { INITIAL_MASK_ADJUSTMENTS, ADJUSTMENT_SECTIONS, MaskContainer, Adjustmen
 import { useContextMenu } from '../../../context/ContextMenuContext';
 import { BrushSettings, Option, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
 import { createSubMask } from '../../../utils/maskUtils';
+import { usePresets } from '../../../hooks/usePresets';
 
 interface BrushToolsProps {
   onSettingsChange(settings: any): void;
@@ -157,6 +169,7 @@ export default function MaskControls({
   updateSubMask,
 }: MaskControlsProps) {
   const { showContextMenu } = useContextMenu();
+  const { presets } = usePresets(editingMask.adjustments);
   const [isSettingsSectionOpen, setSettingsSectionOpen] = useState(true);
   const [copiedSectionAdjustments, setCopiedSectionAdjustments] = useState<CopiedSection | null>(null);
   const [collapsibleState, setCollapsibleState] = useState<any>({
@@ -169,6 +182,7 @@ export default function MaskControls({
   const [showAnalyzingMessage, setShowAnalyzingMessage] = useState(false);
   const analyzingTimeoutRef = useRef<number | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const presetButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setCollapsibleState({ basic: true, curves: false, color: false, details: false, effects: false });
@@ -225,6 +239,62 @@ export default function MaskControls({
   };
 
   const handleDeselectSubMask = () => onSelectMask(null);
+
+  const handleApplyPresetToMask = (presetAdjustments: Partial<Adjustments>) => {
+    setAdjustments((prev: Adjustments) => ({
+      ...prev,
+      masks: prev.masks.map((c: MaskContainer) => {
+        if (c.id === editingMask.id) {
+          const newMaskAdjustments = {
+            ...c.adjustments,
+            ...presetAdjustments,
+          };
+          newMaskAdjustments.sectionVisibility = {
+            ...c.adjustments.sectionVisibility,
+            ...presetAdjustments.sectionVisibility,
+          };
+          return { ...c, adjustments: newMaskAdjustments };
+        }
+        return c;
+      }),
+    }));
+  };
+
+  const generatePresetSubmenu = (presetList: any[]): any[] => {
+    return presetList
+      .map((item: any) => {
+        if (item.folder) {
+          return {
+            label: item.folder.name,
+            icon: FolderIcon,
+            submenu: generatePresetSubmenu(item.folder.children),
+          };
+        }
+        if (item.preset) {
+          return {
+            label: item.preset.name,
+            onClick: () => handleApplyPresetToMask(item.preset.adjustments),
+          };
+        }
+        if (item.adjustments) {
+          return {
+            label: item.name,
+            onClick: () => handleApplyPresetToMask(item.adjustments),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  };
+
+  const handlePresetSelectClick = () => {
+    if (presetButtonRef.current) {
+      const rect = presetButtonRef.current.getBoundingClientRect();
+      const presetSubmenu = generatePresetSubmenu(presets);
+      const options = presetSubmenu.length > 0 ? presetSubmenu : [{ label: 'No presets found', disabled: true }];
+      showContextMenu(rect.left, rect.bottom + 5, options);
+    }
+  };
 
   const handleSubMaskContextMenu = (event: any, subMask: SubMask) => {
     event.preventDefault();
@@ -353,7 +423,9 @@ export default function MaskControls({
 
   const isAiMask =
     activeSubMask &&
-    (activeSubMask.type === Mask.AiSubject || activeSubMask.type === Mask.AiForeground || activeSubMask.type === Mask.AiSky);
+    (activeSubMask.type === Mask.AiSubject ||
+      activeSubMask.type === Mask.AiForeground ||
+      activeSubMask.type === Mask.AiSky);
   const sectionVisibility = editingMask.adjustments.sectionVisibility || INITIAL_MASK_ADJUSTMENTS.sectionVisibility;
 
   return (
@@ -467,6 +539,17 @@ export default function MaskControls({
               label="Invert Mask"
               onChange={(checked: boolean) => handleMaskPropertyChange('invert', checked)}
             />
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-text-secondary select-none">Apply Preset</span>
+              <button
+                ref={presetButtonRef}
+                onClick={handlePresetSelectClick}
+                className="text-sm text-text-primary text-right select-none cursor-pointer hover:text-accent transition-colors"
+                title="Select a preset to apply"
+              >
+                Select
+              </button>
+            </div>
             <Slider
               defaultValue={100}
               label="Mask Transparency"
@@ -542,7 +625,7 @@ export default function MaskControls({
                   adjustments={editingMask.adjustments}
                   setAdjustments={setMaskContainerAdjustments}
                   histogram={histogram}
-                  isMasksView={true}
+                  isForMask={true}
                 />
               </CollapsibleSection>
             );

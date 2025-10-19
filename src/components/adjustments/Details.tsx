@@ -6,9 +6,15 @@ interface DetailsPanelProps {
   adjustments: Adjustments;
   setAdjustments(adjustments: Partial<Adjustments>): any;
   appSettings: AppSettings | null;
+  isForMask?: boolean;
 }
 
-export default function DetailsPanel({ adjustments, setAdjustments, appSettings }: DetailsPanelProps) {
+export default function DetailsPanel({
+  adjustments,
+  setAdjustments,
+  appSettings,
+  isForMask = false,
+}: DetailsPanelProps) {
   const handleAdjustmentChange = (key: string, value: string) => {
     const numericValue = parseInt(value, 10);
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
@@ -59,14 +65,16 @@ export default function DetailsPanel({ adjustments, setAdjustments, appSettings 
             step={1}
             value={adjustments.structure}
           />
-          <Slider
-            label="Centré"
-            max={100}
-            min={-100}
-            onChange={(e: any) => handleAdjustmentChange(Effect.Centré, e.target.value)}
-            step={1}
-            value={adjustments.centré}
-          />
+          {!isForMask && (
+            <Slider
+              label="Centré"
+              max={100}
+              min={-100}
+              onChange={(e: any) => handleAdjustmentChange(Effect.Centré, e.target.value)}
+              step={1}
+              value={adjustments.centré}
+            />
+          )}
         </div>
       )}
 
