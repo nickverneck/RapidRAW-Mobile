@@ -124,6 +124,8 @@ pub struct AutoAdjustmentResults {
     pub temperature: f64,
     pub tint: f64,
     pub dehaze: f64,
+    pub clarity: f64,
+    pub centre: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -1188,6 +1190,11 @@ pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
         dehaze = (1.0 - (range / 128.0)) * 40.0;
     }
 
+    let mut clarity = 0.0;
+    if range < 180.0 {
+        clarity = (1.0 - (range / 180.0)) * 60.0;
+    }
+
     let (width, height) = rgb_image.dimensions();
     let center_x_start = (width as f32 * 0.25) as u32;
     let center_x_end = (width as f32 * 0.75) as u32;
@@ -1197,9 +1204,9 @@ pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
     let mut center_pixel_count = 0;
     let mut edge_luma_sum = 0.0;
     let mut edge_pixel_count = 0;
+
     for (x, y, pixel) in rgb_image.enumerate_pixels() {
-        let luma = (0.2126 * pixel[0] as f32 + 0.7152 * pixel[1] as f32 + 0.0722 * pixel[2] as f32)
-            / 255.0;
+        let luma = (0.2126 * pixel[0] as f32 + 0.7152 * pixel[1] as f32 + 0.0722 * pixel[2] as f32) / 255.0;
         if x >= center_x_start && x < center_x_end && y >= center_y_start && y < center_y_end {
             center_luma_sum += luma;
             center_pixel_count += 1;
@@ -1208,58 +1215,22 @@ pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
             edge_pixel_count += 1;
         }
     }
+
     let mut vignette_amount = 0.0;
-    let mut avg_center_luma = 0.0;
-    let mut avg_edge_luma = 0.0;
+    let mut centre = 0.0;
     if center_pixel_count > 0 && edge_pixel_count > 0 {
-        avg_center_luma = center_luma_sum / center_pixel_count as f32;
-        avg_edge_luma = edge_luma_sum / edge_pixel_count as f32;
+        let avg_center_luma = center_luma_sum / center_pixel_count as f32;
+        let avg_edge_luma = edge_luma_sum / edge_pixel_count as f32;
+        
         if avg_edge_luma < avg_center_luma {
-            let luma_diff = (avg_center_luma - avg_edge_luma).max(0.0);
+            let luma_diff = avg_center_luma - avg_edge_luma;
             vignette_amount = -(luma_diff as f64 * 150.0);
+
+            if luma_diff > 0.05 {
+                centre = (luma_diff as f64 * 120.0).min(60.0);
+            }
         }
     }
-
-    println!("\n--- Auto Adjustments Analysis ---");
-    println!(
-        "Tonal Range: black_point={:.1}, white_point={:.1}, mid_point={:.1}, range={:.1}",
-        black_point, white_point, mid_point, range
-    );
-    println!(
-        "Distribution: shadow_percent={:.2}%, highlight_percent={:.2}%",
-        shadow_percent * 100.0,
-        highlight_percent * 100.0
-    );
-    println!(
-        "White Balance Trigger: bright_r={:.1}, bright_g={:.1}, bright_b={:.1}",
-        bright_r, bright_g, bright_b
-    );
-    println!(
-        "Saturation: mean_saturation={:.3}, dull_pixel_percent={:.2}%",
-        mean_saturation,
-        dull_pixel_percent * 100.0
-    );
-    println!(
-        "Dehaze Trigger: range < 128.0 ({}), mean_saturation < 0.15 ({})",
-        range < 128.0,
-        mean_saturation < 0.15
-    );
-    println!(
-        "Vignette: center_luma={:.3}, edge_luma={:.3}",
-        avg_center_luma, avg_edge_luma
-    );
-    println!("---------------------------------");
-    println!("Calculated Values (pre-clamp):");
-    println!(
-        "  Exposure: {:.2}, Contrast: {:.2}",
-        exposure / 20.0,
-        contrast
-    );
-    println!("  Highlights: {:.2}, Shadows: {:.2}", highlights, shadows);
-    println!("  Temperature: {:.2}, Tint: {:.2}", temperature, tint);
-    println!("  Vibrance: {:.2}, Dehaze: {:.2}", vibrancy, dehaze);
-    println!("  Vignette: {:.2}", vignette_amount);
-    println!("---------------------------------\n");
 
     AutoAdjustmentResults {
         exposure: (exposure / 20.0).clamp(-5.0, 5.0),
@@ -1271,6 +1242,8 @@ pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
         temperature: temperature.clamp(-100.0, 100.0),
         tint: tint.clamp(-100.0, 100.0),
         dehaze: dehaze.clamp(0.0, 100.0),
+        clarity: clarity.clamp(0.0, 100.0),
+        centre: centre.clamp(0.0, 100.0),
     }
 }
 
@@ -1282,8 +1255,10 @@ pub fn auto_results_to_json(results: &AutoAdjustmentResults) -> serde_json::Valu
         "shadows": results.shadows,
         "vibrance": results.vibrancy,
         "vignetteAmount": results.vignette_amount,
-        "temperature": results.temperature,
-        "tint": results.tint,
+        "clarity": results.clarity,
+        "centré": results.centre,
+        //"temperature": results.temperature,
+        //"tint": results.tint,
         "dehaze": results.dehaze,
         "sectionVisibility": {
             "basic": true,
