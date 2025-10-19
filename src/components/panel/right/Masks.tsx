@@ -1,10 +1,22 @@
 import React from 'react';
-import { Brush, Circle, Cloud, Droplet, Eraser, Sparkles, TriangleRight, User } from 'lucide-react';
+import {
+  Brush,
+  Circle,
+  Cloud,
+  Droplet,
+  Eraser,
+  Layers,
+  RectangleHorizontal,
+  Sparkles,
+  TriangleRight,
+  User,
+} from 'lucide-react';
 
 export enum Mask {
   AiForeground = 'ai-foreground',
   AiSky = 'ai-sky',
   AiSubject = 'ai-subject',
+  All = 'all',
   Brush = 'brush',
   Color = 'color',
   Linear = 'linear',
@@ -46,6 +58,7 @@ export const MASK_ICON_MAP: Record<Mask, any> = {
   [Mask.AiForeground]: User,
   [Mask.AiSky]: Cloud,
   [Mask.AiSubject]: Sparkles,
+  [Mask.All]: RectangleHorizontal,
   [Mask.Brush]: Brush,
   [Mask.Color]: Droplet,
   [Mask.Linear]: TriangleRight,
@@ -75,12 +88,6 @@ export const MASK_PANEL_CREATION_TYPES: Array<MaskType> = [
   },
   {
     disabled: false,
-    icon: Brush,
-    name: 'Brush',
-    type: Mask.Brush,
-  },
-  {
-    disabled: false,
     icon: TriangleRight,
     name: 'Linear',
     type: Mask.Linear,
@@ -90,6 +97,13 @@ export const MASK_PANEL_CREATION_TYPES: Array<MaskType> = [
     icon: Circle,
     name: 'Radial',
     type: Mask.Radial,
+  },
+  {
+    disabled: false,
+    icon: Layers,
+    id: 'others',
+    name: 'Others',
+    type: null,
   },
 ];
 
@@ -153,6 +167,55 @@ export const SUB_MASK_COMPONENT_TYPES: Array<MaskType> = [
   },
   {
     disabled: false,
+    icon: TriangleRight,
+    name: 'Linear',
+    type: Mask.Linear,
+  },
+  {
+    disabled: false,
+    icon: Circle,
+    name: 'Radial',
+    type: Mask.Radial,
+  },
+  {
+    disabled: false,
+    icon: Layers,
+    id: 'others',
+    name: 'Others',
+    type: null,
+  },
+];
+
+export const OTHERS_MASK_TYPES: Array<MaskType> = [
+  {
+    disabled: false,
+    icon: Brush,
+    name: 'Brush',
+    type: Mask.Brush,
+  },
+  {
+    disabled: false,
+    icon: RectangleHorizontal,
+    name: 'All',
+    type: Mask.All,
+  },
+];
+
+export const AI_SUB_MASK_COMPONENT_TYPES: Array<MaskType> = [
+  {
+    disabled: false,
+    icon: Sparkles,
+    name: 'Subject',
+    type: Mask.AiSubject,
+  },
+  {
+    disabled: false,
+    icon: User,
+    name: 'Foreground',
+    type: Mask.AiForeground,
+  },
+  {
+    disabled: false,
     icon: Brush,
     name: 'Brush',
     type: Mask.Brush,
@@ -170,7 +233,3 @@ export const SUB_MASK_COMPONENT_TYPES: Array<MaskType> = [
     type: Mask.Radial,
   },
 ];
-
-export const AI_SUB_MASK_COMPONENT_TYPES: Array<MaskType> = SUB_MASK_COMPONENT_TYPES.filter(
-  (mask) => mask.type !== Mask.AiSky,
-);

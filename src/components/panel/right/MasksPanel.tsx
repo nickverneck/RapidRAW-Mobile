@@ -24,7 +24,7 @@ import {
   MaskContainer,
 } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
-import { Mask, MaskType, SubMask, MASK_PANEL_CREATION_TYPES } from './Masks';
+import { Mask, MaskType, SubMask, MASK_PANEL_CREATION_TYPES, OTHERS_MASK_TYPES } from './Masks';
 import { BrushSettings, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
 import { createSubMask } from '../../../utils/maskUtils';
 import { usePresets } from '../../../hooks/usePresets';
@@ -138,6 +138,16 @@ export default function MasksPanel({
     } else if (type === Mask.AiSky) {
       onGenerateAiSkyMask(subMask.id);
     }
+  };
+
+  const handleAddOthersMask = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const options = OTHERS_MASK_TYPES.map((maskType) => ({
+      label: maskType.name,
+      icon: maskType.icon,
+      onClick: () => handleAddMaskContainer(maskType.type),
+    }));
+    showContextMenu(rect.left, rect.bottom + 5, options);
   };
 
   const handleDeleteContainer = (id: string) => {
@@ -424,8 +434,14 @@ export default function MasksPanel({
                   maskType.disabled || isGeneratingAiMask ? 'opacity-50 cursor-not-allowed' : 'hover:bg-card-active'
                 }`}
                 disabled={maskType.disabled || isGeneratingAiMask}
-                key={maskType.type}
-                onClick={() => handleAddMaskContainer(maskType.type)}
+                key={maskType.type || maskType.id}
+                onClick={(e) => {
+                  if (maskType.id === 'others') {
+                    handleAddOthersMask(e);
+                  } else {
+                    handleAddMaskContainer(maskType.type);
+                  }
+                }}
                 title={maskType.disabled ? `${maskType.name} (Coming Soon)` : `Add ${maskType.name} Mask`}
               >
                 <maskType.icon size={24} />

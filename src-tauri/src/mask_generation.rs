@@ -634,6 +634,10 @@ fn generate_ai_subject_bitmap(
     Some(mask)
 }
 
+fn generate_all_bitmap(width: u32, height: u32) -> GrayImage {
+    GrayImage::from_pixel(width, height, Luma([255]))
+}
+
 fn generate_sub_mask_bitmap(
     sub_mask: &SubMask,
     width: u32,
@@ -677,6 +681,7 @@ fn generate_sub_mask_bitmap(
         "quick-eraser" => {
             generate_ai_subject_bitmap(&sub_mask.parameters, width, height, scale, crop_offset)
         }
+        "all" => Some(generate_all_bitmap(width, height)),
         _ => None,
     }
 }

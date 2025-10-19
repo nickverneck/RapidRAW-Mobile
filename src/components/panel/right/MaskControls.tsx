@@ -28,6 +28,7 @@ import {
   ToolType,
   SubMaskMode,
   MASK_ICON_MAP,
+  OTHERS_MASK_TYPES,
 } from './Masks';
 import { INITIAL_MASK_ADJUSTMENTS, ADJUSTMENT_SECTIONS, MaskContainer, Adjustments } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
@@ -74,6 +75,9 @@ function formatMaskTypeName(type: string) {
   if (type === Mask.AiSky) {
     return 'AI Sky';
   }
+  if (type === Mask.All) {
+    return 'All';
+  }
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
@@ -85,6 +89,7 @@ const SUB_MASK_CONFIG: Record<Mask, any> = {
   [Mask.Linear]: { parameters: [] },
   [Mask.Color]: { parameters: [] },
   [Mask.Luminance]: { parameters: [] },
+  [Mask.All]: { parameters: [] },
   [Mask.AiSubject]: {
     parameters: [
       { key: 'grow', label: 'Grow', min: -100, max: 100, step: 1, defaultValue: 0 },
@@ -218,6 +223,16 @@ export default function MaskControls({
     } else if (type === Mask.AiSky) {
       onGenerateAiSkyMask(subMask.id);
     }
+  };
+
+  const handleAddOthersSubMask = (event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const options = OTHERS_MASK_TYPES.map((maskType) => ({
+      label: maskType.name,
+      icon: maskType.icon,
+      onClick: () => handleAddSubMask(editingMask.id, maskType.type),
+    }));
+    showContextMenu(rect.left, rect.bottom + 5, options);
   };
 
   const handleDeleteSubMask = (containerId: string, subMaskId: string) => {
@@ -439,8 +454,14 @@ export default function MaskControls({
                 maskType.disabled || isGeneratingAiMask ? 'opacity-50 cursor-not-allowed' : 'hover:bg-card-active'
               }`}
               disabled={maskType.disabled || isGeneratingAiMask}
-              key={maskType.type}
-              onClick={() => handleAddSubMask(editingMask.id, maskType.type)}
+              key={maskType.type || maskType.id}
+              onClick={(e) => {
+                if (maskType.id === 'others') {
+                  handleAddOthersSubMask(e);
+                } else {
+                  handleAddSubMask(editingMask.id, maskType.type);
+                }
+              }}
               title={`Add ${maskType.name} component`}
             >
               <maskType.icon size={24} />
