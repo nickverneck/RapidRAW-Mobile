@@ -59,7 +59,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
-*   **2025-10-19:** Add all mask component & organize mask components better
+*   **2025-10-19:** Whole image mask component & organize mask components better
 *   **2025-10-19:** You can now apply presets to masks & improved auto adjustments
 *   **2025-10-17:** New centré adjustment, rawler now as a submodule & improved logger
 *   **2025-10-15:** Ability to pin folders, improved session handling & smooth library thumbnail updating
