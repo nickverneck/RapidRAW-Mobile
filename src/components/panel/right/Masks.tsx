@@ -196,7 +196,7 @@ export const OTHERS_MASK_TYPES: Array<MaskType> = [
   {
     disabled: false,
     icon: RectangleHorizontal,
-    name: 'All',
+    name: 'Whole Image',
     type: Mask.All,
   },
 ];
