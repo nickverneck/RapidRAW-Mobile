@@ -76,7 +76,7 @@ function formatMaskTypeName(type: string) {
     return 'AI Sky';
   }
   if (type === Mask.All) {
-    return 'All';
+    return 'Whole Image';
   }
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
