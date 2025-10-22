@@ -13,21 +13,13 @@ pub fn develop_raw_image(file_bytes: &[u8], fast_demosaic: bool) -> Result<Dynam
     Ok(apply_orientation(developed_image, orientation))
 }
 
-fn apply_tonemap_and_gamma(linear_val: f32) -> f32 {
-    let x = linear_val.max(0.0);
-    let a = 2.51;
-    let b = 0.03;
-    let c = 2.43;
-    let d = 0.59;
-    let e = 0.14;
-    let tonemapped = ((x * (a * x + b)) / (x * (c * x + d) + e))
-        .max(0.0)
-        .min(1.0);
-
-    if tonemapped <= 0.0031308 {
-        tonemapped * 12.92
+// we NEED to apply gamma & compress some highlights, otherwise we get purple artefacts because of rawler's faulty black point calculation in combination with white balance
+fn apply_gamma(linear_val: f32) -> f32 {
+    let clipped_val = linear_val.max(0.0).min(1.0);
+    if clipped_val <= 0.0031308 {
+        clipped_val * 12.92
     } else {
-        1.055 * tonemapped.powf(1.0 / 2.4) - 0.055
+        1.055 * clipped_val.powf(1.0 / 2.4) - 0.055
     }
 }
 
@@ -78,7 +70,7 @@ fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicIm
         Intermediate::Monochrome(pixels) => {
             pixels.data.iter_mut().for_each(|p| {
                 let linear_val = *p * rescale_factor;
-                *p = apply_tonemap_and_gamma(linear_val);
+                *p = apply_gamma(linear_val);
             });
         }
         Intermediate::ThreeColor(pixels) => {
@@ -114,16 +106,16 @@ fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicIm
                     (r, g, b)
                 };
 
-                p[0] = apply_tonemap_and_gamma(final_r);
-                p[1] = apply_tonemap_and_gamma(final_g);
-                p[2] = apply_tonemap_and_gamma(final_b);
+                p[0] = apply_gamma(final_r);
+                p[1] = apply_gamma(final_g);
+                p[2] = apply_gamma(final_b);
             });
         }
         Intermediate::FourColor(pixels) => {
             pixels.data.iter_mut().for_each(|p| {
                 p.iter_mut().for_each(|c| {
                     let linear_val = *c * rescale_factor;
-                    *c = apply_tonemap_and_gamma(linear_val);
+                    *c = apply_gamma(linear_val);
                 });
             });
         }
