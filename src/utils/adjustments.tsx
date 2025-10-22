@@ -130,6 +130,7 @@ export interface Adjustments {
   structure: number;
   temperature: number;
   tint: number;
+  toneMapper: 'agx' | 'basic';
   vibrance: number;
   vignetteAmount: number;
   vignetteFeather: number;
@@ -414,6 +415,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   structure: 0,
   temperature: 0,
   tint: 0,
+  toneMapper: 'basic',
   vibrance: 0,
   vignetteAmount: 0,
   vignetteFeather: 50,
@@ -511,6 +513,7 @@ export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   Effect.Structure,
   ColorAdjustment.Temperature,
   ColorAdjustment.Tint,
+  'toneMapper',
   ColorAdjustment.Vibrance,
   Effect.VignetteAmount,
   Effect.VignetteFeather,

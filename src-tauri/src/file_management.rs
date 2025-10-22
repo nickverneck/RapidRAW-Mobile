@@ -30,7 +30,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::AppState;
-use crate::formats::is_supported_image_file;
+use crate::formats::{is_raw_file, is_supported_image_file};
 use crate::gpu_processing;
 use crate::image_loader;
 use crate::image_processing::GpuContext;
@@ -499,6 +499,7 @@ pub fn generate_thumbnail_data(
     preloaded_image: Option<&DynamicImage>,
     app_handle: &AppHandle,
 ) -> anyhow::Result<DynamicImage> {
+    let is_raw = is_raw_file(path_str);
     let sidecar_path = get_sidecar_path(path_str);
     let metadata: Option<ImageMetadata> = fs::read_to_string(sidecar_path)
         .ok()
@@ -602,7 +603,7 @@ pub fn generate_thumbnail_data(
                 })
                 .collect();
 
-            let gpu_adjustments = get_all_adjustments_from_json(&meta.adjustments);
+            let gpu_adjustments = get_all_adjustments_from_json(&meta.adjustments, is_raw);
             let lut_path = meta.adjustments["lutPath"].as_str();
             let lut = lut_path.and_then(|p| {
                 let mut cache = state.lut_cache.lock().unwrap();

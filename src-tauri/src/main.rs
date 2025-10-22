@@ -78,6 +78,7 @@ use tagging_utils::{candidates, hierarchy};
 pub struct LoadedImage {
     path: String,
     image: DynamicImage,
+    is_raw: bool,
 }
 
 #[derive(Clone)]
@@ -404,6 +405,7 @@ async fn load_image(
     *state.original_image.lock().unwrap() = Some(LoadedImage {
         path: path.clone(),
         image: pristine_img,
+        is_raw,
     });
 
     Ok(LoadImageResult {
@@ -548,6 +550,7 @@ fn apply_adjustments(
     thread::spawn(move || {
         let state = app_handle.state::<AppState>();
         let (preview_width, preview_height) = final_preview_base.dimensions();
+        let is_raw = loaded_image.is_raw;
 
         let mask_definitions: Vec<MaskDefinition> = js_adjustments
             .get("masks")
@@ -572,7 +575,7 @@ fn apply_adjustments(
             })
             .collect();
 
-        let final_adjustments = get_all_adjustments_from_json(&adjustments_clone);
+        let final_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw);
         let lut_path = adjustments_clone["lutPath"].as_str();
         let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
@@ -630,6 +633,7 @@ fn generate_uncropped_preview(
     thread::spawn(move || {
         let state = app_handle.state::<AppState>();
         let path = loaded_image.path.clone();
+        let is_raw = loaded_image.is_raw;
         let unique_hash = calculate_full_job_hash(&path, &adjustments_clone);
         let patched_image =
             match composite_patches_on_image(&loaded_image.image, &adjustments_clone) {
@@ -681,7 +685,7 @@ fn generate_uncropped_preview(
             })
             .collect();
 
-        let uncropped_adjustments = get_all_adjustments_from_json(&adjustments_clone);
+        let uncropped_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw);
         let lut_path = adjustments_clone["lutPath"].as_str();
         let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
@@ -744,12 +748,14 @@ fn generate_original_transformed_preview(
     Ok(Response::new(buf.into_inner()))
 }
 
-fn get_full_image_for_processing(state: &tauri::State<AppState>) -> Result<DynamicImage, String> {
+fn get_full_image_for_processing(
+    state: &tauri::State<AppState>,
+) -> Result<(DynamicImage, bool), String> {
     let original_image_lock = state.original_image.lock().unwrap();
     let loaded_image = original_image_lock
         .as_ref()
         .ok_or("No original image loaded")?;
-    Ok(loaded_image.image.clone())
+    Ok((loaded_image.image.clone(), loaded_image.is_raw))
 }
 
 #[tauri::command]
@@ -758,7 +764,7 @@ fn generate_fullscreen_preview(
     state: tauri::State<AppState>,
 ) -> Result<Response, String> {
     let context = get_or_init_gpu_context(&state)?;
-    let original_image = get_full_image_for_processing(&state)?;
+    let (original_image, is_raw) = get_full_image_for_processing(&state)?;
     let path = state
         .original_image
         .lock()
@@ -785,7 +791,7 @@ fn generate_fullscreen_preview(
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, 1.0, unscaled_crop_offset))
         .collect();
 
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
@@ -816,6 +822,7 @@ fn process_image_for_export(
     export_settings: &ExportSettings,
     context: &GpuContext,
     state: &tauri::State<AppState>,
+    is_raw: bool,
 ) -> Result<DynamicImage, String> {
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(&base_image, &js_adjustments);
@@ -831,7 +838,7 @@ fn process_image_for_export(
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, 1.0, unscaled_crop_offset))
         .collect();
 
-    let mut all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let mut all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     all_adjustments.global.show_clipping = 0;
 
     let lut_path = js_adjustments["lutPath"].as_str();
@@ -955,7 +962,7 @@ async fn export_image(
     }
 
     let context = get_or_init_gpu_context(&state)?;
-    let original_image_data = get_full_image_for_processing(&state)?;
+    let (original_image_data, is_raw) = get_full_image_for_processing(&state)?;
     let context = Arc::new(context);
 
     let task = tokio::spawn(async move {
@@ -971,6 +978,7 @@ async fn export_image(
                 &export_settings,
                 &context,
                 &state,
+                is_raw,
             )?;
 
             let output_path_obj = std::path::Path::new(&output_path);
@@ -1067,6 +1075,7 @@ async fn batch_export_images(
                         ImageMetadata::default()
                     };
                     let js_adjustments = metadata.adjustments;
+                    let is_raw = is_raw_file(image_path_str);
 
                     let mmap = read_file_mapped(Path::new(image_path_str))
                         .map_err(|e| format!("Failed to mmap file {}: {}", image_path_str, e))?;
@@ -1082,6 +1091,7 @@ async fn batch_export_images(
                         &export_settings,
                         &context,
                         &state,
+                        is_raw,
                     )?;
 
                     let original_path = std::path::Path::new(image_path_str);
@@ -1213,6 +1223,7 @@ async fn estimate_export_size(
         .unwrap()
         .clone()
         .ok_or("No original image loaded")?;
+    let is_raw = loaded_image.is_raw;
 
     let new_transform_hash = calculate_transform_hash(&js_adjustments);
     let cached_preview_lock = state.cached_preview.lock().unwrap();
@@ -1253,7 +1264,7 @@ async fn estimate_export_size(
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, scale, scaled_crop_offset))
         .collect();
 
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
     let unique_hash = calculate_full_job_hash(&loaded_image.path, &js_adjustments).wrapping_add(1);
@@ -1362,6 +1373,7 @@ async fn estimate_batch_export_size(
     }
     let context = get_or_init_gpu_context(&state)?;
     let first_path = &paths[0];
+    let is_raw = is_raw_file(first_path);
 
     let sidecar_path = get_sidecar_path(first_path);
     let metadata: ImageMetadata = if sidecar_path.exists() {
@@ -1393,7 +1405,7 @@ async fn estimate_batch_export_size(
         .filter_map(|def| generate_mask_bitmap(def, preview_w, preview_h, 1.0, unscaled_crop_offset))
         .collect();
 
-    let mut all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let mut all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     all_adjustments.global.show_clipping = 0;
 
     let lut_path = js_adjustments["lutPath"].as_str();
@@ -1636,7 +1648,7 @@ async fn generate_ai_foreground_mask(
         .await
         .map_err(|e| e.to_string())?;
 
-    let full_image = get_full_image_for_processing(&state)?;
+    let (full_image, _) = get_full_image_for_processing(&state)?;
     let full_mask_image =
         run_u2netp_model(&full_image, &models.u2netp).map_err(|e| e.to_string())?;
     let base64_data = encode_to_base64_png(&full_mask_image)?;
@@ -1663,7 +1675,7 @@ async fn generate_ai_sky_mask(
         .await
         .map_err(|e| e.to_string())?;
 
-    let full_image = get_full_image_for_processing(&state)?;
+    let (full_image, _) = get_full_image_for_processing(&state)?;
     let full_mask_image =
         run_sky_seg_model(&full_image, &models.sky_seg).map_err(|e| e.to_string())?;
     let base64_data = encode_to_base64_png(&full_mask_image)?;
@@ -1705,7 +1717,7 @@ async fn generate_ai_subject_mask(
             if cached_embeddings.path_hash == path_hash {
                 cached_embeddings.clone()
             } else {
-                let full_image = get_full_image_for_processing(&state)?;
+                let (full_image, _) = get_full_image_for_processing(&state)?;
                 let mut new_embeddings =
                     generate_image_embeddings(&full_image, &models.sam_encoder)
                         .map_err(|e| e.to_string())?;
@@ -1714,7 +1726,7 @@ async fn generate_ai_subject_mask(
                 new_embeddings
             }
         } else {
-            let full_image = get_full_image_for_processing(&state)?;
+            let (full_image, _) = get_full_image_for_processing(&state)?;
             let mut new_embeddings = generate_image_embeddings(&full_image, &models.sam_encoder)
                 .map_err(|e| e.to_string())?;
             new_embeddings.path_hash = path_hash;
@@ -1832,6 +1844,7 @@ fn generate_preset_preview(
         .ok_or("No original image loaded for preset preview")?;
     let original_image = loaded_image.image;
     let path = loaded_image.path;
+    let is_raw = loaded_image.is_raw;
     let unique_hash = calculate_full_job_hash(&path, &js_adjustments);
 
     const PRESET_PREVIEW_DIM: u32 = 200;
@@ -1851,7 +1864,7 @@ fn generate_preset_preview(
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, 1.0, unscaled_crop_offset))
         .collect();
 
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
@@ -1931,7 +1944,7 @@ async fn invoke_generative_replace_with_mask_def(
         patches.retain(|p| p.get("id").and_then(|id| id.as_str()) != Some(&patch_definition.id));
     }
 
-    let base_image = get_full_image_for_processing(&state)?;
+    let (base_image, _) = get_full_image_for_processing(&state)?;
     let source_image = composite_patches_on_image(&base_image, &source_image_adjustments)
         .map_err(|e| format!("Failed to prepare source image: {}", e))?;
 
@@ -2192,13 +2205,14 @@ async fn generate_all_community_previews(
     const TILE_DIM: u32 = 360;
     const PROCESSING_DIM: u32 = TILE_DIM * 2;
 
-    let mut base_thumbnails: Vec<DynamicImage> = Vec::new();
+    let mut base_thumbnails: Vec<(DynamicImage, bool)> = Vec::new();
     for image_path in image_paths.iter() {
         let image_bytes = fs::read(image_path).map_err(|e| e.to_string())?;
         let original_image =
             crate::image_loader::load_base_image_from_bytes(&image_bytes, &image_path, true)
                 .map_err(|e| e.to_string())?;
-        base_thumbnails.push(original_image.thumbnail(PROCESSING_DIM, PROCESSING_DIM));
+        let is_raw = is_raw_file(image_path);
+        base_thumbnails.push((original_image.thumbnail(PROCESSING_DIM, PROCESSING_DIM), is_raw));
     }
 
     for preset in presets.iter() {
@@ -2209,7 +2223,7 @@ async fn generate_all_community_previews(
         preset.name.hash(&mut preset_hasher);
         let preset_hash = preset_hasher.finish();
 
-        for (i, base_image) in base_thumbnails.iter().enumerate() {
+        for (i, (base_image, is_raw)) in base_thumbnails.iter().enumerate() {
             let (transformed_image, unscaled_crop_offset) =
                 crate::apply_all_transformations(&base_image, &js_adjustments);
             let (img_w, img_h) = transformed_image.dimensions();
@@ -2226,7 +2240,7 @@ async fn generate_all_community_previews(
                 })
                 .collect();
 
-            let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+            let all_adjustments = get_all_adjustments_from_json(&js_adjustments, *is_raw);
             let lut_path = js_adjustments["lutPath"].as_str();
             let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
@@ -2381,6 +2395,7 @@ fn generate_preview_for_path(
 ) -> Result<Response, String> {
     let context = get_or_init_gpu_context(&state)?;
     let new_path = Path::new(&path);
+    let is_raw = is_raw_file(&path);
     let image = read_file_mapped(&new_path).map_err(|e| e.to_string())?;
     let base_image =
         load_and_composite(&image[..], &path, &js_adjustments, false).map_err(|e| e.to_string())?;
@@ -2395,7 +2410,7 @@ fn generate_preview_for_path(
         .iter()
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, 1.0, unscaled_crop_offset))
         .collect();
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments);
+    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
     let unique_hash = calculate_full_job_hash(&path, &js_adjustments);

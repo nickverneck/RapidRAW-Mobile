@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertOctagon } from 'lucide-react';
 import clsx from 'clsx';
-import { ActiveChannel, Adjustments, Coord, Curves } from '../../utils/adjustments';
+import { ActiveChannel, Adjustments, Coord } from '../../utils/adjustments';
 import { Theme } from '../ui/AppProperties';
 
 export interface ChannelConfig {
@@ -133,6 +133,32 @@ export default function CurveGraph({ adjustments, setAdjustments, histogram, the
   const [localPoints, setLocalPoints] = useState<Array<Coord> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
+  useEffect(() => {
+    if (draggingPointIndex === null) {
+      setLocalPoints(null);
+    }
+  }, [adjustments?.curves?.[activeChannel]]);
+
+  useEffect(() => {
+    setLocalPoints(null);
+    setDraggingPointIndex(null);
+  }, [activeChannel]);
+
+  useEffect(() => {
+    const moveHandler = (e: any) => handleMouseMove(e);
+    const upHandler = () => handleMouseUp();
+
+    if (draggingPointIndex !== null) {
+      window.addEventListener('mousemove', moveHandler);
+      window.addEventListener('mouseup', upHandler);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', moveHandler);
+      window.removeEventListener('mouseup', upHandler);
+    };
+  }, [draggingPointIndex, localPoints, adjustments?.curves, activeChannel, setAdjustments]);
+
   const isLightTheme = theme === Theme.Light || theme === Theme.Arctic;
   const histogramOpacity = isLightTheme ? 0.6 : 0.15;
 
@@ -147,24 +173,13 @@ export default function CurveGraph({ adjustments, setAdjustments, histogram, the
   const points = localPoints ?? propPoints;
   const { color, data: histogramData } = channelConfig[activeChannel];
 
-  if (!propPoints) {
+  if (!propPoints || !points) {
     return (
       <div className="w-full aspect-square bg-surface-secondary p-1 rounded-md flex items-center justify-center text-text-secondary text-xs">
         Curve data not available.
       </div>
     );
   }
-
-  useEffect(() => {
-    if (draggingPointIndex === null) {
-      setLocalPoints(null);
-    }
-  }, [propPoints]);
-
-  useEffect(() => {
-    setLocalPoints(null);
-    setDraggingPointIndex(null);
-  }, [activeChannel]);
 
   const handleToggleClipping = () => {
     setAdjustments((prev: Adjustments) => ({
@@ -252,21 +267,6 @@ export default function CurveGraph({ adjustments, setAdjustments, histogram, the
       curves: { ...prev.curves, [activeChannel]: defaultPoints },
     }));
   };
-
-  useEffect(() => {
-    const moveHandler = (e: any) => handleMouseMove(e);
-    const upHandler = () => handleMouseUp();
-
-    if (draggingPointIndex !== null) {
-      window.addEventListener('mousemove', moveHandler);
-      window.addEventListener('mouseup', upHandler);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', moveHandler);
-      window.removeEventListener('mouseup', upHandler);
-    };
-  }, [draggingPointIndex, points, activeChannel, setAdjustments]);
 
   return (
     <div className="select-none">

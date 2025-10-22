@@ -60,7 +60,7 @@ struct GlobalAdjustments {
     chromatic_aberration_red_cyan: f32,
     chromatic_aberration_blue_yellow: f32,
     show_clipping: u32,
-    _pad_ca2: f32,
+    is_raw_image: u32,
 
     enable_negative_conversion: u32,
     film_base_r: f32,
@@ -74,7 +74,7 @@ struct GlobalAdjustments {
 
     has_lut: u32,
     lut_intensity: f32,
-    _pad_lut1: f32,
+    tonemapper_mode: u32,
     _pad_lut2: f32,
     _pad_lut3: f32,
     _pad_lut4: f32,
@@ -421,6 +421,14 @@ fn apply_filmic_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
     return vec3<f32>(new_luma) + chroma * chroma_scale;
 }
 
+fn apply_exposure(color_in: vec3<f32>, exposure_adj: f32, is_raw: u32, tonemapper_mode: u32) -> vec3<f32> {
+    if (is_raw == 0u && tonemapper_mode == 0u) {
+        return apply_filmic_exposure(color_in, exposure_adj);
+    } else {
+        return apply_linear_exposure(color_in, exposure_adj);
+    }
+}
+
 fn apply_highlights_adjustment(
     color_in: vec3<f32>, 
     highlights_adj: f32, 
@@ -636,7 +644,9 @@ fn apply_centre_effect(
     color_in: vec3<f32>, 
     centre_amount: f32, 
     coords_i: vec2<i32>, 
-    blurred_color_srgb: vec3<f32>
+    blurred_color_srgb: vec3<f32>,
+    is_raw: u32,
+    tonemapper_mode: u32
 ) -> vec3<f32> {
     if (centre_amount == 0.0) {
         return color_in;
@@ -661,7 +671,7 @@ fn apply_centre_effect(
         processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength);
     }
     let exposure_boost = centre_mask * centre_amount * EXPOSURE_SCALE;
-    processed_color = apply_linear_exposure(processed_color, exposure_boost);
+    processed_color = apply_exposure(processed_color, exposure_boost, is_raw, tonemapper_mode);
     let vibrance_center_boost = centre_mask * centre_amount * VIBRANCE_SCALE;
     let saturation_center_boost = centre_mask * centre_amount * SATURATION_CENTER_SCALE;
     let saturation_edge_effect = -(1.0 - centre_mask) * centre_amount * SATURATION_EDGE_SCALE;
@@ -766,7 +776,7 @@ const AGX_OUTPUT_MATRIX = mat3x3<f32>(
 
 const AGX_EPSILON: f32 = 1.0e-6;
 
-const AGX_MIN_EV: f32 = -10.0;
+const AGX_MIN_EV: f32 = -12.0;
 const AGX_MAX_EV: f32 = 6.5;
 const AGX_RANGE_EV: f32 = AGX_MAX_EV - AGX_MIN_EV;
 
@@ -901,10 +911,10 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
-    processed_rgb = apply_centre_effect(processed_rgb, adj.centre, coords_i, clarity_blurred);
+    processed_rgb = apply_centre_effect(processed_rgb, adj.centre, coords_i, clarity_blurred, adj.is_raw_image, adj.tonemapper_mode);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
-    processed_rgb = apply_linear_exposure(processed_rgb, adj.exposure);
+    processed_rgb = apply_exposure(processed_rgb, adj.exposure, adj.is_raw_image, adj.tonemapper_mode);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
     processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
@@ -916,7 +926,7 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     return processed_rgb;
 }
 
-fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coords_i: vec2<i32>, id: vec2<u32>, scale: f32) -> vec3<f32> {
+fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coords_i: vec2<i32>, id: vec2<u32>, scale: f32, is_raw: u32, tonemapper_mode: u32) -> vec3<f32> {
     var processed_rgb = apply_noise_reduction(initial_rgb, coords_i, adj.luma_noise_reduction, adj.color_noise_reduction, scale);
 
     processed_rgb = apply_dehaze(processed_rgb, adj.dehaze);
@@ -929,7 +939,7 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
-    processed_rgb = apply_linear_exposure(processed_rgb, adj.exposure);
+    processed_rgb = apply_exposure(processed_rgb, adj.exposure, is_raw, tonemapper_mode);
     processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
 
@@ -997,18 +1007,21 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
         let influence = get_mask_influence(i, absolute_coord);
         if (influence > 0.001) {
-            let mask_adjusted_linear = apply_all_mask_adjustments(globally_adjusted_linear, adjustments.mask_adjustments[i], absolute_coord_i, id.xy, scale);
+            let mask_adjusted_linear = apply_all_mask_adjustments(globally_adjusted_linear, adjustments.mask_adjustments[i], absolute_coord_i, id.xy, scale, adjustments.global.is_raw_image, adjustments.global.tonemapper_mode);
             composite_rgb_linear = mix(composite_rgb_linear, mask_adjusted_linear, influence);
         }
     }
 
-    let tonemapped_linear = agx_full_transform(composite_rgb_linear);
-
-    // TODO:
-    // - If AGX is selected: use agx_full_transform
-    // - If Basic is selected:
-    //     - Apply legacy_tonemap for raw images and use linear exposure
-    //     - Apply no_tonemap for non-raw images and use filmic exposure
+    var tonemapped_linear: vec3<f32>;
+    if (adjustments.global.tonemapper_mode == 1u) {
+        tonemapped_linear = agx_full_transform(composite_rgb_linear);
+    } else {
+        if (adjustments.global.is_raw_image == 1u) {
+            tonemapped_linear = legacy_tonemap(composite_rgb_linear);
+        } else {
+            tonemapped_linear = no_tonemap(composite_rgb_linear);
+        }
+    }
 
     let base_srgb = linear_to_srgb(tonemapped_linear);
 

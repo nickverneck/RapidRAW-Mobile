@@ -200,7 +200,7 @@ pub struct GlobalAdjustments {
     pub chromatic_aberration_red_cyan: f32,
     pub chromatic_aberration_blue_yellow: f32,
     pub show_clipping: u32,
-    _pad_ca1: f32,
+    pub is_raw_image: u32,
 
     pub enable_negative_conversion: u32,
     pub film_base_r: f32,
@@ -214,7 +214,7 @@ pub struct GlobalAdjustments {
 
     pub has_lut: u32,
     pub lut_intensity: f32,
-    _pad_lut1: f32,
+    pub tonemapper_mode: u32,
     _pad_lut2: f32,
     _pad_lut3: f32,
     _pad_lut4: f32,
@@ -442,7 +442,10 @@ fn convert_points_to_aligned(frontend_points: Vec<serde_json::Value>) -> [Point;
     aligned_points
 }
 
-fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> GlobalAdjustments {
+fn get_global_adjustments_from_json(
+    js_adjustments: &serde_json::Value,
+    is_raw: bool,
+) -> GlobalAdjustments {
     if js_adjustments.is_null() {
         return GlobalAdjustments::default();
     }
@@ -532,6 +535,8 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
         [1.0, 0.53, 0.0] // Default orange
     };
 
+    let tone_mapper = js_adjustments["toneMapper"].as_str().unwrap_or("basic");
+
     GlobalAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure, None),
         contrast: get_val("basic", "contrast", SCALES.contrast, None),
@@ -608,7 +613,7 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
         } else {
             0
         },
-        _pad_ca1: 0.0,
+        is_raw_image: if is_raw { 1 } else { 0 },
 
         enable_negative_conversion: if neg_conv_enabled { 1 } else { 0 },
         film_base_r: film_base_rgb[0],
@@ -633,7 +638,7 @@ fn get_global_adjustments_from_json(js_adjustments: &serde_json::Value) -> Globa
             0
         },
         lut_intensity: js_adjustments["lutIntensity"].as_f64().unwrap_or(100.0) as f32 / 100.0,
-        _pad_lut1: 0.0,
+        tonemapper_mode: if tone_mapper == "agx" { 1 } else { 0 },
         _pad_lut2: 0.0,
         _pad_lut3: 0.0,
         _pad_lut4: 0.0,
@@ -803,8 +808,11 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
     }
 }
 
-pub fn get_all_adjustments_from_json(js_adjustments: &serde_json::Value) -> AllAdjustments {
-    let global = get_global_adjustments_from_json(js_adjustments);
+pub fn get_all_adjustments_from_json(
+    js_adjustments: &serde_json::Value,
+    is_raw: bool,
+) -> AllAdjustments {
+    let global = get_global_adjustments_from_json(js_adjustments, is_raw);
     let mut mask_adjustments = [MaskAdjustments::default(); 14];
     let mut mask_count = 0;
 
