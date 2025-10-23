@@ -417,12 +417,12 @@ fn apply_filmic_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
     let new_luma = sign(original_luma) * shaped_luma_abs * scale;
     let chroma = color_in - vec3<f32>(original_luma);
     let total_luma_scale = new_luma / original_luma;
-    let chroma_scale = pow(total_luma_scale, 0.7);
+    let chroma_scale = pow(total_luma_scale, 0.8);
     return vec3<f32>(new_luma) + chroma * chroma_scale;
 }
 
 fn apply_exposure(color_in: vec3<f32>, exposure_adj: f32, is_raw: u32, tonemapper_mode: u32) -> vec3<f32> {
-    if (is_raw == 0u && tonemapper_mode == 0u) {
+    if (tonemapper_mode == 0u) {
         return apply_filmic_exposure(color_in, exposure_adj);
     } else {
         return apply_linear_exposure(color_in, exposure_adj);
@@ -1002,6 +1002,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         initial_linear_rgb = max(initial_linear_rgb, vec3<f32>(0.0));
     }
 
+    if (adjustments.global.tonemapper_mode == 0u && adjustments.global.is_raw_image == 1u) {
+        initial_linear_rgb = legacy_tonemap(initial_linear_rgb);
+    }
+
     let globally_adjusted_linear = apply_all_adjustments(initial_linear_rgb, adjustments.global, absolute_coord_i, id.xy, scale);
     var composite_rgb_linear = globally_adjusted_linear;
     for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
@@ -1013,17 +1017,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     var base_srgb: vec3<f32>;
-
     if (adjustments.global.tonemapper_mode == 1u) {
         base_srgb = agx_full_transform(composite_rgb_linear);
     } else {
-        var tonemapped_linear: vec3<f32>;
-        if (adjustments.global.is_raw_image == 1u) {
-            tonemapped_linear = legacy_tonemap(composite_rgb_linear);
-        } else {
-            tonemapped_linear = no_tonemap(composite_rgb_linear);
-        }
-        base_srgb = linear_to_srgb(tonemapped_linear);
+        base_srgb = linear_to_srgb(composite_rgb_linear);
     }
 
     var final_rgb = apply_all_curves(base_srgb,
