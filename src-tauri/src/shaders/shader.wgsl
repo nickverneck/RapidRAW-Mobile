@@ -444,36 +444,10 @@ fn apply_highlights_adjustment(
     }
     var tonally_adjusted_color: vec3<f32>;
     if (highlights_adj < 0.0) {
-        // --- START OF MODIFICATION ---
-        // The original pow(luma, gamma) expands values > 1.0, which is incorrect for highlight recovery.
-        // We now use a hybrid approach:
-        // 1. For luma <= 1.0, use the original pow() curve to maintain the nice rolloff.
-        // 2. For luma > 1.0, use a compression curve to pull highlights down towards 1.0.
-
-        let strength = -highlights_adj * 1.75; // A positive value representing compression strength
-        let threshold: f32 = 1.0;
-        var new_luma: f32;
-
-        if (luma <= threshold) {
-            // Below or at the threshold, use the original gamma curve.
-            let gamma = 1.0 + strength;
-            new_luma = pow(luma, gamma);
-        } else {
-            // Above the threshold, compress the highlights.
-            let over_threshold = luma - threshold;
-            
-            // This is a simple rational compression curve: f(x) = x / (1 + x * strength)
-            // It smoothly brings down the highlights that are over 1.0.
-            let compressed_over = over_threshold / (1.0 + over_threshold * strength);
-            
-            // The new luma is the threshold (1.0) plus the compressed part.
-            new_luma = threshold + compressed_over;
-        }
-        
+        let gamma = 1.0 - highlights_adj * 1.75;
+        let new_luma = pow(luma, gamma);
         tonally_adjusted_color = color_in * (new_luma / max(luma, 0.0001));
-        // --- END OF MODIFICATION ---
     } else {
-        // This part for increasing highlights is fine and remains unchanged.
         let adjustment = highlights_adj * 1.75;
         let factor = pow(2.0, adjustment);
         tonally_adjusted_color = color_in * factor;
@@ -488,7 +462,6 @@ fn apply_highlights_adjustment(
 
     return mix(color_in, final_combined_color, highlight_mask);
 }
-
 
 fn apply_color_calibration(color: vec3<f32>, cal: ColorCalibrationSettings) -> vec3<f32> {
     let h_r = cal.red_hue;
