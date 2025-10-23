@@ -345,7 +345,7 @@ fn apply_curve(val: f32, points: array<Point, 16>, count: u32) -> f32 {
     return local_points[count - 1u].y / 255.0;
 }
 
-fn apply_tonal_adjustments(color: vec3<f32>, con: f32, sh: f32, wh: f32, bl: f32) -> vec3<f32> {
+fn apply_tonal_adjustments(color: vec3<f32>, con: f32, sh: f32, wh: f32, bl: f32, tonemapper_mode: u32) -> vec3<f32> {
     var rgb = color;
     if (wh != 0.0) {
         let white_level = 1.0 - wh * 0.25;
@@ -371,7 +371,7 @@ fn apply_tonal_adjustments(color: vec3<f32>, con: f32, sh: f32, wh: f32, bl: f32
             rgb = mix(rgb, adjusted, mask);
         }
     }
-    if (con != 0.0) {
+    if (con != 0.0 && tonemapper_mode != 1u) {
         let safe_rgb = max(rgb, vec3<f32>(0.0));
         let g = 2.2;
         let perceptual = pow(safe_rgb, vec3<f32>(1.0 / g));
@@ -789,12 +789,10 @@ const AGX_TARGET_BLACK_PRE_GAMMA: f32 = 0.0;
 const AGX_TARGET_WHITE_PRE_GAMMA: f32 = 1.0;
 const AGX_GAMMA: f32 = 2.4;
 
-const AGX_SLOPE: f32 = 2.3843;
 const AGX_TOE_TRANSITION_X: f32 = 0.6060606;
 const AGX_TOE_TRANSITION_Y: f32 = 0.43446;
 const AGX_SHOULDER_TRANSITION_X: f32 = 0.6060606;
 const AGX_SHOULDER_TRANSITION_Y: f32 = 0.43446;
-const AGX_INTERCEPT: f32 = -1.0112;
 const AGX_TOE_SCALE: f32 = -1.0359;
 const AGX_SHOULDER_SCALE: f32 = 1.3475;
 
@@ -806,14 +804,15 @@ fn agx_scaled_sigmoid(x: f32, scale: f32, slope: f32, power: f32, transition_x: 
     return scale * agx_sigmoid(slope * (x - transition_x) / scale, power) + transition_y;
 }
 
-fn agx_apply_curve_channel(x: f32) -> f32 {
+fn agx_apply_curve_channel(x: f32, slope: f32) -> f32 {
     var result: f32 = 0.0;
+    let intercept = AGX_TOE_TRANSITION_Y - slope * AGX_TOE_TRANSITION_X;
     if (x < AGX_TOE_TRANSITION_X) {
-        result = agx_scaled_sigmoid(x, AGX_TOE_SCALE, AGX_SLOPE, AGX_TOE_POWER, AGX_TOE_TRANSITION_X, AGX_TOE_TRANSITION_Y);
+        result = agx_scaled_sigmoid(x, AGX_TOE_SCALE, slope, AGX_TOE_POWER, AGX_TOE_TRANSITION_X, AGX_TOE_TRANSITION_Y);
     } else if (x <= AGX_SHOULDER_TRANSITION_X) {
-        result = AGX_SLOPE * x + AGX_INTERCEPT;
+        result = slope * x + intercept;
     } else {
-        result = agx_scaled_sigmoid(x, AGX_SHOULDER_SCALE, AGX_SLOPE, AGX_SHOULDER_POWER, AGX_SHOULDER_TRANSITION_X, AGX_SHOULDER_TRANSITION_Y);
+        result = agx_scaled_sigmoid(x, AGX_SHOULDER_SCALE, slope, AGX_SHOULDER_POWER, AGX_SHOULDER_TRANSITION_X, AGX_SHOULDER_TRANSITION_Y);
     }
     return clamp(result, AGX_TARGET_BLACK_PRE_GAMMA, AGX_TARGET_WHITE_PRE_GAMMA);
 }
@@ -826,25 +825,27 @@ fn agx_compress_gamut(c: vec3<f32>) -> vec3<f32> {
     return c;
 }
 
-fn agx_tonemap(c: vec3<f32>) -> vec3<f32> {
+fn agx_tonemap(c: vec3<f32>, slope: f32) -> vec3<f32> {
     let x_relative = max(c / 0.18, vec3<f32>(AGX_EPSILON));
     let log_encoded = (log2(x_relative) - AGX_MIN_EV) / AGX_RANGE_EV;
     let mapped = clamp(log_encoded, vec3<f32>(0.0), vec3<f32>(1.0));
 
     var curved: vec3<f32>;
-    curved.r = agx_apply_curve_channel(mapped.r);
-    curved.g = agx_apply_curve_channel(mapped.g);
-    curved.b = agx_apply_curve_channel(mapped.b);
+    curved.r = agx_apply_curve_channel(mapped.r, slope);
+    curved.g = agx_apply_curve_channel(mapped.g, slope);
+    curved.b = agx_apply_curve_channel(mapped.b, slope);
 
     let final_color = pow(max(curved, vec3<f32>(0.0)), vec3<f32>(AGX_GAMMA));
 
     return final_color;
 }
 
-fn agx_full_transform(color_in: vec3<f32>) -> vec3<f32> {
+fn agx_full_transform(color_in: vec3<f32>, contrast_adj: f32) -> vec3<f32> {
+    const AGX_DEFAULT_SLOPE: f32 = 2.75;
+    let dynamic_slope = AGX_DEFAULT_SLOPE * pow(2.0, contrast_adj);
     let compressed_color = agx_compress_gamut(color_in);
     let color_in_agx_space = AGX_INPUT_MATRIX * compressed_color;
-    let tonemapped_agx = agx_tonemap(color_in_agx_space);
+    let tonemapped_agx = agx_tonemap(color_in_agx_space, dynamic_slope);
     let final_color = AGX_OUTPUT_MATRIX * tonemapped_agx;
     return final_color;
 }
@@ -915,7 +916,7 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = apply_exposure(processed_rgb, adj.exposure, adj.is_raw_image, adj.tonemapper_mode);
-    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
+    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks, adj.tonemapper_mode);
     processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
 
     processed_rgb = apply_color_calibration(processed_rgb, adj.color_calibration);
@@ -941,7 +942,7 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = apply_exposure(processed_rgb, adj.exposure, is_raw, tonemapper_mode);
     processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights, clarity_blurred);
-    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
+    processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks, tonemapper_mode);
 
     processed_rgb = apply_hsl_panel(processed_rgb, adj.hsl, coords_i);
     processed_rgb = apply_color_grading(processed_rgb, adj.color_grading_shadows, adj.color_grading_midtones, adj.color_grading_highlights, adj.color_grading_blending, adj.color_grading_balance);
@@ -1014,7 +1015,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     var tonemapped_linear: vec3<f32>;
     if (adjustments.global.tonemapper_mode == 1u) {
-        tonemapped_linear = agx_full_transform(composite_rgb_linear);
+        tonemapped_linear = agx_full_transform(composite_rgb_linear, adjustments.global.contrast);
     } else {
         if (adjustments.global.is_raw_image == 1u) {
             tonemapped_linear = legacy_tonemap(composite_rgb_linear);
