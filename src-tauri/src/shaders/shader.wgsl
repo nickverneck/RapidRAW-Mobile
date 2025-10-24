@@ -1003,7 +1003,13 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     if (adjustments.global.tonemapper_mode == 0u && adjustments.global.is_raw_image == 1u) {
-        initial_linear_rgb = legacy_tonemap(initial_linear_rgb);
+        var srgb_emulated = linear_to_srgb(initial_linear_rgb);
+        const BRIGHTNESS_GAMMA: f32 = 1.1;
+        srgb_emulated = pow(srgb_emulated, vec3<f32>(1.0 / BRIGHTNESS_GAMMA));
+        const CONTRAST_MIX: f32 = 0.75;
+        let contrast_curve = srgb_emulated * srgb_emulated * (3.0 - 2.0 * srgb_emulated);
+        srgb_emulated = mix(srgb_emulated, contrast_curve, CONTRAST_MIX);
+        initial_linear_rgb = srgb_to_linear(srgb_emulated);
     }
 
     let globally_adjusted_linear = apply_all_adjustments(initial_linear_rgb, adjustments.global, absolute_coord_i, id.xy, scale);
