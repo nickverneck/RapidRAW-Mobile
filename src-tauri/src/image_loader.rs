@@ -65,20 +65,23 @@ pub fn load_image_with_orientation(bytes: &[u8]) -> Result<DynamicImage> {
     reader.no_limits();
     let image = reader.decode().context("Failed to decode image")?;
 
-    let exif_reader = ExifReader::new();
-    if let Ok(exif) = exif_reader.read_from_container(&mut cursor.clone()) {
-        if let Some(orientation) = exif
-            .get_field(Tag::Orientation, exif::In::PRIMARY)
-            .and_then(|f| f.value.get_uint(0))
-        {
-            return Ok(apply_orientation(
-                image,
-                Orientation::from_u16(orientation as u16),
-            ));
+    let oriented_image = {
+        let exif_reader = ExifReader::new();
+        if let Ok(exif) = exif_reader.read_from_container(&mut cursor.clone()) {
+            if let Some(orientation) = exif
+                .get_field(Tag::Orientation, exif::In::PRIMARY)
+                .and_then(|f| f.value.get_uint(0))
+            {
+                apply_orientation(image, Orientation::from_u16(orientation as u16))
+            } else {
+                image
+            }
+        } else {
+            image
         }
-    }
+    };
 
-    Ok(image)
+    Ok(DynamicImage::ImageRgb32F(oriented_image.to_rgb32f()))
 }
 
 pub fn composite_patches_on_image(
@@ -118,7 +121,7 @@ pub fn composite_patches_on_image(
     }
 
     let (base_w, base_h) = base_image.dimensions();
-    let mut composited_rgba = base_image.to_rgba8();
+    let mut composited_rgba = base_image.to_rgba32f();
 
     for patch_obj in visible_patches {
         let patch_info: PatchMaskInfo = from_value(patch_obj.clone())
@@ -143,23 +146,26 @@ pub fn composite_patches_on_image(
             .and_then(|v| v.as_str())
             .context("Missing color data")?;
         let color_bytes = general_purpose::STANDARD.decode(color_b64)?;
-        let mut color_image = image::load_from_memory(&color_bytes)?.to_rgb8();
+        let color_image_u8 = image::load_from_memory(&color_bytes)?.to_rgb8();
 
-        let (patch_w, patch_h) = color_image.dimensions();
-        if base_w != patch_w || base_h != patch_h {
-            color_image =
-                imageops::resize(&color_image, base_w, base_h, imageops::FilterType::Lanczos3);
-        }
+        let (patch_w, patch_h) = color_image_u8.dimensions();
+        let color_image_f32 = if base_w != patch_w || base_h != patch_h {
+            let resized =
+                imageops::resize(&color_image_u8, base_w, base_h, imageops::FilterType::Lanczos3);
+            DynamicImage::ImageRgb8(resized).to_rgb32f()
+        } else {
+            DynamicImage::ImageRgb8(color_image_u8).to_rgb32f()
+        };
 
         composited_rgba
-            .par_chunks_mut(base_w as usize * 4)
+            .par_chunks_mut((base_w * 4) as usize)
             .enumerate()
             .for_each(|(y, row)| {
                 for x in 0..base_w as usize {
                     let mask_value = mask_bitmap.get_pixel(x as u32, y as u32)[0];
 
                     if mask_value > 0 {
-                        let patch_pixel = color_image.get_pixel(x as u32, y as u32);
+                        let patch_pixel = color_image_f32.get_pixel(x as u32, y as u32);
 
                         let alpha = mask_value as f32 / 255.0;
                         let one_minus_alpha = 1.0 - alpha;
@@ -168,19 +174,13 @@ pub fn composite_patches_on_image(
                         let base_g = row[x * 4 + 1];
                         let base_b = row[x * 4 + 2];
 
-                        row[x * 4 + 0] = (patch_pixel[0] as f32 * alpha
-                            + base_r as f32 * one_minus_alpha)
-                            .round() as u8;
-                        row[x * 4 + 1] = (patch_pixel[1] as f32 * alpha
-                            + base_g as f32 * one_minus_alpha)
-                            .round() as u8;
-                        row[x * 4 + 2] = (patch_pixel[2] as f32 * alpha
-                            + base_b as f32 * one_minus_alpha)
-                            .round() as u8;
+                        row[x * 4 + 0] = patch_pixel[0] * alpha + base_r * one_minus_alpha;
+                        row[x * 4 + 1] = patch_pixel[1] * alpha + base_g * one_minus_alpha;
+                        row[x * 4 + 2] = patch_pixel[2] * alpha + base_b * one_minus_alpha;
                     }
                 }
             });
     }
 
-    Ok(DynamicImage::ImageRgba8(composited_rgba))
+    Ok(DynamicImage::ImageRgba32F(composited_rgba))
 }

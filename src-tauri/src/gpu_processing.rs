@@ -191,7 +191,7 @@ pub fn run_gpu_processing(
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::StorageTexture {
                             access: wgpu::StorageTextureAccess::WriteOnly,
-                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            format: wgpu::TextureFormat::Rgba32Float,
                             view_dimension: wgpu::TextureViewDimension::D2,
                         },
                         count: None,
@@ -257,7 +257,7 @@ pub fn run_gpu_processing(
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::Rgba32Float,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING,
                     view_formats: &[],
@@ -268,7 +268,7 @@ pub fn run_gpu_processing(
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::Rgba32Float,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING,
                     view_formats: &[],
@@ -364,7 +364,7 @@ pub fn run_gpu_processing(
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: wgpu::TextureFormat::Rgba32Float,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
@@ -750,7 +750,7 @@ pub fn process_and_get_dynamic_image(
     }
 
     if cache_lock.is_none() {
-        let img_rgba = base_image.to_rgba8();
+        let img_rgba_f32 = base_image.to_rgba32f();
         let texture_size = wgpu::Extent3d {
             width,
             height,
@@ -764,12 +764,12 @@ pub fn process_and_get_dynamic_image(
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: wgpu::TextureFormat::Rgba32Float,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             },
             TextureDataOrder::MipMajor,
-            &img_rgba,
+            bytemuck::cast_slice(img_rgba_f32.as_raw()),
         );
         let texture_view = texture.create_view(&Default::default());
 

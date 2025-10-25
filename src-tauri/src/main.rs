@@ -38,7 +38,7 @@ use chrono::{DateTime, Utc};
 use image::codecs::jpeg::JpegEncoder;
 use image::{
     DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, Rgb, RgbImage, Rgba,
-    RgbaImage,
+    RgbaImage, imageops,
 };
 use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
@@ -69,6 +69,7 @@ use crate::image_loader::{
 use crate::image_processing::{
     Crop, GpuContext, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
     get_all_adjustments_from_json, get_or_init_gpu_context, process_and_get_dynamic_image,
+    downscale_f32_image,
 };
 use crate::lut_processing::Lut;
 use crate::mask_generation::{AiPatchDefinition, MaskDefinition, generate_mask_bitmap};
@@ -317,7 +318,11 @@ fn generate_transformed_preview(
     let (full_res_w, full_res_h) = transformed_full_res.dimensions();
 
     let final_preview_base = if full_res_w > final_preview_dim || full_res_h > final_preview_dim {
-        transformed_full_res.thumbnail(final_preview_dim, final_preview_dim)
+        downscale_f32_image(
+            &transformed_full_res,
+            final_preview_dim,
+            final_preview_dim,
+        )
     } else {
         transformed_full_res
     };
@@ -654,7 +659,7 @@ fn generate_uncropped_preview(
 
         let (processing_base, scale_for_gpu) = if rotated_w > preview_dim || rotated_h > preview_dim
         {
-            let base = coarse_rotated_image.thumbnail(preview_dim, preview_dim);
+            let base = downscale_f32_image(&coarse_rotated_image, preview_dim, preview_dim);
             let scale = if rotated_w > 0 {
                 base.width() as f32 / rotated_w as f32
             } else {
@@ -734,7 +739,7 @@ fn generate_original_transformed_preview(
 
     let (w, h) = transformed_full_res.dimensions();
     let transformed_image = if w > preview_dim || h > preview_dim {
-        transformed_full_res.thumbnail(preview_dim, preview_dim)
+        downscale_f32_image(&transformed_full_res, preview_dim, preview_dim)
     } else {
         transformed_full_res
     };
@@ -886,7 +891,7 @@ fn process_image_for_export(
                             resize_opts.value,
                         )
                     };
-                    final_image.thumbnail(w, h)
+                    final_image.resize(w, h, imageops::FilterType::Lanczos3)
                 }
                 ResizeMode::ShortEdge => {
                     let (w, h) = if current_w < current_h {
@@ -902,10 +907,14 @@ fn process_image_for_export(
                             resize_opts.value,
                         )
                     };
-                    final_image.thumbnail(w, h)
+                    final_image.resize(w, h, imageops::FilterType::Lanczos3)
                 }
-                ResizeMode::Width => final_image.thumbnail(resize_opts.value, u32::MAX),
-                ResizeMode::Height => final_image.thumbnail(u32::MAX, resize_opts.value),
+                ResizeMode::Width => {
+                    final_image.resize(resize_opts.value, u32::MAX, imageops::FilterType::Lanczos3)
+                }
+                ResizeMode::Height => {
+                    final_image.resize(u32::MAX, resize_opts.value, imageops::FilterType::Lanczos3)
+                }
             };
         }
     }
@@ -1389,7 +1398,7 @@ async fn estimate_batch_export_size(
     let original_image =
         load_base_image_from_bytes(&img_bytes, first_path, true).map_err(|e| e.to_string())?;
 
-    let base_image_preview = original_image.thumbnail(ESTIMATE_DIM, ESTIMATE_DIM);
+    let base_image_preview = downscale_f32_image(&original_image, ESTIMATE_DIM, ESTIMATE_DIM);
 
     let (transformed_preview, unscaled_crop_offset) =
         apply_all_transformations(&base_image_preview, &js_adjustments);
@@ -1848,7 +1857,7 @@ fn generate_preset_preview(
     let unique_hash = calculate_full_job_hash(&path, &js_adjustments);
 
     const PRESET_PREVIEW_DIM: u32 = 200;
-    let preview_base = original_image.thumbnail(PRESET_PREVIEW_DIM, PRESET_PREVIEW_DIM);
+    let preview_base = downscale_f32_image(&original_image, PRESET_PREVIEW_DIM, PRESET_PREVIEW_DIM);
 
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(&preview_base, &js_adjustments);
@@ -2212,7 +2221,10 @@ async fn generate_all_community_previews(
             crate::image_loader::load_base_image_from_bytes(&image_bytes, &image_path, true)
                 .map_err(|e| e.to_string())?;
         let is_raw = is_raw_file(image_path);
-        base_thumbnails.push((original_image.thumbnail(PROCESSING_DIM, PROCESSING_DIM), is_raw));
+        base_thumbnails.push((
+            downscale_f32_image(&original_image, PROCESSING_DIM, PROCESSING_DIM),
+            is_raw,
+        ));
     }
 
     for preset in presets.iter() {

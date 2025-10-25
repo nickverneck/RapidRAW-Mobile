@@ -1,15 +1,17 @@
 use bytemuck::{Pod, Zeroable};
-use image::{DynamicImage, GenericImageView, Rgba};
-use imageproc::geometric_transformations::{Interpolation, rotate_about_center};
+use image::{
+    DynamicImage, GenericImageView, Rgba, Rgb32FImage,
+};
+use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
 use rawler::decoders::Orientation;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use serde_json::json;
+use serde_json::Value;
 use std::f32::consts::PI;
 use std::sync::Arc;
 
 pub use crate::gpu_processing::{get_or_init_gpu_context, process_and_get_dynamic_image};
-use crate::{AppState, load_settings, mask_generation::MaskDefinition};
+use crate::{load_settings, mask_generation::MaskDefinition, AppState};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImageMetadata {
@@ -39,6 +41,63 @@ pub struct Crop {
     pub height: f64,
 }
 
+pub fn downscale_f32_image(image: &DynamicImage, nwidth: u32, nheight: u32) -> DynamicImage {
+    let (width, height) = image.dimensions();
+    if nwidth == 0 || nheight == 0 {
+        return image.clone();
+    }
+    if nwidth >= width && nheight >= height {
+        return image.clone();
+    }
+
+    let ratio = (nwidth as f32 / width as f32).min(nheight as f32 / height as f32);
+    let new_w = (width as f32 * ratio).round() as u32;
+    let new_h = (height as f32 * ratio).round() as u32;
+
+    if new_w == 0 || new_h == 0 {
+        return image.clone();
+    }
+
+    let img = image.to_rgb32f();
+    let mut out = Rgb32FImage::new(new_w, new_h);
+
+    let x_ratio = width as f32 / new_w as f32;
+    let y_ratio = height as f32 / new_h as f32;
+
+    for y_out in 0..new_h {
+        for x_out in 0..new_w {
+            let x_start = (x_out as f32 * x_ratio).floor() as u32;
+            let y_start = (y_out as f32 * y_ratio).floor() as u32;
+            let x_end = ((x_out + 1) as f32 * x_ratio).ceil() as u32;
+            let y_end = ((y_out + 1) as f32 * y_ratio).ceil() as u32;
+
+            let mut r_sum = 0.0;
+            let mut g_sum = 0.0;
+            let mut b_sum = 0.0;
+            let mut count = 0.0;
+
+            for y_in in y_start..y_end.min(height) {
+                for x_in in x_start..x_end.min(width) {
+                    let pixel = img.get_pixel(x_in, y_in);
+                    r_sum += pixel[0];
+                    g_sum += pixel[1];
+                    b_sum += pixel[2];
+                    count += 1.0;
+                }
+            }
+
+            if count > 0.0 {
+                out.put_pixel(
+                    x_out,
+                    y_out,
+                    image::Rgb([r_sum / count, g_sum / count, b_sum / count]),
+                );
+            }
+        }
+    }
+    DynamicImage::ImageRgb32F(out)
+}
+
 pub fn apply_orientation(image: DynamicImage, orientation: Orientation) -> DynamicImage {
     match orientation {
         Orientation::Normal | Orientation::Unknown => image,
@@ -66,16 +125,16 @@ pub fn apply_rotation(image: &DynamicImage, rotation_degrees: f32) -> DynamicIma
         return image.clone();
     }
 
-    let rgba_image = image.to_rgba8();
+    let rgba_image = image.to_rgba32f();
 
     let rotated = rotate_about_center(
         &rgba_image,
         rotation_degrees * PI / 180.0,
         Interpolation::Bilinear,
-        Rgba([0u8, 0, 0, 0]),
+        Rgba([0.0f32, 0.0, 0.0, 0.0]),
     );
 
-    DynamicImage::ImageRgba8(rotated)
+    DynamicImage::ImageRgba32F(rotated)
 }
 
 pub fn apply_crop(mut image: DynamicImage, crop_value: &Value) -> DynamicImage {
