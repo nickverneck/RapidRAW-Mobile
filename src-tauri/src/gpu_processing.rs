@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use bytemuck;
+use half::f16;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma, Rgba};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 
@@ -118,6 +119,15 @@ fn read_texture_data(
     }
 }
 
+fn to_rgba_f16(img: &DynamicImage) -> Vec<f16> {
+    let rgba_f32 = img.to_rgba32f();
+    rgba_f32
+        .into_raw()
+        .into_iter()
+        .map(f16::from_f32)
+        .collect()
+}
+
 pub fn run_gpu_processing(
     context: &GpuContext,
     input_texture_view: &wgpu::TextureView,
@@ -191,7 +201,7 @@ pub fn run_gpu_processing(
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::StorageTexture {
                             access: wgpu::StorageTextureAccess::WriteOnly,
-                            format: wgpu::TextureFormat::Rgba32Float,
+                            format: wgpu::TextureFormat::Rgba16Float,
                             view_dimension: wgpu::TextureViewDimension::D2,
                         },
                         count: None,
@@ -257,7 +267,7 @@ pub fn run_gpu_processing(
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba32Float,
+                    format: wgpu::TextureFormat::Rgba16Float,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING,
                     view_formats: &[],
@@ -268,7 +278,7 @@ pub fn run_gpu_processing(
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba32Float,
+                    format: wgpu::TextureFormat::Rgba16Float,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING,
                     view_formats: &[],
@@ -364,7 +374,7 @@ pub fn run_gpu_processing(
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba32Float,
+                format: wgpu::TextureFormat::Rgba16Float,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
@@ -531,12 +541,12 @@ pub fn run_gpu_processing(
             let (lut_texture_view, lut_sampler) = if let Some(lut_arc) = &lut {
                 let lut_data = &lut_arc.data;
                 let size = lut_arc.size;
-                let mut rgba_lut_data = Vec::with_capacity(lut_data.len() / 3 * 4);
+                let mut rgba_lut_data_f16 = Vec::with_capacity(lut_data.len() / 3 * 4);
                 for chunk in lut_data.chunks_exact(3) {
-                    rgba_lut_data.push(chunk[0]);
-                    rgba_lut_data.push(chunk[1]);
-                    rgba_lut_data.push(chunk[2]);
-                    rgba_lut_data.push(1.0);
+                    rgba_lut_data_f16.push(f16::from_f32(chunk[0]));
+                    rgba_lut_data_f16.push(f16::from_f32(chunk[1]));
+                    rgba_lut_data_f16.push(f16::from_f32(chunk[2]));
+                    rgba_lut_data_f16.push(f16::ONE);
                 }
                 let lut_texture = device.create_texture_with_data(
                     queue,
@@ -550,12 +560,12 @@ pub fn run_gpu_processing(
                         mip_level_count: 1,
                         sample_count: 1,
                         dimension: wgpu::TextureDimension::D3,
-                        format: wgpu::TextureFormat::Rgba32Float,
+                        format: wgpu::TextureFormat::Rgba16Float,
                         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                         view_formats: &[],
                     },
                     TextureDataOrder::MipMajor,
-                    bytemuck::cast_slice(&rgba_lut_data),
+                    bytemuck::cast_slice(&rgba_lut_data_f16),
                 );
                 let view = lut_texture.create_view(&Default::default());
                 let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -578,7 +588,7 @@ pub fn run_gpu_processing(
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D3,
-                    format: wgpu::TextureFormat::Rgba32Float,
+                    format: wgpu::TextureFormat::Rgba16Float,
                     usage: wgpu::TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 });
@@ -750,7 +760,7 @@ pub fn process_and_get_dynamic_image(
     }
 
     if cache_lock.is_none() {
-        let img_rgba_f32 = base_image.to_rgba32f();
+        let img_rgba_f16 = to_rgba_f16(base_image);
         let texture_size = wgpu::Extent3d {
             width,
             height,
@@ -764,12 +774,12 @@ pub fn process_and_get_dynamic_image(
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba32Float,
+                format: wgpu::TextureFormat::Rgba16Float,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             },
             TextureDataOrder::MipMajor,
-            bytemuck::cast_slice(img_rgba_f32.as_raw()),
+            bytemuck::cast_slice(&img_rgba_f16),
         );
         let texture_view = texture.create_view(&Default::default());
 

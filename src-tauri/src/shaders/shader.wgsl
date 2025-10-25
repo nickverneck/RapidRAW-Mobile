@@ -985,11 +985,18 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let ca_rc = adjustments.global.chromatic_aberration_red_cyan;
     let ca_by = adjustments.global.chromatic_aberration_blue_yellow;
-    var initial_linear_rgb = textureLoad(input_texture, absolute_coord, 0).rgb;
+    var color_from_texture = textureLoad(input_texture, absolute_coord, 0).rgb;
     if (abs(ca_rc) > 0.000001 || abs(ca_by) > 0.000001) {
-        initial_linear_rgb = apply_ca_correction(absolute_coord, ca_rc, ca_by);
+        color_from_texture = apply_ca_correction(absolute_coord, ca_rc, ca_by);
     }
     let original_alpha = textureLoad(input_texture, absolute_coord, 0).a;
+
+    var initial_linear_rgb: vec3<f32>;
+    if (adjustments.global.is_raw_image == 0u) {
+        initial_linear_rgb = srgb_to_linear(color_from_texture);
+    } else {
+        initial_linear_rgb = color_from_texture;
+    }
 
     if (adjustments.global.enable_negative_conversion == 1u) {
         initial_linear_rgb = vec3<f32>(1.0) - initial_linear_rgb;

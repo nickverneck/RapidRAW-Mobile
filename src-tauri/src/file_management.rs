@@ -541,8 +541,11 @@ pub fn generate_thumbnail_data(
 
             let (processing_base, scale_for_gpu) =
                 if full_w > THUMBNAIL_PROCESSING_DIM || full_h > THUMBNAIL_PROCESSING_DIM {
-                    let base = coarse_rotated_image
-                        .thumbnail(THUMBNAIL_PROCESSING_DIM, THUMBNAIL_PROCESSING_DIM);
+                    let base = crate::image_processing::downscale_f32_image(
+                        &coarse_rotated_image,
+                        THUMBNAIL_PROCESSING_DIM,
+                        THUMBNAIL_PROCESSING_DIM,
+                    );
                     let scale = if full_w > 0 {
                         base.width() as f32 / full_w as f32
                     } else {

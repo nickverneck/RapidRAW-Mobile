@@ -58,6 +58,7 @@ image_hasher = "3.0.0"
 regex = "1.11.3"
 memmap2 = "0.9.8"
 io = "0.0.2"
+half = { version = "2.7.1", features = ["bytemuck"] }
 
 [build-dependencies]
 tauri-build = { version = "2.4", features = [] }
