@@ -45,7 +45,7 @@ export default function DetailsPanel({
             label="Clarity"
             max={100}
             min={-100}
-            onChange={(e: any) => handleAdjustmentChange(Effect.Clarity, e.target.value)}
+            onChange={(e: any) => handleAdjustmentChange(DetailsAdjustment.Clarity, e.target.value)}
             step={1}
             value={adjustments.clarity}
           />
@@ -53,7 +53,7 @@ export default function DetailsPanel({
             label="Dehaze"
             max={100}
             min={-100}
-            onChange={(e: any) => handleAdjustmentChange(Effect.Dehaze, e.target.value)}
+            onChange={(e: any) => handleAdjustmentChange(DetailsAdjustment.Dehaze, e.target.value)}
             step={1}
             value={adjustments.dehaze}
           />
@@ -61,7 +61,7 @@ export default function DetailsPanel({
             label="Structure"
             max={100}
             min={-100}
-            onChange={(e: any) => handleAdjustmentChange(Effect.Structure, e.target.value)}
+            onChange={(e: any) => handleAdjustmentChange(DetailsAdjustment.Structure, e.target.value)}
             step={1}
             value={adjustments.structure}
           />
@@ -70,7 +70,7 @@ export default function DetailsPanel({
               label="Centré"
               max={100}
               min={-100}
-              onChange={(e: any) => handleAdjustmentChange(Effect.Centré, e.target.value)}
+              onChange={(e: any) => handleAdjustmentChange(DetailsAdjustment.Centré, e.target.value)}
               step={1}
               value={adjustments.centré}
             />

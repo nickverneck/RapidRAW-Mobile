@@ -69,7 +69,7 @@ use crate::image_loader::{
 use crate::image_processing::{
     Crop, GpuContext, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
     get_all_adjustments_from_json, get_or_init_gpu_context, process_and_get_dynamic_image,
-    downscale_f32_image,
+    downscale_f32_image, apply_cpu_default_raw_processing,
 };
 use crate::lut_processing::Lut;
 use crate::mask_generation::{AiPatchDefinition, MaskDefinition, generate_mask_bitmap};
@@ -731,8 +731,13 @@ fn generate_original_transformed_preview(
         .clone()
         .ok_or("No original image loaded")?;
 
+    let mut image_for_preview = loaded_image.image.clone();
+    if loaded_image.is_raw {
+        apply_cpu_default_raw_processing(&mut image_for_preview);
+    }
+
     let (transformed_full_res, _unscaled_crop_offset) =
-        apply_all_transformations(&loaded_image.image, &js_adjustments);
+        apply_all_transformations(&image_for_preview, &js_adjustments);
 
     let settings = load_settings(app_handle).unwrap_or_default();
     let preview_dim = settings.editor_preview_resolution.unwrap_or(1920);

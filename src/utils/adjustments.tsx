@@ -46,6 +46,10 @@ export enum ColorGrading {
 }
 
 export enum DetailsAdjustment {
+  Clarity = 'clarity',
+  Dehaze = 'dehaze',
+  Structure = 'structure',
+  Centré = 'centré',
   ColorNoiseReduction = 'colorNoiseReduction',
   LumaNoiseReduction = 'lumaNoiseReduction',
   Sharpness = 'sharpness',
@@ -54,8 +58,6 @@ export enum DetailsAdjustment {
 }
 
 export enum Effect {
-  Clarity = 'clarity',
-  Dehaze = 'dehaze',
   EnableNegativeConversion = 'enableNegativeConversion',
   FilmBaseColor = 'filmBaseColor',
   GrainAmount = 'grainAmount',
@@ -65,12 +67,10 @@ export enum Effect {
   NegativeBlueBalance = 'negativeBlueBalance',
   NegativeGreenBalance = 'negativeGreenBalance',
   NegativeRedBalance = 'negativeRedBalance',
-  Structure = 'structure',
   VignetteAmount = 'vignetteAmount',
   VignetteFeather = 'vignetteFeather',
   VignetteMidpoint = 'vignetteMidpoint',
   VignetteRoundness = 'vignetteRoundness',
-  Centré = 'centré',
 }
 
 export interface ColorCalibration {
@@ -479,8 +479,8 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
 
 export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   BasicAdjustment.Blacks,
-  Effect.Clarity,
-  Effect.Centré,
+  DetailsAdjustment.Clarity,
+  DetailsAdjustment.Centré,
   DetailsAdjustment.ChromaticAberrationBlueYellow,
   DetailsAdjustment.ChromaticAberrationRedCyan,
   'colorCalibration',
@@ -488,7 +488,7 @@ export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   DetailsAdjustment.ColorNoiseReduction,
   BasicAdjustment.Contrast,
   'curves',
-  Effect.Dehaze,
+  DetailsAdjustment.Dehaze,
   Effect.EnableNegativeConversion,
   BasicAdjustment.Exposure,
   Effect.FilmBaseColor,
@@ -510,7 +510,7 @@ export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   BasicAdjustment.Shadows,
   DetailsAdjustment.Sharpness,
   'showClipping',
-  Effect.Structure,
+  DetailsAdjustment.Structure,
   ColorAdjustment.Temperature,
   ColorAdjustment.Tint,
   'toneMapper',
@@ -542,6 +542,10 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     'colorCalibration',
   ],
   details: [
+    DetailsAdjustment.Clarity,
+    DetailsAdjustment.Dehaze,
+    DetailsAdjustment.Structure,
+    DetailsAdjustment.Centré,
     DetailsAdjustment.Sharpness,
     DetailsAdjustment.LumaNoiseReduction,
     DetailsAdjustment.ColorNoiseReduction,
@@ -549,9 +553,6 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     DetailsAdjustment.ChromaticAberrationBlueYellow,
   ],
   effects: [
-    Effect.Clarity,
-    Effect.Dehaze,
-    Effect.Centré,
     Effect.EnableNegativeConversion,
     Effect.FilmBaseColor,
     Effect.GrainAmount,
@@ -561,7 +562,6 @@ export const ADJUSTMENT_SECTIONS: Sections = {
     Effect.NegativeBlueBalance,
     Effect.NegativeGreenBalance,
     Effect.NegativeRedBalance,
-    Effect.Structure,
     Effect.VignetteAmount,
     Effect.VignetteFeather,
     Effect.VignetteMidpoint,
