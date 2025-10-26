@@ -436,12 +436,12 @@ const SCALES: AdjustmentScales = AdjustmentScales {
     tint: 100.0,
     vibrance: 100.0,
 
-    sharpness: 100.0,
+    sharpness: 80.0,
     luma_noise_reduction: 100.0,
     color_noise_reduction: 100.0,
-    clarity: 250.0,
+    clarity: 200.0,
     dehaze: 750.0,
-    structure: 250.0,
+    structure: 200.0,
     centré: 250.0,
 
     vignette_amount: 100.0,

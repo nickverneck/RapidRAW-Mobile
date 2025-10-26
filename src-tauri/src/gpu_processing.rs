@@ -361,7 +361,7 @@ pub fn run_gpu_processing(
                 .map(|t| t.create_view(&Default::default()));
             let clarity_blur_tex = create_blurred_texture("Clarity Blur", 8.0)
                 .map(|t| t.create_view(&Default::default()));
-            let structure_blur_tex = create_blurred_texture("Structure Blur", 20.0)
+            let structure_blur_tex = create_blurred_texture("Structure Blur", 40.0)
                 .map(|t| t.create_view(&Default::default()));
 
             let dummy_blur_texture = device.create_texture(&wgpu::TextureDescriptor {

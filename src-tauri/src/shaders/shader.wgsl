@@ -618,22 +618,29 @@ fn apply_color_grading(color: vec3<f32>, shadows: ColorGradeSettings, midtones: 
 
 fn apply_local_contrast(
     processed_color_linear: vec3<f32>, 
-    blurred_color_srgb: vec3<f32>,
-    amount: f32
+    blurred_color_input_space: vec3<f32>,
+    amount: f32,
+    is_raw: u32
 ) -> vec3<f32> {
     if (amount == 0.0) { 
         return processed_color_linear; 
     }
 
     let center_luma = get_luma(processed_color_linear);
-    let shadow_protection = smoothstep(0.0, 0.25, center_luma);
-    let highlight_protection = 1.0 - smoothstep(0.75, 1.0, center_luma);
+    let shadow_protection = smoothstep(0.0, 0.1, center_luma);
+    let highlight_protection = 1.0 - smoothstep(0.6, 1.0, center_luma);
     let midtone_mask = shadow_protection * highlight_protection;
     if (midtone_mask < 0.001) {
         return processed_color_linear;
     }
     
-    let blurred_color_linear = srgb_to_linear(blurred_color_srgb);
+    var blurred_color_linear: vec3<f32>;
+    if (is_raw == 1u) {
+        blurred_color_linear = blurred_color_input_space;
+    } else {
+        blurred_color_linear = srgb_to_linear(blurred_color_input_space);
+    }
+
     let blurred_luma = get_luma(blurred_color_linear);
 
     let safe_center_luma = max(center_luma, 0.0001);
@@ -676,7 +683,7 @@ fn apply_centre_effect(
     var processed_color = color_in;
     let clarity_strength = centre_amount * (2.0 * centre_mask - 1.0) * CLARITY_SCALE;
     if (abs(clarity_strength) > 0.001) {
-        processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength);
+        processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength, is_raw);
     }
     let exposure_boost = centre_mask * centre_amount * EXPOSURE_SCALE;
     processed_color = apply_exposure(processed_color, exposure_boost, is_raw, tonemapper_mode);
@@ -914,11 +921,11 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     processed_rgb = apply_dehaze(processed_rgb, adj.dehaze);
     
     let sharpness_blurred = textureLoad(sharpness_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, sharpness_blurred, adj.sharpness);
+    processed_rgb = apply_local_contrast(processed_rgb, sharpness_blurred, adj.sharpness, adj.is_raw_image);
     let clarity_blurred = textureLoad(clarity_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
+    processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity, adj.is_raw_image);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
+    processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure, adj.is_raw_image);
     processed_rgb = apply_centre_effect(processed_rgb, adj.centre, coords_i, clarity_blurred, adj.is_raw_image, adj.tonemapper_mode);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
@@ -940,11 +947,11 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     processed_rgb = apply_dehaze(processed_rgb, adj.dehaze);
 
     let sharpness_blurred = textureLoad(sharpness_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, sharpness_blurred, adj.sharpness);
+    processed_rgb = apply_local_contrast(processed_rgb, sharpness_blurred, adj.sharpness, is_raw);
     let clarity_blurred = textureLoad(clarity_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity);
+    processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity, is_raw);
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure);
+    processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure, is_raw);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = apply_exposure(processed_rgb, adj.exposure, is_raw, tonemapper_mode);
