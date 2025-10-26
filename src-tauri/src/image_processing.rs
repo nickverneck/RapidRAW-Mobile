@@ -2,6 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use image::{
     DynamicImage, GenericImageView, Rgba, Rgb32FImage,
 };
+use rayon::prelude::*;
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
 use rawler::decoders::Orientation;
 use serde::{Deserialize, Serialize};
@@ -96,6 +97,30 @@ pub fn downscale_f32_image(image: &DynamicImage, nwidth: u32, nheight: u32) -> D
         }
     }
     DynamicImage::ImageRgb32F(out)
+}
+
+pub fn apply_cpu_default_raw_processing(image: &mut DynamicImage) {
+    let mut f32_image = image.to_rgb32f();
+
+    const GAMMA: f32 = 2.2;
+    const INV_GAMMA: f32 = 1.0 / GAMMA;
+    const CONTRAST: f32 = 1.15;
+
+    f32_image.par_chunks_mut(3).for_each(|pixel_chunk| {
+        let r_gamma = pixel_chunk[0].powf(INV_GAMMA);
+        let g_gamma = pixel_chunk[1].powf(INV_GAMMA);
+        let b_gamma = pixel_chunk[2].powf(INV_GAMMA);
+
+        let r_contrast = (r_gamma - 0.5) * CONTRAST + 0.5;
+        let g_contrast = (g_gamma - 0.5) * CONTRAST + 0.5;
+        let b_contrast = (b_gamma - 0.5) * CONTRAST + 0.5;
+
+        pixel_chunk[0] = r_contrast.clamp(0.0, 1.0);
+        pixel_chunk[1] = g_contrast.clamp(0.0, 1.0);
+        pixel_chunk[2] = b_contrast.clamp(0.0, 1.0);
+    });
+
+    *image = DynamicImage::ImageRgb32F(f32_image);
 }
 
 pub fn apply_orientation(image: DynamicImage, orientation: Orientation) -> DynamicImage {

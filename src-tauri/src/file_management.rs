@@ -36,7 +36,7 @@ use crate::image_loader;
 use crate::image_processing::GpuContext;
 use crate::image_processing::{
     Crop, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
-    auto_results_to_json, get_all_adjustments_from_json, perform_auto_analysis,
+    auto_results_to_json, get_all_adjustments_from_json, perform_auto_analysis, apply_cpu_default_raw_processing,
 };
 use crate::mask_generation::{MaskDefinition, generate_mask_bitmap};
 use crate::preset_converter;
@@ -488,11 +488,6 @@ pub fn read_file_mapped(path: &Path) -> Result<Mmap, ReadFileError> {
     Ok(mmap)
 }
 
-/*pub fn image_to_bytes(img: &DynamicImage) -> Vec<u8> {
-    img.to_rgba8().into_raw()
-}
-*/
-
 pub fn generate_thumbnail_data(
     path_str: &str,
     gpu_context: Option<&GpuContext>,
@@ -643,18 +638,25 @@ pub fn generate_thumbnail_data(
         }
     }
 
+    let mut final_image = composite_image;
+
+    if is_raw && adjustments.is_null() {
+        apply_cpu_default_raw_processing(&mut final_image);
+    }
+
     let fallback_orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
     Ok(apply_coarse_rotation(
-        composite_image,
+        final_image,
         fallback_orientation_steps,
     ))
 }
 
 fn encode_thumbnail(image: &DynamicImage) -> Result<Vec<u8>> {
-    let thumbnail = image.thumbnail(THUMBNAIL_WIDTH, THUMBNAIL_WIDTH);
+    let thumbnail =
+        crate::image_processing::downscale_f32_image(image, THUMBNAIL_WIDTH, THUMBNAIL_WIDTH);
     let mut buf = Cursor::new(Vec::new());
     let mut encoder = JpegEncoder::new_with_quality(&mut buf, 75);
-    encoder.encode_image(&thumbnail.to_rgba8())?;
+    encoder.encode_image(&thumbnail.to_rgb8())?;
     Ok(buf.into_inner())
 }
 
