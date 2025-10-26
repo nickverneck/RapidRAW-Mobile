@@ -1,6 +1,6 @@
 use crate::image_processing::apply_orientation;
 use anyhow::Result;
-use image::DynamicImage;
+use image::{DynamicImage, ImageBuffer, Rgba};
 use rawler::{
     decoders::{Orientation, RawDecodeParams},
     imgop::develop::{DemosaicAlgorithm, Intermediate, ProcessingStep, RawDevelop},
@@ -54,13 +54,13 @@ fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicIm
     let denominator = (original_white_level - original_black_level).max(1.0);
     let rescale_factor = (headroom_white_level - original_black_level) / denominator;
 
-    const HIGHLIGHT_COMPRESSION_POINT: f32 = 2.2; // FIXME: This is not a good solution yet
+    const HIGHLIGHT_COMPRESSION_POINT: f32 = 2.0; // TODO: Expose this to the user
 
     match &mut developed_intermediate {
         Intermediate::Monochrome(pixels) => {
             pixels.data.iter_mut().for_each(|p| {
                 let linear_val = *p * rescale_factor;
-                *p = linear_val.max(0.0).min(1.0);
+                *p = linear_val;
             });
         }
         Intermediate::ThreeColor(pixels) => {
@@ -96,24 +96,46 @@ fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicIm
                     (r, g, b)
                 };
 
-                p[0] = final_r.max(0.0).min(1.0);
-                p[1] = final_g.max(0.0).min(1.0);
-                p[2] = final_b.max(0.0).min(1.0);
+                p[0] = final_r;
+                p[1] = final_g;
+                p[2] = final_b;
             });
         }
         Intermediate::FourColor(pixels) => {
             pixels.data.iter_mut().for_each(|p| {
                 p.iter_mut().for_each(|c| {
                     let linear_val = *c * rescale_factor;
-                    *c = linear_val.max(0.0).min(1.0);
+                    *c = linear_val;
                 });
             });
         }
     }
 
-    let dynamic_image = developed_intermediate
-        .to_dynamic_image()
-        .ok_or_else(|| anyhow::anyhow!("Failed to convert developed image to DynamicImage"))?;
+    let (width, height) = {
+        let dim = developed_intermediate.dim();
+        (dim.w as u32, dim.h as u32)
+    };
+    let dynamic_image = match developed_intermediate {
+        Intermediate::ThreeColor(pixels) => {
+            let buffer = ImageBuffer::<Rgba<f32>, _>::from_fn(width, height, |x, y| {
+                let p = pixels.data[(y * width + x) as usize];
+                Rgba([p[0], p[1], p[2], 1.0])
+            });
+            DynamicImage::ImageRgba32F(buffer)
+        }
+        Intermediate::Monochrome(pixels) => {
+            let buffer = ImageBuffer::<Rgba<f32>, _>::from_fn(width, height, |x, y| {
+                let p = pixels.data[(y * width + x) as usize];
+                Rgba([p, p, p, 1.0])
+            });
+            DynamicImage::ImageRgba32F(buffer)
+        }
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Unsupported intermediate format for f32 conversion"
+            ));
+        }
+    };
 
     Ok((dynamic_image, orientation))
 }
