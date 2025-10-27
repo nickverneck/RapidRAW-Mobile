@@ -164,7 +164,7 @@ impl<'a> GpuProcessor<'a> {
     ) -> Result<Self, String> {
         let device = &context.device;
         let queue = &context.queue;
-        const MAX_MASKS: u32 = 14;
+        const MAX_MASKS: u32 = 11;
 
         let blur_shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Blur Shader"),
@@ -488,7 +488,7 @@ impl<'a> GpuProcessor<'a> {
         let device = &self.context.device;
         let queue = &self.context.queue;
         let scale = (width.min(height) as f32) / 1080.0;
-        const MAX_MASKS: u32 = 14;
+        const MAX_MASKS: u32 = 11;
 
         const TILE_SIZE: u32 = 2048;
         const TILE_OVERLAP: u32 = 128;

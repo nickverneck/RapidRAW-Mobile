@@ -146,7 +146,7 @@ struct MaskAdjustments {
 
 struct AllAdjustments {
     global: GlobalAdjustments,
-    mask_adjustments: array<MaskAdjustments, 14>,
+    mask_adjustments: array<MaskAdjustments, 11>,
     mask_count: u32,
     tile_offset_x: u32,
     tile_offset_y: u32,
@@ -184,16 +184,13 @@ const HSL_RANGES: array<HslRange, 8> = array<HslRange, 8>(
 @group(0) @binding(11) var mask8: texture_2d<f32>;
 @group(0) @binding(12) var mask9: texture_2d<f32>;
 @group(0) @binding(13) var mask10: texture_2d<f32>;
-@group(0) @binding(14) var mask11: texture_2d<f32>;
-@group(0) @binding(15) var mask12: texture_2d<f32>;
-@group(0) @binding(16) var mask13: texture_2d<f32>;
 
-@group(0) @binding(17) var lut_texture: texture_3d<f32>;
-@group(0) @binding(18) var lut_sampler: sampler;
+@group(0) @binding(14) var lut_texture: texture_3d<f32>;
+@group(0) @binding(15) var lut_sampler: sampler;
 
-@group(0) @binding(19) var sharpness_blur_texture: texture_2d<f32>;
-@group(0) @binding(20) var clarity_blur_texture: texture_2d<f32>;
-@group(0) @binding(21) var structure_blur_texture: texture_2d<f32>;
+@group(0) @binding(16) var sharpness_blur_texture: texture_2d<f32>;
+@group(0) @binding(17) var clarity_blur_texture: texture_2d<f32>;
+@group(0) @binding(18) var structure_blur_texture: texture_2d<f32>;
 
 const LUMA_COEFF = vec3<f32>(0.2126, 0.7152, 0.0722);
 
@@ -714,7 +711,7 @@ fn apply_dehaze(color: vec3<f32>, amount: f32) -> vec3<f32> {
 }
 
 fn apply_noise_reduction(color: vec3<f32>, coords_i: vec2<i32>, luma_amount: f32, color_amount: f32, scale: f32) -> vec3<f32> {
-    if (luma_amount <= 0.0 && color_amount <= 0.0) { return color; }
+    if (luma_amount <= 100.0 && color_amount <= 100.0) { return color; } // temporarily disable NR for now
     
     let luma_threshold = 0.1 / scale;
     let color_threshold = 0.2 / scale;
@@ -978,9 +975,6 @@ fn get_mask_influence(mask_index: u32, coords: vec2<u32>) -> f32 {
         case 8u: { return textureLoad(mask8, coords, 0).r; }
         case 9u: { return textureLoad(mask9, coords, 0).r; }
         case 10u: { return textureLoad(mask10, coords, 0).r; }
-        case 11u: { return textureLoad(mask11, coords, 0).r; }
-        case 12u: { return textureLoad(mask12, coords, 0).r; }
-        case 13u: { return textureLoad(mask13, coords, 0).r; }
         default: { return 0.0; }
     }
 }
