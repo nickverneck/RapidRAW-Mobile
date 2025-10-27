@@ -59,6 +59,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2025-10-XX:** Working on tonemapping - ongoing...
 *   **2025-10-24:** Getting AgX right isn't as easy as it seems :=)
 *   **2025-10-22:** AgX tone mapping
 *   **2025-10-19:** Whole image mask component & organize mask components better
@@ -68,11 +69,11 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2025-10-11:** Realistic, complex & non-dulling exposure & highlights slider
 *   **2025-10-11:** Smooth filmstrip thumbnail updates
 *   **2025-10-07:** New watermarking support
-*   **2025-10-06:** Improve crop quality by transforming before scaling
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2025-10-06:** Improve crop quality by transforming before scaling
 *   **2025-10-XX:** Many small improvements - ongoing...
 *   **2025-09-27:** Sort library by exif metadata & release cleanup / bug fixes
 *   **2025-09-26:** Collage maker to create unique collages with many different layouts, spacing & border radius
