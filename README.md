@@ -59,7 +59,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
-*   **2025-10-28:** Copy Paste Settings
+*   **2025-10-28:** Copy paste settings & brightness adjustment
 *   **2025-10-XX:** Working on tonemapping - ongoing...
 *   **2025-10-24:** Getting AgX right isn't as easy as it seems :=)
 *   **2025-10-22:** AgX tone mapping
