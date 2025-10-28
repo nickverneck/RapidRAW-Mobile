@@ -408,8 +408,8 @@ fn apply_linear_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
     return color_in * pow(2.0, exposure_adj);
 }
 
-fn apply_filmic_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
-    if (exposure_adj == 0.0) {
+fn apply_filmic_exposure(color_in: vec3<f32>, brightness_adj: f32) -> vec3<f32> {
+    if (brightness_adj == 0.0) {
         return color_in;
     }
     const RATIONAL_CURVE_MIX: f32 = 0.95;
@@ -418,8 +418,8 @@ fn apply_filmic_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
     if (abs(original_luma) < 0.00001) {
         return color_in;
     }
-    let direct_adj = exposure_adj * (1.0 - RATIONAL_CURVE_MIX);
-    let rational_adj = exposure_adj * RATIONAL_CURVE_MIX;
+    let direct_adj = brightness_adj * (1.0 - RATIONAL_CURVE_MIX);
+    let rational_adj = brightness_adj * RATIONAL_CURVE_MIX;
     let scale = pow(2.0, direct_adj);
     let k = pow(2.0, -rational_adj * MIDTONE_STRENGTH);
     let luma_abs = abs(original_luma);
@@ -432,14 +432,6 @@ fn apply_filmic_exposure(color_in: vec3<f32>, exposure_adj: f32) -> vec3<f32> {
     let total_luma_scale = new_luma / original_luma;
     let chroma_scale = pow(total_luma_scale, 0.8);
     return vec3<f32>(new_luma) + chroma * chroma_scale;
-}
-
-fn apply_exposure(color_in: vec3<f32>, exposure_adj: f32, is_raw: u32, tonemapper_mode: u32) -> vec3<f32> {
-    if (tonemapper_mode == 0u) {
-        return apply_filmic_exposure(color_in, exposure_adj);
-    } else {
-        return apply_linear_exposure(color_in, exposure_adj);
-    }
 }
 
 fn apply_highlights_adjustment(
@@ -699,7 +691,7 @@ fn apply_centre_effect(
         processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength, is_raw);
     }
     let exposure_boost = centre_mask * centre_amount * EXPOSURE_SCALE;
-    processed_color = apply_exposure(processed_color, exposure_boost, is_raw, tonemapper_mode);
+    processed_color = apply_filmic_exposure(processed_color, exposure_boost);
     let vibrance_center_boost = centre_mask * centre_amount * VIBRANCE_SCALE;
     let saturation_center_boost = centre_mask * centre_amount * SATURATION_CENTER_SCALE;
     let saturation_edge_effect = -(1.0 - centre_mask) * centre_amount * SATURATION_EDGE_SCALE;
@@ -942,7 +934,7 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     processed_rgb = apply_centre_effect(processed_rgb, adj.centre, coords_i, clarity_blurred, adj.is_raw_image, adj.tonemapper_mode);
 
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
-    processed_rgb = apply_exposure(processed_rgb, adj.exposure, adj.is_raw_image, adj.tonemapper_mode);
+    processed_rgb = apply_filmic_exposure(processed_rgb, adj.brightness);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
     processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights);
 
@@ -966,8 +958,9 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
     processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure, is_raw);
 
+    processed_rgb = apply_linear_exposure(processed_rgb, adj.exposure);
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
-    processed_rgb = apply_exposure(processed_rgb, adj.exposure, is_raw, tonemapper_mode);
+    processed_rgb = apply_filmic_exposure(processed_rgb, adj.brightness);
     processed_rgb = apply_highlights_adjustment(processed_rgb, adj.highlights);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
 
@@ -1032,17 +1025,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         initial_linear_rgb = max(initial_linear_rgb, vec3<f32>(0.0));
     }
 
-    if (adjustments.global.tonemapper_mode == 0u && adjustments.global.is_raw_image == 1u) {
-        var srgb_emulated = linear_to_srgb(initial_linear_rgb);
+    var processed_rgb = apply_linear_exposure(initial_linear_rgb, adjustments.global.exposure);
+
+    if (adjustments.global.is_raw_image == 1u && adjustments.global.tonemapper_mode != 1u) {
+        var srgb_emulated = linear_to_srgb(processed_rgb);
         const BRIGHTNESS_GAMMA: f32 = 1.1;
         srgb_emulated = pow(srgb_emulated, vec3<f32>(1.0 / BRIGHTNESS_GAMMA));
         const CONTRAST_MIX: f32 = 0.75;
         let contrast_curve = srgb_emulated * srgb_emulated * (3.0 - 2.0 * srgb_emulated);
         srgb_emulated = mix(srgb_emulated, contrast_curve, CONTRAST_MIX);
-        initial_linear_rgb = srgb_to_linear(srgb_emulated);
+        processed_rgb = srgb_to_linear(srgb_emulated);
     }
 
-    let globally_adjusted_linear = apply_all_adjustments(initial_linear_rgb, adjustments.global, absolute_coord_i, id.xy, scale);
+    let globally_adjusted_linear = apply_all_adjustments(processed_rgb, adjustments.global, absolute_coord_i, id.xy, scale);
     var composite_rgb_linear = globally_adjusted_linear;
     for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
         let influence = get_mask_influence(i, absolute_coord);
