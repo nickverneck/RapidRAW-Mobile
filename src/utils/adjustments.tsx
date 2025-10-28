@@ -19,6 +19,7 @@ export enum DisplayMode {
 
 export enum BasicAdjustment {
   Blacks = 'blacks',
+  Brightness = 'brightness',
   Contrast = 'contrast',
   Exposure = 'exposure',
   Highlights = 'highlights',
@@ -88,6 +89,7 @@ export interface Adjustments {
   aiPatches: Array<AiPatch>;
   aspectRatio: number | null;
   blacks: number;
+  brightness: number;
   centré: number;
   clarity: number;
   chromaticAberrationBlueYellow: number;
@@ -197,6 +199,7 @@ interface Hsl {
 export interface MaskAdjustments {
   [index: string]: any;
   blacks: number;
+  brightness: number;
   clarity: number;
   colorGrading: ColorGradingProps;
   colorNoiseReduction: number;
@@ -275,6 +278,7 @@ const INITIAL_COLOR_CALIBRATION: ColorCalibration = {
 
 export const INITIAL_MASK_ADJUSTMENTS: MaskAdjustments = {
   blacks: 0,
+  brightness: 0,
   clarity: 0,
   colorGrading: { ...INITIAL_COLOR_GRADING },
   colorNoiseReduction: 0,
@@ -341,6 +345,7 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
   aiPatches: [],
   aspectRatio: null,
   blacks: 0,
+  brightness: 0,
   centré: 0,
   clarity: 0,
   chromaticAberrationBlueYellow: 0,
@@ -479,6 +484,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
 
 export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   BasicAdjustment.Blacks,
+  BasicAdjustment.Brightness,
   DetailsAdjustment.Clarity,
   DetailsAdjustment.Centré,
   DetailsAdjustment.ChromaticAberrationBlueYellow,
@@ -524,12 +530,14 @@ export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
 
 export const ADJUSTMENT_SECTIONS: Sections = {
   basic: [
-    BasicAdjustment.Blacks,
+    BasicAdjustment.Brightness,
     BasicAdjustment.Contrast,
-    BasicAdjustment.Exposure,
     BasicAdjustment.Highlights,
     BasicAdjustment.Shadows,
     BasicAdjustment.Whites,
+    BasicAdjustment.Blacks,
+    BasicAdjustment.Exposure,
+    'toneMapper',
   ],
   curves: ['curves'],
   color: [

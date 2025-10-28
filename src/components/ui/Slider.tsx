@@ -10,23 +10,9 @@ interface SliderProps {
   onDragStateChange?(state: boolean): void;
   step: number;
   value: number;
+  trackClassName?: string;
 }
 
-/**
- * A reusable slider component with a clickable reset icon and an interactive handle.
- * The slider's thumb animates with an "ease-in-out" effect when the value is set programmatically.
- * The numeric value can be clicked to manually input a precise value, including negative numbers.
- * Double-clicking the label, value, or slider track will also reset the value.
- *
- * @param {Element|string} label - The text label for the slider.
- * @param {number} value - The current value of the slider.
- * @param {function} onChange - The callback function to execute on value change.
- * @param {number} min - The minimum value of the slider.
- * @param {number} max - The maximum value of the slider.
- * @param {number} step - The increment step of the slider.
- * @param {number} [defaultValue=0] - The value to reset to on icon click or double-click. Defaults to 0.
- * @param {function} [onDragStateChange] - Optional callback to report dragging state to a parent.
- */
 const Slider = ({
   defaultValue = 0,
   label,
@@ -36,6 +22,7 @@ const Slider = ({
   onDragStateChange = () => {},
   step,
   value,
+  trackClassName,
 }: SliderProps) => {
   const [displayValue, setDisplayValue] = useState<number>(value);
   const [isDragging, setIsDragging] = useState(false);
@@ -243,15 +230,15 @@ const Slider = ({
               onDoubleClick={handleReset}
               title={`Click to edit, double-click to reset to ${defaultValue}`}
             >
-              {label === 'Exposure' && numericValue === 0 ? '0' : numericValue.toFixed(decimalPlaces)}
+              {decimalPlaces > 0 && numericValue === 0 ? '0' : numericValue.toFixed(decimalPlaces)}
             </span>
           )}
         </div>
       </div>
       <input
-        className={`w-full h-1.5 bg-card-active rounded-full appearance-none cursor-pointer slider-input ${
-          isDragging ? 'slider-thumb-active' : ''
-        }`}
+        className={`w-full h-1.5 ${
+          trackClassName || 'bg-card-active'
+        } rounded-full appearance-none cursor-pointer slider-input ${isDragging ? 'slider-thumb-active' : ''}`}
         max={String(max)}
         min={String(min)}
         onChange={handleChange}

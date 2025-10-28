@@ -256,6 +256,7 @@ pub struct ColorCalibrationSettings {
 #[repr(C)]
 pub struct GlobalAdjustments {
     pub exposure: f32,
+    pub brightness: f32,
     pub contrast: f32,
     pub highlights: f32,
     pub shadows: f32,
@@ -304,6 +305,9 @@ pub struct GlobalAdjustments {
     _pad_lut4: f32,
     _pad_lut5: f32,
 
+    _pad_cg1: f32,
+    _pad_cg2: f32,
+    _pad_cg3: f32,
     pub color_grading_shadows: ColorGradeSettings,
     pub color_grading_midtones: ColorGradeSettings,
     pub color_grading_highlights: ColorGradeSettings,
@@ -323,12 +327,17 @@ pub struct GlobalAdjustments {
     pub red_curve_count: u32,
     pub green_curve_count: u32,
     pub blue_curve_count: u32,
+    _pad_end1: f32,
+    _pad_end2: f32,
+    _pad_end3: f32,
+    _pad_end4: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Pod, Zeroable, Default)]
 #[repr(C)]
 pub struct MaskAdjustments {
     pub exposure: f32,
+    pub brightness: f32,
     pub contrast: f32,
     pub highlights: f32,
     pub shadows: f32,
@@ -351,6 +360,9 @@ pub struct MaskAdjustments {
     _pad3: f32,
     _pad4: f32,
 
+    _pad_cg1: f32,
+    _pad_cg2: f32,
+    _pad_cg3: f32,
     pub color_grading_shadows: ColorGradeSettings,
     pub color_grading_midtones: ColorGradeSettings,
     pub color_grading_highlights: ColorGradeSettings,
@@ -368,6 +380,10 @@ pub struct MaskAdjustments {
     pub red_curve_count: u32,
     pub green_curve_count: u32,
     pub blue_curve_count: u32,
+    _pad_end4: f32,
+    _pad_end5: f32,
+    _pad_end6: f32,
+    _pad_end7: f32,
 }
 
 #[derive(Debug, Clone, Copy, Pod, Zeroable, Default)]
@@ -383,6 +399,7 @@ pub struct AllAdjustments {
 
 struct AdjustmentScales {
     exposure: f32,
+    brightness: f32,
     contrast: f32,
     highlights: f32,
     shadows: f32,
@@ -426,6 +443,7 @@ struct AdjustmentScales {
 
 const SCALES: AdjustmentScales = AdjustmentScales {
     exposure: 0.8,
+    brightness: 0.8,
     contrast: 100.0,
     highlights: 150.0,
     shadows: 100.0,
@@ -623,6 +641,7 @@ fn get_global_adjustments_from_json(
 
     GlobalAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure, None),
+        brightness: get_val("basic", "brightness", SCALES.brightness, None),
         contrast: get_val("basic", "contrast", SCALES.contrast, None),
         highlights: get_val("basic", "highlights", SCALES.highlights, None),
         shadows: get_val("basic", "shadows", SCALES.shadows, None),
@@ -728,6 +747,9 @@ fn get_global_adjustments_from_json(
         _pad_lut4: 0.0,
         _pad_lut5: 0.0,
 
+        _pad_cg1: 0.0,
+        _pad_cg2: 0.0,
+        _pad_cg3: 0.0,
         color_grading_shadows: if is_visible("color") {
             parse_color_grade_settings(&cg_obj["shadows"])
         } else {
@@ -771,6 +793,10 @@ fn get_global_adjustments_from_json(
         red_curve_count: red_points.len() as u32,
         green_curve_count: green_points.len() as u32,
         blue_curve_count: blue_points.len() as u32,
+        _pad_end1: 0.0,
+        _pad_end2: 0.0,
+        _pad_end3: 0.0,
+        _pad_end4: 0.0,
     }
 }
 
@@ -820,6 +846,7 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
 
     MaskAdjustments {
         exposure: get_val("basic", "exposure", SCALES.exposure),
+        brightness: get_val("basic", "brightness", SCALES.brightness),
         contrast: get_val("basic", "contrast", SCALES.contrast),
         highlights: get_val("basic", "highlights", SCALES.highlights),
         shadows: get_val("basic", "shadows", SCALES.shadows),
@@ -848,6 +875,9 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         _pad3: 0.0,
         _pad4: 0.0,
 
+        _pad_cg1: 0.0,
+        _pad_cg2: 0.0,
+        _pad_cg3: 0.0,
         color_grading_shadows: if is_visible("color") {
             parse_color_grade_settings(&cg_obj["shadows"])
         } else {
@@ -889,6 +919,10 @@ fn get_mask_adjustments_from_json(adj: &serde_json::Value) -> MaskAdjustments {
         red_curve_count: red_points.len() as u32,
         green_curve_count: green_points.len() as u32,
         blue_curve_count: blue_points.len() as u32,
+        _pad_end4: 0.0,
+        _pad_end5: 0.0,
+        _pad_end6: 0.0,
+        _pad_end7: 0.0,
     }
 }
 

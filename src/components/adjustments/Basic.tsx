@@ -17,13 +17,25 @@ const toneMapperOptions = [
 interface ToneMapperSwitchProps {
   selectedMapper: string;
   onMapperChange: (mapper: string) => void;
+  exposureValue: number;
+  onExposureChange: (value: number) => void;
 }
 
-const ToneMapperSwitch = ({ selectedMapper, onMapperChange }: ToneMapperSwitchProps) => {
+const ToneMapperSwitch = ({
+  selectedMapper,
+  onMapperChange,
+  exposureValue,
+  onExposureChange,
+}: ToneMapperSwitchProps) => {
   const [buttonRefs, setButtonRefs] = useState<Map<string, HTMLButtonElement>>(new Map());
   const [bubbleStyle, setBubbleStyle] = useState({});
   const containerRef = useRef<HTMLDivElement>(null);
   const isInitialAnimation = useRef(true);
+  const [isLabelHovered, setIsLabelHovered] = useState(false);
+
+  const handleReset = () => {
+    onMapperChange('basic');
+  };
 
   useEffect(() => {
     const selectedButton = buttonRefs.get(selectedMapper);
@@ -55,16 +67,35 @@ const ToneMapperSwitch = ({ selectedMapper, onMapperChange }: ToneMapperSwitchPr
 
   return (
     <div className="group">
-      <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-medium text-text-secondary select-none">Tone Mapper</span>
-      </div>
-      <div
-        className="w-full p-1 bg-card-active rounded-md"
-      >
+      <div className="flex justify-between items-center mb-2">
         <div
-          ref={containerRef}
-          className="relative flex w-full"
+          className="grid cursor-pointer"
+          onClick={handleReset}
+          onDoubleClick={handleReset}
+          onMouseEnter={() => setIsLabelHovered(true)}
+          onMouseLeave={() => setIsLabelHovered(false)}
+          title="Click or double-click to reset to Basic"
         >
+          <span
+            aria-hidden={isLabelHovered}
+            className={`col-start-1 row-start-1 text-sm font-medium text-text-secondary select-none transition-opacity duration-200 ease-in-out ${
+              isLabelHovered ? 'opacity-0' : 'opacity-100'
+            }`}
+          >
+            Tone Mapper
+          </span>
+          <span
+            aria-hidden={!isLabelHovered}
+            className={`col-start-1 row-start-1 text-sm font-medium text-text-primary select-none transition-opacity duration-200 ease-in-out pointer-events-none ${
+              isLabelHovered ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            Reset
+          </span>
+        </div>
+      </div>
+      <div className="w-full p-2 pb-1 bg-card-active rounded-md">
+        <div ref={containerRef} className="relative flex w-full">
           <motion.div
             className="absolute top-0 bottom-0 z-0 bg-accent"
             style={{ borderRadius: 6 }}
@@ -97,6 +128,17 @@ const ToneMapperSwitch = ({ selectedMapper, onMapperChange }: ToneMapperSwitchPr
             </button>
           ))}
         </div>
+        <div className="mt-2.5 px-1">
+          <Slider
+            label="Exposure"
+            max={5}
+            min={-5}
+            onChange={(e: any) => onExposureChange(parseFloat(e.target.value))}
+            step={0.01}
+            value={exposureValue}
+            trackClassName="bg-surface"
+          />
+        </div>
       </div>
     </div>
   );
@@ -118,12 +160,12 @@ export default function BasicAdjustments({ adjustments, setAdjustments }: BasicA
   return (
     <div>
       <Slider
-        label="Exposure"
+        label="Brightness"
         max={5}
         min={-5}
-        onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Exposure, e.target.value)}
+        onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Brightness, e.target.value)}
         step={0.01}
-        value={adjustments.exposure}
+        value={adjustments.brightness}
       />
       <Slider
         label="Contrast"
@@ -165,7 +207,12 @@ export default function BasicAdjustments({ adjustments, setAdjustments }: BasicA
         step={1}
         value={adjustments.blacks}
       />
-      <ToneMapperSwitch selectedMapper={adjustments.toneMapper || 'agx'} onMapperChange={handleToneMapperChange} />
+      <ToneMapperSwitch
+        selectedMapper={adjustments.toneMapper || 'agx'}
+        onMapperChange={handleToneMapperChange}
+        exposureValue={adjustments.exposure}
+        onExposureChange={(value) => handleAdjustmentChange(BasicAdjustment.Exposure, value)}
+      />
     </div>
   );
 }

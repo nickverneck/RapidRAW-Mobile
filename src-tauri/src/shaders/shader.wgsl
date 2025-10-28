@@ -32,6 +32,7 @@ struct ColorCalibrationSettings {
 
 struct GlobalAdjustments {
     exposure: f32,
+    brightness: f32,
     contrast: f32,
     highlights: f32,
     shadows: f32,
@@ -80,6 +81,9 @@ struct GlobalAdjustments {
     _pad_lut4: f32,
     _pad_lut5: f32,
 
+    _pad_cg1: f32,
+    _pad_cg2: f32,
+    _pad_cg3: f32,
     color_grading_shadows: ColorGradeSettings,
     color_grading_midtones: ColorGradeSettings,
     color_grading_highlights: ColorGradeSettings,
@@ -99,10 +103,15 @@ struct GlobalAdjustments {
     red_curve_count: u32,
     green_curve_count: u32,
     blue_curve_count: u32,
+    _pad_end1: f32,
+    _pad_end2: f32,
+    _pad_end3: f32,
+    _pad_end4: f32,
 }
 
 struct MaskAdjustments {
     exposure: f32,
+    brightness: f32,
     contrast: f32,
     highlights: f32,
     shadows: f32,
@@ -125,6 +134,9 @@ struct MaskAdjustments {
     _pad3: f32,
     _pad4: f32,
 
+    _pad_end1: f32,
+    _pad_end2: f32,
+    _pad_end3: f32,
     color_grading_shadows: ColorGradeSettings,
     color_grading_midtones: ColorGradeSettings,
     color_grading_highlights: ColorGradeSettings,
@@ -142,6 +154,10 @@ struct MaskAdjustments {
     red_curve_count: u32,
     green_curve_count: u32,
     blue_curve_count: u32,
+    _pad_end4: f32,
+    _pad_end5: f32,
+    _pad_end6: f32,
+    _pad_end7: f32,
 }
 
 struct AllAdjustments {
