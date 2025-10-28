@@ -188,39 +188,27 @@ export default function LibraryExportPanel({
   const isExporting = status === Status.Exporting;
 
   const numImages = multiSelectedPaths.length;
-  const [imageAspectRatio, setImageAspectRatio] = useState(16 / 9);
+  const [imageAspectRatio, setImageAspectRatio] = useState(3 / 2);
 
   useEffect(() => {
-    const fetchAspectRatio = async () => {
-      if (multiSelectedPaths.length > 0) {
-        const firstPath = multiSelectedPaths[0];
-        const image = imageList.find((img) => img.path === firstPath);
+    if (!enableWatermark) {
+      return;
+    }
 
-        if (image && image.width > 0 && image.height > 0) {
-          setImageAspectRatio(image.width / image.height);
-          return;
-        }
+    if (multiSelectedPaths.length > 0) {
+      const firstPath = multiSelectedPaths[0];
+      const image = imageList.find((img) => img.path === firstPath);
 
-        try {
-          const dimensions: { width: number; height: number } = await invoke('get_image_dimensions', {
-            path: firstPath,
-          });
-          if (dimensions && dimensions.height > 0) {
-            setImageAspectRatio(dimensions.width / dimensions.height);
-          } else {
-            setImageAspectRatio(16 / 9);
-          }
-        } catch (error) {
-          console.error('Failed to get image dimensions for watermark preview:', error);
-          setImageAspectRatio(16 / 9);
-        }
+      if (image && image.width > 0 && image.height > 0) {
+        setImageAspectRatio(image.width / image.height);
       } else {
-        setImageAspectRatio(16 / 9);
+        console.warn(`Dimensions for ${firstPath} not found in imageList, using default aspect ratio for preview.`);
+        setImageAspectRatio(3 / 2);
       }
-    };
-
-    fetchAspectRatio();
-  }, [multiSelectedPaths, imageList]);
+    } else {
+      setImageAspectRatio(16 / 9);
+    }
+  }, [multiSelectedPaths, imageList, enableWatermark]);
 
   useEffect(() => {
     const fetchWatermarkDimensions = async () => {

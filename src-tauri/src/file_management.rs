@@ -183,6 +183,47 @@ impl Default for ComfyUIWorkflowConfig {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum PasteMode {
+    Merge,
+    Replace,
+}
+
+fn default_included_adjustments() -> HashSet<String> {
+    [
+        "blacks", "brightness", "clarity", "centré", "chromaticAberrationBlueYellow",
+        "chromaticAberrationRedCyan", "colorCalibration", "colorGrading", "colorNoiseReduction",
+        "contrast", "curves", "dehaze", "enableNegativeConversion", "exposure", "filmBaseColor",
+        "grainAmount", "grainRoughness", "grainSize", "highlights", "hsl", "lutIntensity",
+        "lutName", "lutPath", "lutSize", "lumaNoiseReduction", "negativeBlueBalance",
+        "negativeGreenBalance", "negativeRedBalance", "saturation", "sectionVisibility",
+        "shadows", "sharpness", "showClipping", "structure", "temperature", "tint",
+        "toneMapper", "vibrance", "vignetteAmount", "vignetteFeather", "vignetteMidpoint",
+        "vignetteRoundness", "whites",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyPasteSettings {
+    pub mode: PasteMode,
+    #[serde(default = "default_included_adjustments")]
+    pub included_adjustments: HashSet<String>,
+}
+
+impl Default for CopyPasteSettings {
+    fn default() -> Self {
+        Self {
+            mode: PasteMode::Merge,
+            included_adjustments: default_included_adjustments(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -211,6 +252,8 @@ pub struct AppSettings {
     pub enable_exif_reading: Option<bool>,
     #[serde(default)]
     pub active_tree_section: Option<String>,
+    #[serde(default)]
+    pub copy_paste_settings: CopyPasteSettings,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -253,6 +296,7 @@ impl Default for AppSettings {
             adjustment_visibility: default_adjustment_visibility(),
             enable_exif_reading: Some(false),
             active_tree_section: Some("current".to_string()),
+            copy_paste_settings: CopyPasteSettings::default(),
         }
     }
 }

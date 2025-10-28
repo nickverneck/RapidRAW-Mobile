@@ -24,6 +24,7 @@ import {
   Redo,
   RotateCcw,
   Star,
+  Settings,
   Tag,
   Trash2,
   Undo,
@@ -58,6 +59,7 @@ import ImportSettingsModal from './components/modals/ImportSettingsModal';
 import RenameFileModal from './components/modals/RenameFileModal';
 import PanoramaModal from './components/modals/PanoramaModal';
 import CollageModal from './components/modals/CollageModal';
+import CopyPasteSettingsModal from './components/modals/CopyPasteSettingsModal';
 import CullingModal from './components/modals/CullingModal';
 import { useHistoryState } from './hooks/useHistoryState';
 import Resizer from './components/ui/Resizer';
@@ -71,6 +73,8 @@ import {
   INITIAL_ADJUSTMENTS,
   MaskContainer,
   normalizeLoadedAdjustments,
+  PasteMode,
+  CopyPasteSettings,
 } from './utils/adjustments';
 import { generatePaletteFromImage } from './utils/palette';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -318,6 +322,7 @@ function App() {
   const [isRenameFileModalOpen, setIsRenameFileModalOpen] = useState(false);
   const [renameTargetPaths, setRenameTargetPaths] = useState<Array<string>>([]);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isCopyPasteSettingsModalOpen, setIsCopyPasteSettingsModalOpen] = useState(false);
   const [importTargetFolder, setImportTargetFolder] = useState<string | null>(null);
   const [importSourcePaths, setImportSourcePaths] = useState<Array<string>>([]);
   const [folderActionTarget, setFolderActionTarget] = useState<string | null>(null);
@@ -1103,6 +1108,16 @@ function App() {
   useEffect(() => {
     invoke(Invokes.LoadSettings)
       .then(async (settings: any) => {
+        if (
+          !settings.copyPasteSettings ||
+          !settings.copyPasteSettings.includedAdjustments ||
+          settings.copyPasteSettings.includedAdjustments.length === 0
+        ) {
+          settings.copyPasteSettings = {
+            mode: 'merge',
+            includedAdjustments: COPYABLE_ADJUSTMENT_KEYS,
+          };
+        }
         setAppSettings(settings);
         if (settings?.sortCriteria) setSortCriteria(settings.sortCriteria);
         if (settings?.filterCriteria) {
@@ -1558,25 +1573,54 @@ function App() {
 
   const handlePasteAdjustments = useCallback(
     (paths?: Array<string>) => {
-      if (!copiedAdjustments) {
+      if (!copiedAdjustments || !appSettings) {
         return;
       }
+
+      const { mode, includedAdjustments } = appSettings.copyPasteSettings;
+
+      const adjustmentsToApply: Partial<Adjustments> = {};
+
+      for (const key of includedAdjustments) {
+        if (Object.prototype.hasOwnProperty.call(copiedAdjustments, key)) {
+          const value = copiedAdjustments[key as keyof Adjustments];
+
+          if (mode === PasteMode.Merge) {
+            const defaultValue = INITIAL_ADJUSTMENTS[key as keyof Adjustments];
+            if (JSON.stringify(value) !== JSON.stringify(defaultValue)) {
+              adjustmentsToApply[key as keyof Adjustments] = value;
+            }
+          } else {
+            adjustmentsToApply[key as keyof Adjustments] = value;
+          }
+        }
+      }
+
+      if (Object.keys(adjustmentsToApply).length === 0) {
+        setIsPasted(true);
+        return;
+      }
+
       const pathsToUpdate =
         paths || (multiSelectedPaths.length > 0 ? multiSelectedPaths : selectedImage ? [selectedImage.path] : []);
       if (pathsToUpdate.length === 0) {
         return;
       }
+
       if (selectedImage && pathsToUpdate.includes(selectedImage.path)) {
-        const newAdjustments = { ...adjustments, ...copiedAdjustments };
+        const newAdjustments = { ...adjustments, ...adjustmentsToApply };
         setAdjustments(newAdjustments);
       }
-      invoke(Invokes.ApplyAdjustmentsToPaths, { paths: pathsToUpdate, adjustments: copiedAdjustments }).catch((err) => {
-        console.error('Failed to paste adjustments to multiple images:', err);
-        setError(`Failed to paste adjustments: ${err}`);
-      });
+
+      invoke(Invokes.ApplyAdjustmentsToPaths, { paths: pathsToUpdate, adjustments: adjustmentsToApply }).catch(
+        (err) => {
+          console.error('Failed to paste adjustments to multiple images:', err);
+          setError(`Failed to paste adjustments: ${err}`);
+        },
+      );
       setIsPasted(true);
     },
-    [copiedAdjustments, multiSelectedPaths, selectedImage, adjustments, setAdjustments],
+    [copiedAdjustments, appSettings, multiSelectedPaths, selectedImage, adjustments, setAdjustments],
   );
 
   const handleAutoAdjustments = async () => {
@@ -3291,6 +3335,7 @@ function App() {
               onClearSelection={handleClearSelection}
               onContextMenu={handleThumbnailContextMenu}
               onCopy={handleCopyAdjustments}
+              onOpenCopyPasteSettings={() => setIsCopyPasteSettingsModalOpen(true)}
               onImageSelect={handleImageClick}
               onPaste={() => handlePasteAdjustments()}
               onRate={handleRate}
@@ -3499,6 +3544,7 @@ function App() {
               isResetDisabled={multiSelectedPaths.length === 0}
               onCopy={handleCopyAdjustments}
               onExportClick={() => setIsLibraryExportPanelVisible((prev) => !prev)}
+              onOpenCopyPasteSettings={() => setIsCopyPasteSettingsModalOpen(true)}
               onPaste={() => handlePasteAdjustments()}
               onRate={handleRate}
               onReset={() => handleResetAdjustments()}
@@ -3587,6 +3633,12 @@ function App() {
           </div>
         </div>
       </div>
+      <CopyPasteSettingsModal
+        isOpen={isCopyPasteSettingsModalOpen}
+        onClose={() => setIsCopyPasteSettingsModalOpen(false)}
+        settings={appSettings?.copyPasteSettings as CopyPasteSettings}
+        onSave={(newSettings) => handleSettingsChange({ ...appSettings, copyPasteSettings: newSettings } as AppSettings)}
+      />
       <PanoramaModal
         error={panoramaModalState.error}
         finalImageBase64={panoramaModalState.finalImageBase64}

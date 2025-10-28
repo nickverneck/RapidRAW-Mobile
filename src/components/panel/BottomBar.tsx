@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Star, Copy, ClipboardPaste, RotateCcw, ChevronUp, ChevronDown, Check, Save, Loader2 } from 'lucide-react';
+import { Star, Copy, ClipboardPaste, RotateCcw, ChevronUp, ChevronDown, Check, Save, Loader2, Settings } from 'lucide-react';
 import clsx from 'clsx';
 import Filmstrip from './Filmstrip';
 import { GLOBAL_KEYS, ImageFile, SelectedImage, ThumbnailAspectRatio } from '../ui/AppProperties';
@@ -25,6 +25,7 @@ interface BottomBarProps {
   onCopy(): void;
   onExportClick?(): void;
   onImageSelect?(path: string, event: any): void;
+  onOpenCopyPasteSettings?(): void;
   onPaste(): void;
   onRate(rate: number): void;
   onReset?(): void;
@@ -64,7 +65,7 @@ const StarRating = ({ rating, onRate, disabled }: StarRatingProps) => {
               className={clsx(
                 'transition-colors duration-150',
                 disabled
-                  ? 'text-bg-primary'
+                  ? 'text-text-secondary opacity-40'
                   : starValue <= rating
                   ? 'fill-accent text-accent'
                   : 'text-text-secondary hover:text-accent',
@@ -98,6 +99,7 @@ export default function BottomBar({
   onCopy,
   onExportClick,
   onImageSelect,
+  onOpenCopyPasteSettings,
   onPaste,
   onRate,
   onReset,
@@ -144,14 +146,14 @@ export default function BottomBar({
   const handleMouseDown = () => {
     isDraggingSlider.current = true;
   };
-  
+
   const handleMouseUp = () => {
     isDraggingSlider.current = false;
     if (isZoomReady) {
-       setLatchedDisplayPercent(Math.round(currentOriginalPercent * 100));
+      setLatchedDisplayPercent(Math.round(currentOriginalPercent * 100));
     }
   };
-  
+
   const handleZoomKeyDown = (e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
       (e.target as HTMLElement).blur();
@@ -233,7 +235,7 @@ export default function BottomBar({
           <div className="h-5 w-px bg-surface"></div>
           <div className="flex items-center gap-2">
             <button
-              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:text-bg-primary disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
               disabled={isCopyDisabled}
               onClick={onCopy}
               title="Copy Settings"
@@ -241,12 +243,19 @@ export default function BottomBar({
               {isCopied ? <Check size={18} className="text-green-500 animate-pop-in" /> : <Copy size={18} />}
             </button>
             <button
-              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:text-bg-primary disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
               disabled={isPasteDisabled}
               onClick={onPaste}
               title="Paste Settings"
             >
               {isPasted ? <Check size={18} className="text-green-500 animate-pop-in" /> : <ClipboardPaste size={18} />}
+            </button>
+            <button
+              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
+              onClick={onOpenCopyPasteSettings}
+              title="Copy / Paste Settings"
+            >
+              <Settings size={18} />
             </button>
           </div>
         </div>
@@ -254,7 +263,7 @@ export default function BottomBar({
         {isLibraryView ? (
           <div className="flex items-center gap-2">
             <button
-              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:text-bg-primary disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
               disabled={isResetDisabled}
               onClick={onReset}
               title="Reset All Adjustments"
@@ -262,7 +271,7 @@ export default function BottomBar({
               <RotateCcw size={18} />
             </button>
             <button
-              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:text-bg-primary disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
               disabled={isExportDisabled}
               onClick={onExportClick}
               title="Export Selected Images"
