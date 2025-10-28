@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 interface BasicAdjustmentsProps {
   adjustments: Adjustments;
   setAdjustments(adjustments: Partial<Adjustments>): any;
+  isForMask?: boolean;
 }
 
 const toneMapperOptions = [
@@ -35,6 +36,7 @@ const ToneMapperSwitch = ({
 
   const handleReset = () => {
     onMapperChange('basic');
+    onExposureChange(0);
   };
 
   useEffect(() => {
@@ -144,7 +146,7 @@ const ToneMapperSwitch = ({
   );
 };
 
-export default function BasicAdjustments({ adjustments, setAdjustments }: BasicAdjustmentsProps) {
+export default function BasicAdjustments({ adjustments, setAdjustments, isForMask = false }: BasicAdjustmentsProps) {
   const handleAdjustmentChange = (key: BasicAdjustment, value: any) => {
     const numericValue = parseFloat(value);
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
@@ -207,12 +209,14 @@ export default function BasicAdjustments({ adjustments, setAdjustments }: BasicA
         step={1}
         value={adjustments.blacks}
       />
-      <ToneMapperSwitch
-        selectedMapper={adjustments.toneMapper || 'agx'}
-        onMapperChange={handleToneMapperChange}
-        exposureValue={adjustments.exposure}
-        onExposureChange={(value) => handleAdjustmentChange(BasicAdjustment.Exposure, value)}
-      />
+      {!isForMask && (
+        <ToneMapperSwitch
+          selectedMapper={adjustments.toneMapper || 'agx'}
+          onMapperChange={handleToneMapperChange}
+          exposureValue={adjustments.exposure}
+          onExposureChange={(value) => handleAdjustmentChange(BasicAdjustment.Exposure, value)}
+        />
+      )}
     </div>
   );
 }

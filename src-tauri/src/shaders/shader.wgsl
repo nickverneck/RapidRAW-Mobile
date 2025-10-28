@@ -660,13 +660,12 @@ fn apply_local_contrast(
     return mix(processed_color_linear, final_color, midtone_mask);
 }
 
-fn apply_centre_effect(
+fn apply_centre_local_contrast(
     color_in: vec3<f32>, 
     centre_amount: f32, 
     coords_i: vec2<i32>, 
     blurred_color_srgb: vec3<f32>,
-    is_raw: u32,
-    tonemapper_mode: u32
+    is_raw: u32
 ) -> vec3<f32> {
     if (centre_amount == 0.0) {
         return color_in;
@@ -680,23 +679,52 @@ fn apply_centre_effect(
     let d = length(uv_centered * vec2<f32>(1.0, aspect)) * 0.5;
     let vignette_mask = smoothstep(midpoint - feather, midpoint + feather, d);
     let centre_mask = 1.0 - vignette_mask;
+
     const CLARITY_SCALE: f32 = 0.9;
+    var processed_color = color_in;
+    let clarity_strength = centre_amount * (2.0 * centre_mask - 1.0) * CLARITY_SCALE;
+
+    if (abs(clarity_strength) > 0.001) {
+        processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength, is_raw);
+    }
+    
+    return processed_color;
+}
+
+fn apply_centre_tonal_and_color(
+    color_in: vec3<f32>, 
+    centre_amount: f32, 
+    coords_i: vec2<i32>
+) -> vec3<f32> {
+    if (centre_amount == 0.0) {
+        return color_in;
+    }
+    let full_dims_f = vec2<f32>(textureDimensions(input_texture));
+    let coord_f = vec2<f32>(coords_i);
+    let midpoint = 0.4;
+    let feather = 0.375;
+    let aspect = full_dims_f.y / full_dims_f.x;
+    let uv_centered = (coord_f / full_dims_f - 0.5) * 2.0;
+    let d = length(uv_centered * vec2<f32>(1.0, aspect)) * 0.5;
+    let vignette_mask = smoothstep(midpoint - feather, midpoint + feather, d);
+    let centre_mask = 1.0 - vignette_mask;
+
     const EXPOSURE_SCALE: f32 = 0.5;
     const VIBRANCE_SCALE: f32 = 0.4;
     const SATURATION_CENTER_SCALE: f32 = 0.3;
     const SATURATION_EDGE_SCALE: f32 = 0.8;
+
     var processed_color = color_in;
-    let clarity_strength = centre_amount * (2.0 * centre_mask - 1.0) * CLARITY_SCALE;
-    if (abs(clarity_strength) > 0.001) {
-        processed_color = apply_local_contrast(processed_color, blurred_color_srgb, clarity_strength, is_raw);
-    }
+    
     let exposure_boost = centre_mask * centre_amount * EXPOSURE_SCALE;
     processed_color = apply_filmic_exposure(processed_color, exposure_boost);
+
     let vibrance_center_boost = centre_mask * centre_amount * VIBRANCE_SCALE;
     let saturation_center_boost = centre_mask * centre_amount * SATURATION_CENTER_SCALE;
     let saturation_edge_effect = -(1.0 - centre_mask) * centre_amount * SATURATION_EDGE_SCALE;
     let total_saturation_effect = saturation_center_boost + saturation_edge_effect;
     processed_color = apply_creative_color(processed_color, total_saturation_effect, vibrance_center_boost);
+
     return processed_color;
 }
 
@@ -924,15 +952,7 @@ fn apply_all_adjustments(initial_rgb: vec3<f32>, adj: GlobalAdjustments, coords_
     var processed_rgb = apply_noise_reduction(initial_rgb, coords_i, adj.luma_noise_reduction, adj.color_noise_reduction, scale);
 
     processed_rgb = apply_dehaze(processed_rgb, adj.dehaze);
-    
-    let sharpness_blurred = textureLoad(sharpness_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, sharpness_blurred, adj.sharpness, adj.is_raw_image);
-    let clarity_blurred = textureLoad(clarity_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity, adj.is_raw_image);
-    let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure, adj.is_raw_image);
-    processed_rgb = apply_centre_effect(processed_rgb, adj.centre, coords_i, clarity_blurred, adj.is_raw_image, adj.tonemapper_mode);
-
+    processed_rgb = apply_centre_tonal_and_color(processed_rgb, adj.centre, coords_i);
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = apply_filmic_exposure(processed_rgb, adj.brightness);
     processed_rgb = apply_tonal_adjustments(processed_rgb, adj.contrast, adj.shadows, adj.whites, adj.blacks);
@@ -950,14 +970,6 @@ fn apply_all_mask_adjustments(initial_rgb: vec3<f32>, adj: MaskAdjustments, coor
     var processed_rgb = apply_noise_reduction(initial_rgb, coords_i, adj.luma_noise_reduction, adj.color_noise_reduction, scale);
 
     processed_rgb = apply_dehaze(processed_rgb, adj.dehaze);
-
-    let sharpness_blurred = textureLoad(sharpness_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, sharpness_blurred, adj.sharpness, is_raw);
-    let clarity_blurred = textureLoad(clarity_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, clarity_blurred, adj.clarity, is_raw);
-    let structure_blurred = textureLoad(structure_blur_texture, id, 0).rgb;
-    processed_rgb = apply_local_contrast(processed_rgb, structure_blurred, adj.structure, is_raw);
-
     processed_rgb = apply_linear_exposure(processed_rgb, adj.exposure);
     processed_rgb = apply_white_balance(processed_rgb, adj.temperature, adj.tint);
     processed_rgb = apply_filmic_exposure(processed_rgb, adj.brightness);
@@ -1025,7 +1037,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         initial_linear_rgb = max(initial_linear_rgb, vec3<f32>(0.0));
     }
 
-    var processed_rgb = apply_linear_exposure(initial_linear_rgb, adjustments.global.exposure);
+    let sharpness_blurred = textureLoad(sharpness_blur_texture, id.xy, 0).rgb;
+    let clarity_blurred = textureLoad(clarity_blur_texture, id.xy, 0).rgb;
+    let structure_blurred = textureLoad(structure_blur_texture, id.xy, 0).rgb;
+    
+    var locally_contrasted_rgb = initial_linear_rgb;
+    locally_contrasted_rgb = apply_local_contrast(locally_contrasted_rgb, sharpness_blurred, adjustments.global.sharpness, adjustments.global.is_raw_image);
+    locally_contrasted_rgb = apply_local_contrast(locally_contrasted_rgb, clarity_blurred, adjustments.global.clarity, adjustments.global.is_raw_image);
+    locally_contrasted_rgb = apply_local_contrast(locally_contrasted_rgb, structure_blurred, adjustments.global.structure, adjustments.global.is_raw_image);
+    locally_contrasted_rgb = apply_centre_local_contrast(locally_contrasted_rgb, adjustments.global.centre, absolute_coord_i, clarity_blurred, adjustments.global.is_raw_image);
+
+    var processed_rgb = apply_linear_exposure(locally_contrasted_rgb, adjustments.global.exposure);
 
     if (adjustments.global.is_raw_image == 1u && adjustments.global.tonemapper_mode != 1u) {
         var srgb_emulated = linear_to_srgb(processed_rgb);
@@ -1042,7 +1064,14 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     for (var i = 0u; i < adjustments.mask_count; i = i + 1u) {
         let influence = get_mask_influence(i, absolute_coord);
         if (influence > 0.001) {
-            let mask_adjusted_linear = apply_all_mask_adjustments(globally_adjusted_linear, adjustments.mask_adjustments[i], absolute_coord_i, id.xy, scale, adjustments.global.is_raw_image, adjustments.global.tonemapper_mode);
+            let mask_adj = adjustments.mask_adjustments[i];
+
+            var mask_base_linear = globally_adjusted_linear;
+            mask_base_linear = apply_local_contrast(mask_base_linear, sharpness_blurred, mask_adj.sharpness, adjustments.global.is_raw_image);
+            mask_base_linear = apply_local_contrast(mask_base_linear, clarity_blurred, mask_adj.clarity, adjustments.global.is_raw_image);
+            mask_base_linear = apply_local_contrast(mask_base_linear, structure_blurred, mask_adj.structure, adjustments.global.is_raw_image);
+
+            let mask_adjusted_linear = apply_all_mask_adjustments(mask_base_linear, mask_adj, absolute_coord_i, id.xy, scale, adjustments.global.is_raw_image, adjustments.global.tonemapper_mode);
             composite_rgb_linear = mix(composite_rgb_linear, mask_adjusted_linear, influence);
         }
     }

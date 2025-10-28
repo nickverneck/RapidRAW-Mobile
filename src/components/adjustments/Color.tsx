@@ -19,6 +19,7 @@ interface ColorPanelProps {
   adjustments: Adjustments;
   setAdjustments(adjustments: Partial<Adjustments>): any;
   appSettings: AppSettings | null;
+  isForMask?: boolean;
 }
 
 interface ColorSwatchProps {
@@ -214,7 +215,7 @@ const ColorCalibrationPanel = ({ adjustments, setAdjustments }: ColorPanelProps)
   );
 };
 
-export default function ColorPanel({ adjustments, setAdjustments, appSettings }: ColorPanelProps) {
+export default function ColorPanel({ adjustments, setAdjustments, appSettings, isForMask = false }: ColorPanelProps) {
   const [activeColor, setActiveColor] = useState('reds');
   const adjustmentVisibility = appSettings?.adjustmentVisibility || {};
 
@@ -323,7 +324,7 @@ export default function ColorPanel({ adjustments, setAdjustments, appSettings }:
         />
       </div>
 
-      {adjustmentVisibility.colorCalibration !== false && (
+      {!isForMask && adjustmentVisibility.colorCalibration !== false && (
         <ColorCalibrationPanel adjustments={adjustments} setAdjustments={setAdjustments} appSettings={appSettings} />
       )}
     </div>
