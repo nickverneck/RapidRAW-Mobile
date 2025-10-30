@@ -1143,8 +1143,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if (adjustments.global.show_clipping == 1u) {
         let HIGHLIGHT_WARNING_COLOR = vec3<f32>(1.0, 0.0, 0.0);
         let SHADOW_WARNING_COLOR = vec3<f32>(0.0, 0.0, 1.0);
-        let HIGHLIGHT_CLIP_THRESHOLD = 0.995;
-        let SHADOW_CLIP_THRESHOLD = 0.005;
+        let HIGHLIGHT_CLIP_THRESHOLD = 0.998;
+        let SHADOW_CLIP_THRESHOLD = 0.002;
         if (any(final_rgb > vec3<f32>(HIGHLIGHT_CLIP_THRESHOLD))) {
             final_rgb = HIGHLIGHT_WARNING_COLOR;
         } else if (any(final_rgb < vec3<f32>(SHADOW_CLIP_THRESHOLD))) {

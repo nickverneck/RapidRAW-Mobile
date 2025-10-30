@@ -8,12 +8,21 @@ use rawler::{
     rawsource::RawSource,
 };
 
-pub fn develop_raw_image(file_bytes: &[u8], fast_demosaic: bool) -> Result<DynamicImage> {
-    let (developed_image, orientation) = develop_internal(file_bytes, fast_demosaic)?;
+pub fn develop_raw_image(
+    file_bytes: &[u8],
+    fast_demosaic: bool,
+    highlight_compression: f32,
+) -> Result<DynamicImage> {
+    let (developed_image, orientation) =
+        develop_internal(file_bytes, fast_demosaic, highlight_compression)?;
     Ok(apply_orientation(developed_image, orientation))
 }
 
-fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicImage, Orientation)> {
+fn develop_internal(
+    file_bytes: &[u8],
+    fast_demosaic: bool,
+    highlight_compression: f32,
+) -> Result<(DynamicImage, Orientation)> {
     let source = RawSource::new_from_slice(file_bytes);
     let decoder = rawler::get_decoder(&source)?;
     let mut raw_image: RawImage = decoder.raw_image(&source, &RawDecodeParams::default(), false)?;
@@ -54,7 +63,7 @@ fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicIm
     let denominator = (original_white_level - original_black_level).max(1.0);
     let rescale_factor = (headroom_white_level - original_black_level) / denominator;
 
-    const HIGHLIGHT_COMPRESSION_POINT: f32 = 2.0; // TODO: Expose this to the user
+    let safe_highlight_compression = highlight_compression.max(1.01);
 
     match &mut developed_intermediate {
         Intermediate::Monochrome(pixels) => {
@@ -74,7 +83,7 @@ fn develop_internal(file_bytes: &[u8], fast_demosaic: bool) -> Result<(DynamicIm
                 let (final_r, final_g, final_b) = if max_c > 1.0 {
                     let min_c = r.min(g).min(b);
                     let compression_factor = (1.0
-                        - (max_c - 1.0) / (HIGHLIGHT_COMPRESSION_POINT - 1.0))
+                        - (max_c - 1.0) / (safe_highlight_compression - 1.0))
                         .max(0.0)
                         .min(1.0);
                     let compressed_r = min_c + (r - min_c) * compression_factor;

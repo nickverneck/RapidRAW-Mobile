@@ -25,6 +25,7 @@ import ConfirmModal from '../modals/ConfirmModal';
 import Dropdown, { OptionItem } from '../ui/Dropdown';
 import Switch from '../ui/Switch';
 import Input from '../ui/Input';
+import Slider from '../ui/Slider';
 import { ThemeProps, THEMES, DEFAULT_THEME_ID } from '../../utils/themes';
 import { Invokes } from '../ui/AppProperties';
 
@@ -545,7 +546,7 @@ export default function SettingsPanel({
               <SettingItem
                 label="EXIF Library Sorting"
                 description="Read EXIF data (ISO, aperture, etc.) on folder load at the cost of slower folder loading when using EXIF sorting."
-                >
+              >
                 <Switch
                   checked={appSettings?.enableExifReading ?? false}
                   id="exif-reading-toggle"
@@ -574,6 +575,23 @@ export default function SettingsPanel({
                   onChange={(value: any) => onSettingsChange({ ...appSettings, editorPreviewResolution: value })}
                   options={resolutions}
                   value={appSettings?.editorPreviewResolution || 1920}
+                />
+              </SettingItem>
+
+              <SettingItem
+                label="RAW Highlight Recovery"
+                description="Controls how much detail is recovered from clipped highlights in RAW files. Higher values recover more detail but can introduce purple artefacts."
+              >
+                <Slider
+                  label="Amount"
+                  min={1}
+                  max={10}
+                  step={0.1}
+                  value={appSettings?.rawHighlightCompression ?? 2.5}
+                  defaultValue={2.5}
+                  onChange={(e: any) =>
+                    onSettingsChange({ ...appSettings, rawHighlightCompression: parseFloat(e.target.value) })
+                  }
                 />
               </SettingItem>
             </div>

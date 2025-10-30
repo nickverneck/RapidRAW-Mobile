@@ -140,6 +140,7 @@ export interface AppSettings {
   uiVisibility?: UiVisibility;
   adjustmentVisibility?: { [key: string]: boolean };
   activeTreeSection?: string | null;
+  rawHighlightCompression?: number;
 }
 
 export interface BrushSettings {

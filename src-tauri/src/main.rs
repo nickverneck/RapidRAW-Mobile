@@ -385,9 +385,12 @@ async fn load_image(
         ImageMetadata::default()
     };
 
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
     let file_bytes = fs::read(&path).map_err(|e| e.to_string())?;
     let pristine_img =
-        load_base_image_from_bytes(&file_bytes, &path, false).map_err(|e| e.to_string())?;
+        load_base_image_from_bytes(&file_bytes, &path, false, highlight_compression).map_err(|e| e.to_string())?;
 
     let (orig_width, orig_height) = pristine_img.dimensions();
     let is_raw = is_raw_file(&path);
@@ -1055,6 +1058,8 @@ async fn batch_export_images(
         let state = app_handle.state::<AppState>();
         let output_folder_path = std::path::Path::new(&output_folder);
         let total_paths = paths.len();
+        let settings = load_settings(app_handle.clone()).unwrap_or_default();
+        let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
         let results: Vec<Result<(), String>> = paths
             .par_iter()
@@ -1095,7 +1100,7 @@ async fn batch_export_images(
                         .map_err(|e| format!("Failed to mmap file {}: {}", image_path_str, e))?;
 
                     let base_image =
-                        load_and_composite(&mmap[..], image_path_str, &js_adjustments, false)
+                        load_and_composite(&mmap[..], image_path_str, &js_adjustments, false, highlight_compression)
                             .map_err(|e| format!("Failed to load image: {}", e))?;
 
                     let final_image = process_image_for_export(
@@ -1381,6 +1386,7 @@ async fn estimate_batch_export_size(
     export_settings: ExportSettings,
     output_format: String,
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<usize, String> {
     if paths.is_empty() {
         return Ok(0);
@@ -1398,10 +1404,13 @@ async fn estimate_batch_export_size(
     };
     let js_adjustments = metadata.adjustments;
 
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
     const ESTIMATE_DIM: u32 = 1280;
     let img_bytes = read_file_mapped(Path::new(first_path)).map_err(|e| e.to_string())?;
     let original_image =
-        load_base_image_from_bytes(&img_bytes, first_path, true).map_err(|e| e.to_string())?;
+        load_base_image_from_bytes(&img_bytes, first_path, true, highlight_compression).map_err(|e| e.to_string())?;
 
     let base_image_preview = downscale_f32_image(&original_image, ESTIMATE_DIM, ESTIMATE_DIM);
 
@@ -2212,6 +2221,7 @@ async fn generate_all_community_previews(
     image_paths: Vec<String>,
     presets: Vec<CommunityPreset>,
     state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<HashMap<String, Vec<u8>>, String> {
     let context = crate::image_processing::get_or_init_gpu_context(&state)?;
     let mut results: HashMap<String, Vec<u8>> = HashMap::new();
@@ -2219,11 +2229,14 @@ async fn generate_all_community_previews(
     const TILE_DIM: u32 = 360;
     const PROCESSING_DIM: u32 = TILE_DIM * 2;
 
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
     let mut base_thumbnails: Vec<(DynamicImage, bool)> = Vec::new();
     for image_path in image_paths.iter() {
         let image_bytes = fs::read(image_path).map_err(|e| e.to_string())?;
         let original_image =
-            crate::image_loader::load_base_image_from_bytes(&image_bytes, &image_path, true)
+            crate::image_loader::load_base_image_from_bytes(&image_bytes, &image_path, true, highlight_compression )
                 .map_err(|e| e.to_string())?;
         let is_raw = is_raw_file(image_path);
         base_thumbnails.push((
@@ -2409,13 +2422,16 @@ fn generate_preview_for_path(
     path: String,
     js_adjustments: Value,
     state: tauri::State<AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<Response, String> {
     let context = get_or_init_gpu_context(&state)?;
     let new_path = Path::new(&path);
     let is_raw = is_raw_file(&path);
     let image = read_file_mapped(&new_path).map_err(|e| e.to_string())?;
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
     let base_image =
-        load_and_composite(&image[..], &path, &js_adjustments, false).map_err(|e| e.to_string())?;
+        load_and_composite(&image[..], &path, &js_adjustments, false,highlight_compression).map_err(|e| e.to_string())?;
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(&base_image, &js_adjustments);
     let (img_w, img_h) = transformed_image.dimensions();

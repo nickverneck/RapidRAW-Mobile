@@ -79,7 +79,7 @@ pub fn stitch_images(image_paths: Vec<String>, app_handle: AppHandle) -> Result<
             let file_bytes = fs::read(filename)
                 .map_err(|e| format!("Failed to read image {}: {}", filename, e))?;
             let dynamic_image =
-                crate::image_loader::load_base_image_from_bytes(&file_bytes, filename, false)
+                crate::image_loader::load_base_image_from_bytes(&file_bytes, filename, false, 2.5)
                     .map_err(|e| format!("Failed to load image {}: {}", filename, e))?;
 
             let color_full = dynamic_image.to_rgb8();

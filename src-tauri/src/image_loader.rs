@@ -29,8 +29,10 @@ pub fn load_and_composite(
     path: &str,
     adjustments: &Value,
     use_fast_raw_dev: bool,
+    highlight_compression: f32,
 ) -> Result<DynamicImage> {
-    let base_image = load_base_image_from_bytes(base_image, path, use_fast_raw_dev)?;
+    let base_image =
+        load_base_image_from_bytes(base_image, path, use_fast_raw_dev, highlight_compression)?;
     composite_patches_on_image(&base_image, adjustments)
 }
 
@@ -38,9 +40,10 @@ pub fn load_base_image_from_bytes(
     bytes: &[u8],
     path_for_ext_check: &str,
     use_fast_raw_dev: bool,
+    highlight_compression: f32,
 ) -> Result<DynamicImage> {
     if is_raw_file(path_for_ext_check) {
-        match panic::catch_unwind(|| develop_raw_image(bytes, use_fast_raw_dev)) {
+        match panic::catch_unwind(|| develop_raw_image(bytes, use_fast_raw_dev, highlight_compression)) {
             Ok(Ok(image)) => Ok(image),
             Ok(Err(e)) => {
                 log::warn!("Error developing RAW file '{}': {}", path_for_ext_check, e);

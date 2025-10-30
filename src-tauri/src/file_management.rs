@@ -254,6 +254,8 @@ pub struct AppSettings {
     pub active_tree_section: Option<String>,
     #[serde(default)]
     pub copy_paste_settings: CopyPasteSettings,
+    #[serde(default)]
+    pub raw_highlight_compression: Option<f32>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -297,6 +299,7 @@ impl Default for AppSettings {
             enable_exif_reading: Some(false),
             active_tree_section: Some("current".to_string()),
             copy_paste_settings: CopyPasteSettings::default(),
+            raw_highlight_compression: Some(2.5),
         }
     }
 }
@@ -548,13 +551,20 @@ pub fn generate_thumbnail_data(
         .as_ref()
         .map_or(serde_json::Value::Null, |m| m.adjustments.clone());
 
+    let settings = crate::file_management::load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
     let composite_image = if let Some(img) = preloaded_image {
         image_loader::composite_patches_on_image(img, &adjustments)?
     } else {
         match read_file_mapped(Path::new(path_str)) {
-            Ok(mmap) => {
-                image_loader::load_and_composite(&mmap, path_str, &adjustments, true)?
-            }
+            Ok(mmap) => image_loader::load_and_composite(
+                &mmap,
+                path_str,
+                &adjustments,
+                true,
+                highlight_compression,
+            )?,
             Err(e) => {
                 log::warn!(
                     "Failed to memory-map file '{}': {}. Falling back to standard read.",
@@ -564,7 +574,13 @@ pub fn generate_thumbnail_data(
                 let file_bytes = fs::read(path_str).map_err(|io_err| {
                     anyhow::anyhow!("Fallback read failed for {}: {}", path_str, io_err)
                 })?;
-                image_loader::load_and_composite(&file_bytes, path_str, &adjustments, true)?
+                image_loader::load_and_composite(
+                    &file_bytes,
+                    path_str,
+                    &adjustments,
+                    true,
+                    highlight_compression,
+                )?
             }
         }
     };
@@ -1293,11 +1309,19 @@ pub fn apply_auto_adjustments_to_paths(
     paths: Vec<String>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
     paths.par_iter().for_each(|path| {
         let result: Result<(), String> = (|| {
             let file_bytes = fs::read(path).map_err(|e| e.to_string())?;
-            let image = image_loader::load_base_image_from_bytes(&file_bytes, path, false)
-                .map_err(|e| e.to_string())?;
+            let image = image_loader::load_base_image_from_bytes(
+                &file_bytes,
+                path,
+                false,
+                highlight_compression,
+            )
+            .map_err(|e| e.to_string())?;
 
             let auto_results = perform_auto_analysis(&image);
             let auto_adjustments_json = auto_results_to_json(&auto_results);
