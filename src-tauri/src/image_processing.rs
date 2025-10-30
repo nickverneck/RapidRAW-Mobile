@@ -996,7 +996,7 @@ pub fn generate_histogram(
 
         let settings = load_settings(app_handle).unwrap_or_default();
         let preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
-        let preview = image.thumbnail(preview_dim, preview_dim);
+        let preview = downscale_f32_image(&image, preview_dim, preview_dim);
         calculate_histogram_from_image(&preview)
     }
 }
@@ -1140,7 +1140,7 @@ pub fn generate_waveform(
 
         let settings = load_settings(app_handle).unwrap_or_default();
         let preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
-        let preview = image.thumbnail(preview_dim, preview_dim);
+        let preview = downscale_f32_image(&image, preview_dim, preview_dim);
         calculate_waveform_from_image(&preview)
     }
 }
@@ -1198,7 +1198,7 @@ pub fn calculate_waveform_from_image(image: &DynamicImage) -> Result<WaveformDat
 }
 
 pub fn perform_auto_analysis(image: &DynamicImage) -> AutoAdjustmentResults {
-    let analysis_preview = image.thumbnail(1024, 1024);
+    let analysis_preview = downscale_f32_image(image, 1024, 1024);
     let rgb_image = analysis_preview.to_rgb8();
     let total_pixels = (rgb_image.width() * rgb_image.height()) as f64;
 

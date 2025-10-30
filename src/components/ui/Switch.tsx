@@ -9,6 +9,7 @@ interface SwitchProps {
   label: string;
   onChange(val: boolean): any;
   tooltip?: string;
+  trackClassName?: string;
 }
 
 /**
@@ -19,8 +20,17 @@ interface SwitchProps {
  * @param {function(boolean): void} onChange - Callback function that receives the new boolean state.
  * @param {boolean} [disabled=false] - Whether the switch is interactive.
  * @param {string} [className=''] - Additional classes for the container.
+ * @param {string} [trackClassName] - Custom classes for the switch's background track.
  */
-const Switch = ({ checked, className = '', disabled = false, label, onChange, tooltip }: SwitchProps) => {
+const Switch = ({
+  checked,
+  className = '',
+  disabled = false,
+  label,
+  onChange,
+  tooltip,
+  trackClassName,
+}: SwitchProps) => {
   const uniqueId = `switch-${label.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
@@ -42,7 +52,12 @@ const Switch = ({ checked, className = '', disabled = false, label, onChange, to
           onChange={(e: any) => !disabled && onChange(e.target.checked)}
           type="checkbox"
         />
-        <div className="w-10 h-5 bg-bg-primary rounded-full shadow-inner"></div>
+        <div
+          className={clsx(
+            'w-10 h-5 bg-bg-primary rounded-full shadow-inner',
+            trackClassName,
+          )}
+        ></div>
         <div
           className={clsx(
             'absolute left-0.5 top-0.5 bg-text-secondary w-4 h-4 rounded-full transition-colors',

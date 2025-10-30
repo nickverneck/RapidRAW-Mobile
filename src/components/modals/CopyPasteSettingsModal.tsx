@@ -20,8 +20,6 @@ const DEFAULT_SETTINGS: CopyPasteSettings = {
   includedAdjustments: COPYABLE_ADJUSTMENT_KEYS,
 };
 
-// --- Animated Switch Component ---
-
 const pasteModeOptions = [
   { id: PasteMode.Merge, label: 'Merge' },
   { id: PasteMode.Replace, label: 'Replace' },
@@ -76,7 +74,6 @@ const PasteModeSwitch = ({ selectedMode, onModeChange, isVisible }: PasteModeSwi
   }, [isVisible]);
 
   return (
-    // THE FIX IS HERE: Added gap-1 to create space between the buttons
     <div ref={containerRef} className="relative flex w-full gap-1 bg-bg-primary p-1 rounded-md">
       <motion.div
         className="absolute top-1 bottom-1 z-0 bg-accent shadow-sm"
@@ -112,8 +109,6 @@ const PasteModeSwitch = ({ selectedMode, onModeChange, isVisible }: PasteModeSwi
     </div>
   );
 };
-
-// --- Main Modal Component ---
 
 export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settings }: CopyPasteSettingsModalProps) {
   const [isMounted, setIsMounted] = useState(false);
@@ -237,6 +232,7 @@ export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settin
                           label={formatLabel(key)}
                           checked={localSettings.includedAdjustments.includes(key)}
                           onChange={(checked) => handleCheckboxChange(key, checked)}
+                          trackClassName="bg-surface"
                         />
                       </div>
                     ))}

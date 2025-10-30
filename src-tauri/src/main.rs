@@ -396,7 +396,7 @@ async fn load_image(
 
     let settings = load_settings(app_handle).unwrap_or_default();
     let display_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
-    let display_preview = pristine_img.thumbnail(display_preview_dim, display_preview_dim);
+    let display_preview = downscale_f32_image(&pristine_img, display_preview_dim, display_preview_dim);
 
     let mut buf = Cursor::new(Vec::new());
     display_preview
