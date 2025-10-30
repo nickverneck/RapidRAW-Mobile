@@ -175,14 +175,14 @@ struct HslRange {
 }
 
 const HSL_RANGES: array<HslRange, 8> = array<HslRange, 8>(
-    HslRange(0.0, 90.0),
-    HslRange(45.0, 90.0),
-    HslRange(90.0, 90.0),
-    HslRange(135.0, 90.0),
-    HslRange(180.0, 90.0),
-    HslRange(225.0, 90.0),
-    HslRange(270.0, 90.0),
-    HslRange(315.0, 90.0)
+    HslRange(358.0, 35.0),  // Red
+    HslRange(25.0, 45.0),   // Orange
+    HslRange(60.0, 40.0),   // Yellow
+    HslRange(115.0, 90.0),  // Green
+    HslRange(180.0, 60.0),  // Aqua
+    HslRange(225.0, 60.0),  // Blue
+    HslRange(280.0, 55.0),  // Purple
+    HslRange(330.0, 50.0)   // Magenta
 );
 
 @group(0) @binding(0) var input_texture: texture_2d<f32>;
@@ -261,20 +261,11 @@ fn hsv_to_rgb(c: vec3<f32>) -> vec3<f32> {
     return rgb_prime + vec3<f32>(m, m, m);
 }
 
-fn get_hsl_influence(hue: f32, center_hue: f32, range_width: f32) -> f32 {
-    let radius = range_width * 0.5;
-    if (radius <= 0.0) {
-        return 0.0;
-    }
-    let diff1 = abs(hue - center_hue);
-    let diff2 = 360.0 - diff1;
-    let distance = min(diff1, diff2);
-    if (distance >= radius) {
-        return 0.0;
-    }
-    let normalized_distance = distance / radius;
-    let PI = 3.14159265359;
-    return 0.5 * (cos(normalized_distance * PI) + 1.0);
+fn get_raw_hsl_influence(hue: f32, range: HslRange) -> f32 {
+    let dist = min(abs(hue - range.center), 360.0 - abs(hue - range.center));
+    const sharpness = 1.5; 
+    let falloff = dist / (range.width * 0.5);
+    return exp(-sharpness * falloff * falloff);
 }
 
 fn hash(p: vec2<f32>) -> f32 {
@@ -561,19 +552,32 @@ fn apply_hsl_panel(color: vec3<f32>, hsl_adjustments: array<HslColor, 8>, coords
     }
     let original_hsv = rgb_to_hsv(color);
     let original_luma = get_luma(color);
-    let saturation_mask = smoothstep(0.15, 0.5, original_hsv.y);
+    let saturation_mask = smoothstep(0.05, 0.25, original_hsv.y);
     if (saturation_mask < 0.001) {
         return color;
     }
+
     let original_hue = original_hsv.x;
+
+    var raw_influences: array<f32, 8>;
+    var total_raw_influence: f32 = 0.0;
+    for (var i = 0u; i < 8u; i = i + 1u) {
+        let influence = get_raw_hsl_influence(original_hue, HSL_RANGES[i]);
+        raw_influences[i] = influence;
+        total_raw_influence += influence;
+    }
+
     var total_hue_shift: f32 = 0.0;
     var total_sat_multiplier: f32 = 0.0;
     var total_lum_adjust: f32 = 0.0;
+
     for (var i = 0u; i < 8u; i = i + 1u) {
-        let influence = get_hsl_influence(original_hue, HSL_RANGES[i].center, HSL_RANGES[i].width) * saturation_mask;
-        total_hue_shift += hsl_adjustments[i].hue * 2.0 * influence;
-        total_sat_multiplier += hsl_adjustments[i].saturation * influence;
-        total_lum_adjust += hsl_adjustments[i].luminance * influence;
+        let normalized_influence = raw_influences[i] / total_raw_influence;
+        let final_influence = normalized_influence * saturation_mask;
+
+        total_hue_shift += hsl_adjustments[i].hue * 2.0 * final_influence;
+        total_sat_multiplier += hsl_adjustments[i].saturation * final_influence;
+        total_lum_adjust += hsl_adjustments[i].luminance * final_influence;
     }
 
     if (original_hsv.y * (1.0 + total_sat_multiplier) < 0.0001) {
@@ -824,7 +828,7 @@ const AGX_OUTPUT_MATRIX = mat3x3<f32>(
 
 const AGX_EPSILON: f32 = 1.0e-6;
 
-const AGX_MIN_EV: f32 = -15.0;
+const AGX_MIN_EV: f32 = -15.2;
 const AGX_MAX_EV: f32 = 5.0;
 const AGX_RANGE_EV: f32 = AGX_MAX_EV - AGX_MIN_EV;
 
