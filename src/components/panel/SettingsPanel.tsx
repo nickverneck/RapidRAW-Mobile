@@ -1094,6 +1094,7 @@ export default function SettingsPanel({
                   <KeybindItem keys={['Space']} description="Cycle zoom (Fit, 2x Fit, 100%)" />
                   <KeybindItem keys={['←', '→']} description="Previous / Next image" />
                   <KeybindItem keys={['↑', '↓']} description="Zoom in / Zoom out (by step)" />
+                  <KeybindItem keys={['Shift', '+', 'Mouse Wheel']} description="Adjust slider value by 2 steps" />
                   <KeybindItem keys={['Ctrl/Cmd', '+', '+']} description="Zoom in" />
                   <KeybindItem keys={['Ctrl/Cmd', '+', '-']} description="Zoom out" />
                   <KeybindItem keys={['Ctrl/Cmd', '+', '0']} description="Zoom to fit" />
