@@ -38,6 +38,41 @@ const Slider = ({
   }, [isDragging, onDragStateChange]);
 
   useEffect(() => {
+    const sliderElement = containerRef.current;
+    if (!sliderElement) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.shiftKey) {
+        return;
+      }
+
+      event.preventDefault();
+      const direction = -Math.sign(event.deltaY);
+      const newValue = value + direction * step * 2;
+      const stepStr = String(step);
+      const decimalPlaces = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
+      const roundedNewValue = parseFloat(newValue.toFixed(decimalPlaces));
+
+      const clampedValue = Math.max(min, Math.min(max, roundedNewValue));
+
+      if (clampedValue !== value && !isNaN(clampedValue)) {
+        const syntheticEvent = {
+          target: {
+            value: clampedValue,
+          },
+        };
+        onChange(syntheticEvent);
+      }
+    };
+
+    sliderElement.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      sliderElement.removeEventListener('wheel', handleWheel);
+    };
+  }, [value, min, max, step, onChange]);
+
+  useEffect(() => {
     const handleDragEndGlobal = () => {
       setIsDragging(false);
     };
@@ -160,7 +195,7 @@ const Slider = ({
   };
 
   const handleRangeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+    if (e.ctrlKey || e.metaKey) {
       e.currentTarget.blur();
       return;
     }
