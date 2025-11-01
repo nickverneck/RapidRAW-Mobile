@@ -305,6 +305,9 @@ impl Default for AppSettings {
             copy_paste_settings: CopyPasteSettings::default(),
             raw_highlight_compression: Some(2.5),
             processing_backend: Some("auto".to_string()),
+            #[cfg(target_os = "linux")]
+            linux_gpu_optimization: Some(true),
+            #[cfg(not(target_os = "linux"))]
             linux_gpu_optimization: Some(false),
         }
     }

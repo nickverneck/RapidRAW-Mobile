@@ -2629,11 +2629,12 @@ fn main() {
                     }
                 }
 
-                if settings.linux_gpu_optimization.unwrap_or(false) {
+                if settings.linux_gpu_optimization.unwrap_or(true) {
                     #[cfg(target_os = "linux")]
                     {
                         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
                         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+                        std::env::set_var("NODEVICE_SELECT", "1");
                     }
                 }
 
