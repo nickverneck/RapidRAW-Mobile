@@ -2506,7 +2506,6 @@ function App() {
         if (!isEffectActive) {
             return;
         }
-        const histData: any = await invoke(Invokes.GenerateHistogram);
         if (!isEffectActive) {
             return;
         }
@@ -2568,7 +2567,6 @@ function App() {
         }
         setLiveAdjustments(initialAdjusts);
         resetAdjustmentsHistory(initialAdjusts);
-        setHistogram(histData);
         } catch (err) {
         if (isEffectActive) {
             console.error('Failed to load image:', err);

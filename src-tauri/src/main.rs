@@ -114,8 +114,6 @@ pub struct AppState {
 
 #[derive(serde::Serialize)]
 struct LoadImageResult {
-    #[serde(with = "serde_bytes")]
-    original_image_bytes: Vec<u8>,
     width: u32,
     height: u32,
     metadata: ImageMetadata,
@@ -417,7 +415,6 @@ async fn load_image(
     });
 
     Ok(LoadImageResult {
-        original_image_bytes,
         width: orig_width,
         height: orig_height,
         metadata,
