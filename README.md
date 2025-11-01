@@ -382,8 +382,8 @@ You have two options to run RapidRAW:
 If you want to build the project yourself, you'll need to have [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org/) installed.
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/CyberTimon/RapidRAW.git
+# 1. Clone the repository (including the rawler/dnglab submodule)
+git clone https://github.com/CyberTimon/RapidRAW.git --recurse-submodules
 cd RapidRAW
 
 # 2. Install frontend dependencies
