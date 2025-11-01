@@ -653,7 +653,7 @@ export default function SettingsPanel({
               </SettingItem>
 
               <SettingItem
-                label="GPU Compatibility Mode"
+                label="Linux Compatibility Mode"
                 description="Enable workarounds for common GPU driver and display server (e.g., Wayland) issues. May improve stability or performance on some systems."
               >
                 <Switch
