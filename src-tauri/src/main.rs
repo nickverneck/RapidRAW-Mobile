@@ -386,25 +386,45 @@ async fn load_image(
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
-    let file_bytes = fs::read(&path).map_err(|e| e.to_string())?;
-    let pristine_img =
-        load_base_image_from_bytes(&file_bytes, &path, false, highlight_compression).map_err(|e| e.to_string())?;
+    let path_clone = path.clone();
+    let (pristine_img, exif_data) = tokio::task::spawn_blocking(move || {
+        let result: Result<(DynamicImage, HashMap<String, String>), String> = (|| {
+            match read_file_mapped(Path::new(&path_clone)) {
+                Ok(mmap) => {
+                    let img =
+                        load_base_image_from_bytes(&mmap, &path_clone, false, highlight_compression)
+                            .map_err(|e| e.to_string())?;
+                    let exif = read_exif_data(&mmap);
+                    Ok((img, exif))
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to memory-map file '{}': {}. Falling back to standard read.",
+                        path_clone,
+                        e
+                    );
+                    let bytes = fs::read(&path_clone).map_err(|io_err| {
+                        format!("Fallback read failed for {}: {}", path_clone, io_err)
+                    })?;
+                    let img = load_base_image_from_bytes(
+                        &bytes,
+                        &path_clone,
+                        false,
+                        highlight_compression,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    let exif = read_exif_data(&bytes);
+                    Ok((img, exif))
+                }
+            }
+        })();
+        result
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     let (orig_width, orig_height) = pristine_img.dimensions();
     let is_raw = is_raw_file(&path);
-
-    let exif_data = read_exif_data(&file_bytes);
-
-    let settings = load_settings(app_handle).unwrap_or_default();
-    let display_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
-    let display_preview = downscale_f32_image(&pristine_img, display_preview_dim, display_preview_dim);
-
-    let mut buf = Cursor::new(Vec::new());
-    display_preview
-        .to_rgb8()
-        .write_with_encoder(JpegEncoder::new_with_quality(&mut buf, 80))
-        .map_err(|e| e.to_string())?;
-    let original_image_bytes = buf.into_inner();
 
     *state.cached_preview.lock().unwrap() = None;
     *state.gpu_image_cache.lock().unwrap() = None;
