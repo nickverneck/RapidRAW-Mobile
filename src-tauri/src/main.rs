@@ -2620,37 +2620,52 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            setup_logging(&app_handle);
+            let settings: AppSettings = load_settings(app_handle.clone()).unwrap_or_default();
 
-            let resource_path = app_handle
-                .path()
-                .resolve("resources", tauri::path::BaseDirectory::Resource)
-                .expect("failed to resolve resource directory");
+            unsafe {
+                if let Some(backend) = &settings.processing_backend {
+                    if backend != "auto" {
+                        std::env::set_var("WGPU_BACKEND", backend);
+                    }
+                }
 
-            let ort_library_name = {
-                #[cfg(target_os = "windows")]
-                {
-                    "onnxruntime.dll"
+                if settings.linux_gpu_optimization.unwrap_or(false) {
+                    #[cfg(target_os = "linux")]
+                    {
+                        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+                        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+                    }
                 }
-                #[cfg(target_os = "linux")]
-                {
-                    "libonnxruntime.so"
-                }
-                #[cfg(target_os = "macos")]
-                {
-                    "libonnxruntime.dylib"
-                }
-            };
-            let ort_library_path = Mutex::new(resource_path.join(ort_library_name));
-            {
-                let path = ort_library_path.lock().unwrap();
-                unsafe {
-                    std::env::set_var("ORT_DYLIB_PATH", &*path);
-                }
-                println!("Set ORT_DYLIB_PATH to: {}", path.display());
+
+                let resource_path = app_handle
+                    .path()
+                    .resolve("resources", tauri::path::BaseDirectory::Resource)
+                    .expect("failed to resolve resource directory");
+
+                let ort_library_name = {
+                    #[cfg(target_os = "windows")] { "onnxruntime.dll" }
+                    #[cfg(target_os = "linux")] { "libonnxruntime.so" }
+                    #[cfg(target_os = "macos")] { "libonnxruntime.dylib" }
+                };
+                let ort_library_path = resource_path.join(ort_library_name);
+                std::env::set_var("ORT_DYLIB_PATH", &ort_library_path);
+                println!("Set ORT_DYLIB_PATH to: {}", ort_library_path.display());
             }
 
-            let settings: AppSettings = load_settings(app_handle.clone()).unwrap_or_default();
+            setup_logging(&app_handle);
+
+            if let Some(backend) = &settings.processing_backend {
+                if backend != "auto" {
+                    log::info!("Applied processing backend setting: {}", backend);
+                }
+            }
+            if settings.linux_gpu_optimization.unwrap_or(false) {
+                #[cfg(target_os = "linux")]
+                {
+                    log::info!("Applied Linux GPU optimizations.");
+                }
+            }
+
             let window_cfg = app.config().app.windows.get(0).unwrap().clone();
             let transparent = settings.transparent.unwrap_or(window_cfg.transparent);
             let decorations = settings.decorations.unwrap_or(window_cfg.decorations);

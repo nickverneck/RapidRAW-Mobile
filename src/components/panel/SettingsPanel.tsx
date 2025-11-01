@@ -111,6 +111,14 @@ const resolutions: Array<OptionItem> = [
   { value: 3840, label: '3840px' },
 ];
 
+const backendOptions: OptionItem[] = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'vulkan', label: 'Vulkan' },
+    { value: 'dx12', label: 'DirectX 12' },
+    { value: 'metal', label: 'Metal' },
+    { value: 'gl', label: 'OpenGL' },
+];
+
 const KeybindItem = ({ keys, description }: KeybindItemProps) => (
   <div className="flex justify-between items-center py-2">
     <span className="text-text-secondary text-sm">{description}</span>
@@ -282,9 +290,13 @@ export default function SettingsPanel({
   const [comfyUiAddress, setComfyUiAddress] = useState<string>(appSettings?.comfyuiAddress || '');
   const [comfyConfig, setComfyConfig] = useState(appSettings?.comfyuiWorkflowConfig || DEFAULT_WORKFLOW_CONFIG);
 
-  const resetToDefaults = () => {
-    setComfyConfig(DEFAULT_WORKFLOW_CONFIG);
-  };
+  const [processingSettings, setProcessingSettings] = useState({
+    editorPreviewResolution: appSettings?.editorPreviewResolution || 1920,
+    rawHighlightCompression: appSettings?.rawHighlightCompression ?? 2.5,
+    processingBackend: appSettings?.processingBackend || 'auto',
+    linuxGpuOptimization: appSettings?.linuxGpuOptimization ?? false,
+  });
+  const [restartRequired, setRestartRequired] = useState(false);
 
   useEffect(() => {
     if (appSettings?.comfyuiAddress !== comfyUiAddress) {
@@ -294,7 +306,36 @@ export default function SettingsPanel({
       setAiProvider(appSettings?.aiProvider || 'cpu');
     }
     setComfyConfig(appSettings?.comfyuiWorkflowConfig || DEFAULT_WORKFLOW_CONFIG);
+    setProcessingSettings({
+      editorPreviewResolution: appSettings?.editorPreviewResolution || 1920,
+      rawHighlightCompression: appSettings?.rawHighlightCompression ?? 2.5,
+      processingBackend: appSettings?.processingBackend || 'auto',
+      linuxGpuOptimization: appSettings?.linuxGpuOptimization ?? false,
+    });
+    setRestartRequired(false);
   }, [appSettings]);
+
+  const handleProcessingSettingChange = (key: string, value: any) => {
+    setProcessingSettings((prev) => ({ ...prev, [key]: value }));
+    if (key === 'processingBackend' || key === 'linuxGpuOptimization') {
+      setRestartRequired(true);
+    } else {
+      onSettingsChange({ ...appSettings, [key]: value });
+    }
+  };
+
+  const handleSaveAndRelaunch = async () => {
+    onSettingsChange({
+      ...appSettings,
+      ...processingSettings,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await relaunch();
+  };
+
+  const resetToDefaults = () => {
+    setComfyConfig(DEFAULT_WORKFLOW_CONFIG);
+  };
 
   const handleProviderChange = (provider: string) => {
     setAiProvider(provider);
@@ -566,15 +607,20 @@ export default function SettingsPanel({
                   onChange={handleSetTransparent}
                 />
               </SettingItem>
+            </div>
+          </div>
 
+          <div className="p-6 bg-surface rounded-xl shadow-md">
+            <h2 className="text-xl font-semibold mb-6 text-accent">Processing Engine</h2>
+            <div className="space-y-6">
               <SettingItem
                 description="Higher resolutions provide a sharper preview but may impact performance on less powerful systems."
                 label="Preview Resolution"
               >
                 <Dropdown
-                  onChange={(value: any) => onSettingsChange({ ...appSettings, editorPreviewResolution: value })}
+                  onChange={(value: any) => handleProcessingSettingChange('editorPreviewResolution', value)}
                   options={resolutions}
-                  value={appSettings?.editorPreviewResolution || 1920}
+                  value={processingSettings.editorPreviewResolution}
                 />
               </SettingItem>
 
@@ -587,13 +633,48 @@ export default function SettingsPanel({
                   min={1}
                   max={10}
                   step={0.1}
-                  value={appSettings?.rawHighlightCompression ?? 2.5}
+                  value={processingSettings.rawHighlightCompression}
                   defaultValue={2.5}
                   onChange={(e: any) =>
-                    onSettingsChange({ ...appSettings, rawHighlightCompression: parseFloat(e.target.value) })
+                    handleProcessingSettingChange('rawHighlightCompression', parseFloat(e.target.value))
                   }
                 />
               </SettingItem>
+
+              <SettingItem
+                label="Processing Backend"
+                description="Select the graphics API. 'Auto' is recommended. May fix crashes on some systems."
+              >
+                <Dropdown
+                  onChange={(value: any) => handleProcessingSettingChange('processingBackend', value)}
+                  options={backendOptions}
+                  value={processingSettings.processingBackend}
+                />
+              </SettingItem>
+
+              <SettingItem
+                label="GPU Compatibility Mode"
+                description="Enable workarounds for common GPU driver and display server (e.g., Wayland) issues. May improve stability or performance on some systems."
+              >
+                <Switch
+                  checked={processingSettings.linuxGpuOptimization}
+                  id="gpu-compat-toggle"
+                  label="Enable Compatibility Mode"
+                  onChange={(checked) => handleProcessingSettingChange('linuxGpuOptimization', checked)}
+                />
+              </SettingItem>
+
+              {restartRequired && (
+                <>
+                  <div className="p-3 bg-blue-900/20 text-blue-300 border border-blue-500/50 rounded-lg text-sm flex items-center gap-3">
+                    <Info size={18} />
+                    <p>Changes to the processing engine require an application restart to take effect.</p>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button onClick={handleSaveAndRelaunch}>Save & Relaunch</Button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

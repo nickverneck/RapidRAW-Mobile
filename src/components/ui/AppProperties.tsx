@@ -127,6 +127,7 @@ export interface AppSettings {
   comfyuiAddress?: string;
   comfyuiWorkflowConfig?: ComfyUIWorkflowConfig;
   decorations?: any;
+  editorPreviewResolution?: number;
   enableAiTagging?: boolean;
   enableExifReading?: boolean;
   filterCriteria?: FilterCriteria;
@@ -141,6 +142,8 @@ export interface AppSettings {
   adjustmentVisibility?: { [key: string]: boolean };
   activeTreeSection?: string | null;
   rawHighlightCompression?: number;
+  processingBackend?: string;
+  linuxGpuOptimization?: boolean;
 }
 
 export interface BrushSettings {

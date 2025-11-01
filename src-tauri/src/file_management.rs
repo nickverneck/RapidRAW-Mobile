@@ -256,6 +256,10 @@ pub struct AppSettings {
     pub copy_paste_settings: CopyPasteSettings,
     #[serde(default)]
     pub raw_highlight_compression: Option<f32>,
+    #[serde(default)]
+    pub processing_backend: Option<String>,
+    #[serde(default)]
+    pub linux_gpu_optimization: Option<bool>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -300,6 +304,8 @@ impl Default for AppSettings {
             active_tree_section: Some("current".to_string()),
             copy_paste_settings: CopyPasteSettings::default(),
             raw_highlight_compression: Some(2.5),
+            processing_backend: Some("auto".to_string()),
+            linux_gpu_optimization: Some(false),
         }
     }
 }
