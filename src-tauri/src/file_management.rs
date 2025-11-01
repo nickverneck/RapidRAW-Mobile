@@ -833,8 +833,13 @@ pub fn generate_thumbnails_progressive(
         .store(false, Ordering::SeqCst);
     let cancellation_token = state.thumbnail_cancellation_token.clone();
 
+    const MAX_THUMBNAIL_THREADS: usize = 6;
+    let num_threads = (num_cpus::get_physical().saturating_sub(1))
+        .min(MAX_THUMBNAIL_THREADS)
+        .max(1);
+
     let pool = ThreadPoolBuilder::new()
-        .num_threads(num_cpus::get_physical() - 1)
+        .num_threads(num_threads)
         .build()
         .unwrap();
     let cache_dir = app_handle
