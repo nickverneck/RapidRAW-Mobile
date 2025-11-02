@@ -59,6 +59,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2025-11-02:** Optimize image loading & add processing engine settings
 *   **2025-10-31:** Expose highlights compression point to user & improve keybinds detection
 *   **2025-10-28:** Copy paste settings & brightness adjustment
 *   **2025-10-XX:** Working on tonemapping - ongoing...
@@ -68,11 +69,11 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2025-10-19:** You can now apply presets to masks & improved auto adjustments
 *   **2025-10-17:** New centré adjustment, rawler now as a submodule & improved logger
 *   **2025-10-15:** Ability to pin folders, improved session handling & smooth library thumbnail updating
-*   **2025-10-11:** Realistic, complex & non-dulling exposure & highlights slider
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2025-10-11:** Realistic, complex & non-dulling exposure & highlights slider
 *   **2025-10-11:** Smooth filmstrip thumbnail updates
 *   **2025-10-07:** New watermarking support
 *   **2025-10-06:** Improve crop quality by transforming before scaling
