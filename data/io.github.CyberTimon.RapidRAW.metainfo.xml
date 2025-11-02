@@ -38,6 +38,25 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.4" date="2025-11-02">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.4</url>
+        <description translate="no">
+            <p>New Features</p>
+            <ul>
+                <li>AgX Color Management: Like in Blender and darktable, RapidRAW now supports the advanced AgX tone mapper for better highlight rolloff and more natural colors.</li>
+                <li>Reworked Exposure Controls: The exposure slider has been split into two more powerful controls: Exposure (for true exposure compensation) and Brightness (for adjusting mid-tones).</li>
+                <li>Copy Paste Settings: Selectively copy and paste adjustments between images with new Merge and Replace modes to give you full control over how settings are applied.</li>
+                <li>Processing Engine Settings: A new section to manually select the processing backend for performance tuning. Includes a Linux GPU Compatibility Mode to resolve stability issues for some users.</li>
+            </ul>
+            <p>Core Improvements</p>
+            <ul>
+                <li>Moved more core parts from 8-bit to 32-bit float for increased precision.</li>
+                <li>Improved accuracy of the Color Mixer, which may cause some HSL-related edits to appear slightly different.</li>
+                <li>Faster image loading times.</li>
+                <li>RAW highlight recovery is now adjustable via the new processing engine settings.</li>
+            </ul>
+        </description>
+    </release>
     <release version="v1.4.3" date="2025-10-19">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.3</url>
         <description translate="no">
