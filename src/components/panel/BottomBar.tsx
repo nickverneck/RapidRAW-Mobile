@@ -253,7 +253,7 @@ export default function BottomBar({
             <button
               className="w-8 h-8 flex items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
               onClick={onOpenCopyPasteSettings}
-              title="Copy / Paste Settings"
+              title="Copy & Paste Settings"
             >
               <Settings size={18} />
             </button>

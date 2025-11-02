@@ -185,7 +185,7 @@ export default function CopyPasteSettingsModal({ isOpen, onClose, onSave, settin
         }`}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold text-text-primary mb-4">Copy / Paste Settings</h3>
+        <h3 className="text-lg font-semibold text-text-primary mb-4">Copy & Paste Settings</h3>
         <div className="flex-grow overflow-y-auto pr-2 -mr-2 space-y-6">
           <div>
             <label className="font-semibold text-text-primary block mb-2">Paste Mode</label>
