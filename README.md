@@ -325,10 +325,10 @@ This is purely a **convenience service**. It provides the **same high-quality re
 
 | Feature                 | Built-in AI (Free)                               | Self-Hosted (ComfyUI)                               | Optional Cloud Service                           |
 | ----------------------- | ------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------ |
-| **Cost**                | Free, included                                   | Free (requires your own hardware)                   | **$5 / month**                                   |
-| **Setup**               | None                                             | Manual ComfyUI server setup                         | **None (Just log in)**                           |
-| **Use Case**            | Everyday workflow acceleration                   | Full control for technical users                    | **Maximum convenience**                          |
-| **Status**              | **Available**                                    | **Available**                                       | **Coming Soon**                                 |
+| **Cost**                | Free, included                                   | Free (requires your own hardware)                   | $5 / month                                   |
+| **Setup**               | None                                             | Manual ComfyUI server setup                         | None (Just log in)                           |
+| **Use Case**            | Everyday workflow acceleration                   | Full control for technical users                    | Maximum convenience                          |
+| **Status**              | **Available**                                    | **Available**                                       | Coming Soon                                 |
 
 <details>
 <summary><strong>Click to see the Generative AI features in action</strong></summary>
