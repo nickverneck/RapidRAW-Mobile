@@ -81,9 +81,16 @@ struct GlobalAdjustments {
     _pad_lut4: f32,
     _pad_lut5: f32,
 
+    _pad_agx1: f32,
+    _pad_agx2: f32,
+    _pad_agx3: f32,
+    agx_pipe_to_rendering_matrix: mat3x3<f32>,
+    agx_rendering_to_pipe_matrix: mat3x3<f32>,
+
     _pad_cg1: f32,
     _pad_cg2: f32,
     _pad_cg3: f32,
+    _pad_cg4: f32,
     color_grading_shadows: ColorGradeSettings,
     color_grading_midtones: ColorGradeSettings,
     color_grading_highlights: ColorGradeSettings,
@@ -134,9 +141,9 @@ struct MaskAdjustments {
     _pad3: f32,
     _pad4: f32,
 
-    _pad_end1: f32,
-    _pad_end2: f32,
-    _pad_end3: f32,
+    _pad_cg1: f32,
+    _pad_cg2: f32,
+    _pad_cg3: f32,
     color_grading_shadows: ColorGradeSettings,
     color_grading_midtones: ColorGradeSettings,
     color_grading_highlights: ColorGradeSettings,
@@ -814,34 +821,14 @@ fn apply_ca_correction(coords: vec2<u32>, ca_rc: f32, ca_by: f32) -> vec3<f32> {
     return vec3<f32>(r, g, b);
 }
 
-const AGX_INPUT_MATRIX = mat3x3<f32>(
-    vec3<f32>(0.84565281, 0.18854923, -0.03420204),
-    vec3<f32>(0.09162919, 0.8034334, 0.10493741),
-    vec3<f32>(0.062718, 0.00801737, 0.92926463)
-);
-
-const AGX_OUTPUT_MATRIX = mat3x3<f32>(
-    vec3<f32>(1.193344, -0.224542, 0.031198),
-    vec3<f32>(-0.111581, 1.250058, -0.138477),
-    vec3<f32>(-0.081763, -0.025516, 1.107279)
-);
-
 const AGX_EPSILON: f32 = 1.0e-6;
-
 const AGX_MIN_EV: f32 = -15.2;
 const AGX_MAX_EV: f32 = 5.0;
 const AGX_RANGE_EV: f32 = AGX_MAX_EV - AGX_MIN_EV;
-
-const AGX_PIVOT_X: f32 = 0.6060606;
-const AGX_PIVOT_Y_PRE_GAMMA: f32 = 0.43446;
-const AGX_CONTRAST: f32 = 2.4;
+const AGX_GAMMA: f32 = 2.4;
+const AGX_SLOPE: f32 = 2.3843;
 const AGX_TOE_POWER: f32 = 1.5;
 const AGX_SHOULDER_POWER: f32 = 1.5;
-const AGX_TARGET_BLACK_PRE_GAMMA: f32 = 0.0;
-const AGX_TARGET_WHITE_PRE_GAMMA: f32 = 1.0;
-const AGX_GAMMA: f32 = 2.4;
-
-const AGX_SLOPE: f32 = 2.3843;
 const AGX_TOE_TRANSITION_X: f32 = 0.6060606;
 const AGX_TOE_TRANSITION_Y: f32 = 0.43446;
 const AGX_SHOULDER_TRANSITION_X: f32 = 0.6060606;
@@ -849,6 +836,8 @@ const AGX_SHOULDER_TRANSITION_Y: f32 = 0.43446;
 const AGX_INTERCEPT: f32 = -1.0112;
 const AGX_TOE_SCALE: f32 = -1.0359;
 const AGX_SHOULDER_SCALE: f32 = 1.3475;
+const AGX_TARGET_BLACK_PRE_GAMMA: f32 = 0.0;
+const AGX_TARGET_WHITE_PRE_GAMMA: f32 = 1.0;
 
 fn agx_sigmoid(x: f32, power: f32) -> f32 {
     return x / pow(1.0 + pow(x, power), 1.0 / power);
@@ -895,9 +884,9 @@ fn agx_tonemap(c: vec3<f32>) -> vec3<f32> {
 
 fn agx_full_transform(color_in: vec3<f32>) -> vec3<f32> {
     let compressed_color = agx_compress_gamut(color_in);
-    let color_in_agx_space = AGX_INPUT_MATRIX * compressed_color;
+    let color_in_agx_space = adjustments.global.agx_pipe_to_rendering_matrix * compressed_color;
     let tonemapped_agx = agx_tonemap(color_in_agx_space);
-    let final_color = AGX_OUTPUT_MATRIX * tonemapped_agx;
+    let final_color = adjustments.global.agx_rendering_to_pipe_matrix * tonemapped_agx;
     return final_color;
 }
 
