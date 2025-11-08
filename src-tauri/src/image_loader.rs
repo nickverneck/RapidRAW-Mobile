@@ -6,6 +6,8 @@ use crate::raw_processing::develop_raw_image;
 use anyhow::{anyhow, Context, Result};
 use base64::{Engine as _, engine::general_purpose};
 use exif::{Reader as ExifReader, Tag};
+use exr::prelude::*;
+use exr::image::pixel_vec::PixelVec;
 use image::{DynamicImage, GenericImageView, ImageReader, imageops};
 use rawler::Orientation;
 use rayon::prelude::*;
@@ -36,12 +38,51 @@ pub fn load_and_composite(
     composite_patches_on_image(&base_image, adjustments)
 }
 
+fn load_exr_from_bytes(bytes: &[u8]) -> Result<DynamicImage> {
+    let cursor = Cursor::new(bytes);
+    let buffered_reader = std::io::BufReader::new(cursor);
+
+    let exr_image_result = read()
+        .no_deep_data()
+        .largest_resolution_level()
+        .rgba_channels(
+            PixelVec::<(f32, f32, f32, f32)>::constructor,
+            PixelVec::set_pixel,
+        )
+        .first_valid_layer()
+        .all_attributes()
+        .from_buffered(buffered_reader);
+
+    let exr_image = exr_image_result.context("Failed to read EXR image data")?;
+
+    let layer = exr_image.layer_data;
+    let resolution = layer.size;
+    let width = resolution.x() as u32;
+    let height = resolution.y() as u32;
+    let pixels = layer.channel_data.pixels;
+
+    let mut rgb_image = image::Rgb32FImage::new(width, height);
+
+    for (index, (r, g, b, _a)) in pixels.pixels.into_iter().enumerate() {
+        let x = (index % width as usize) as u32;
+        let y = (index / width as usize) as u32;
+        rgb_image.put_pixel(x, y, image::Rgb([r, g, b]));
+    }
+
+    Ok(DynamicImage::ImageRgb32F(rgb_image))
+}
+
 pub fn load_base_image_from_bytes(
     bytes: &[u8],
     path_for_ext_check: &str,
     use_fast_raw_dev: bool,
     highlight_compression: f32,
 ) -> Result<DynamicImage> {
+    let path = std::path::Path::new(path_for_ext_check);
+    if path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.eq_ignore_ascii_case("exr")) {
+        return load_exr_from_bytes(bytes);
+    }
+
     if is_raw_file(path_for_ext_check) {
         match panic::catch_unwind(|| develop_raw_image(bytes, use_fast_raw_dev, highlight_compression)) {
             Ok(Ok(image)) => Ok(image),
