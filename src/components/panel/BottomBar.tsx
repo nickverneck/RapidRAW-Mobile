@@ -126,6 +126,9 @@ export default function BottomBar({
   const [latchedSliderValue, setLatchedSliderValue] = useState(1.0);
   const [latchedDisplayPercent, setLatchedDisplayPercent] = useState(100);
 
+  const numSelected = multiSelectedPaths.length;
+  const showSelectionCounter = numSelected > 1;
+
   useEffect(() => {
     if (isZoomReady && !isDraggingSlider.current) {
       setLatchedSliderValue(currentOriginalPercent);
@@ -258,8 +261,17 @@ export default function BottomBar({
               <Settings size={18} />
             </button>
           </div>
+          <div
+            className={clsx(
+              'flex items-center transition-all duration-300 ease-out overflow-hidden',
+              showSelectionCounter ? 'max-w-xs opacity-100' : 'max-w-0 opacity-0',
+            )}
+          >
+            <div className="h-5 w-px bg-surface mr-4"></div>
+            <span className="text-sm text-text-secondary whitespace-nowrap">{numSelected} images selected</span>
+          </div>
         </div>
-
+        <div className="flex-grow" />
         {isLibraryView ? (
           <div className="flex items-center gap-2">
             <button
@@ -329,9 +341,9 @@ export default function BottomBar({
                     {latchedDisplayPercent}%
                   </span>
                 )}
-                {isLoading && !isEditingPercent && <Loader2 size={12} className="animate-spin ml-1" />}
               </div>
             </div>
+            <div className="h-5 w-px bg-surface"></div>
             <button
               className="p-1.5 rounded-md text-text-secondary hover:bg-surface hover:text-text-primary transition-colors"
               onClick={() => setIsFilmstripVisible?.(!isFilmstripVisible)}

@@ -3540,6 +3540,7 @@ function App() {
               isPasteDisabled={copiedAdjustments === null || multiSelectedPaths.length === 0}
               isRatingDisabled={multiSelectedPaths.length === 0}
               isResetDisabled={multiSelectedPaths.length === 0}
+              multiSelectedPaths={multiSelectedPaths}
               onCopy={handleCopyAdjustments}
               onExportClick={() => setIsLibraryExportPanelVisible((prev) => !prev)}
               onOpenCopyPasteSettings={() => setIsCopyPasteSettingsModalOpen(true)}

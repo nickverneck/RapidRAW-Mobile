@@ -16,6 +16,7 @@ import {
   Star as StarIcon,
   Search,
   Users,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FixedSizeGrid as Grid } from 'react-window';
@@ -272,6 +273,15 @@ function SearchInput({ indexingProgress, isIndexing, searchQuery, setSearchQuery
         type="text"
         value={searchQuery}
       />
+      {searchQuery && !isIndexing && isActive && (
+        <button
+          onClick={() => setSearchQuery('')}
+          className="absolute inset-y-0 right-0 flex items-center pr-3 text-text-secondary hover:text-text-primary"
+          title="Clear search"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
       {isIndexing && isActive && (
         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
           <Loader2 className="h-5 w-5 text-text-secondary animate-spin" />

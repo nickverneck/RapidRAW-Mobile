@@ -1,5 +1,6 @@
 import React from 'react';
 import clsx from 'clsx';
+import { motion } from 'framer-motion';
 
 interface SwitchProps {
   checked: boolean;
@@ -33,20 +34,27 @@ const Switch = ({
 }: SwitchProps) => {
   const uniqueId = `switch-${label.replace(/\s+/g, '-').toLowerCase()}`;
 
+  const spring = {
+    type: 'spring',
+    stiffness: 700,
+    damping: 30,
+  } as const;
+
   return (
     <label
       className={clsx(
-        'flex items-center justify-between cursor-pointer',
-        { 'cursor-not-allowed opacity-50': disabled },
+        'flex items-center justify-between',
+        disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
         className,
       )}
       htmlFor={uniqueId}
+      title={tooltip}
     >
       <span className="text-sm text-text-secondary select-none">{label}</span>
-      <div className="relative">
+      <div className="relative w-10 h-5">
         <input
           checked={checked}
-          className="peer sr-only"
+          className="sr-only"
           disabled={disabled}
           id={uniqueId}
           onChange={(e: any) => !disabled && onChange(e.target.checked)}
@@ -54,16 +62,23 @@ const Switch = ({
         />
         <div
           className={clsx(
-            'w-10 h-5 bg-bg-primary rounded-full shadow-inner',
+            'w-full h-full bg-bg-primary rounded-full shadow-inner',
             trackClassName,
           )}
         ></div>
-        <div
+        <motion.div
           className={clsx(
-            'absolute left-0.5 top-0.5 bg-text-secondary w-4 h-4 rounded-full transition-colors',
-            'peer-checked:translate-x-5 peer-checked:bg-accent',
+            'absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-colors',
+            {
+              'bg-accent': checked,
+              'bg-text-secondary': !checked,
+            },
           )}
-        ></div>
+          layout
+          transition={spring}
+          initial={false}
+          animate={{ x: checked ? 20 : 0 }}
+        />
       </div>
     </label>
   );
