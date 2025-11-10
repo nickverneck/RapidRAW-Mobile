@@ -1,7 +1,7 @@
 import { Folder, FolderOpen, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Search, X } from 'lucide-react';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 export interface FolderTree {
   children: any;
@@ -77,7 +77,7 @@ const getAutoExpandedPaths = (node: FolderTree, paths: Set<string>) => {
 function SectionHeader({ title, isOpen, onToggle }: { title: string; isOpen: boolean; onToggle: () => void }) {
   return (
     <div
-      className="flex items-center w-full text-left px-1 py-1.5 cursor-pointer group bg-bg-secondary"
+      className="flex items-center w-full text-left px-1 py-1.5 cursor-pointer group"
       onClick={onToggle}
       title={isOpen ? `Collapse ${title}` : `Expand ${title}`}
     >
@@ -249,7 +249,7 @@ export default function FolderTree({
   };
 
   const trimmedQuery = searchQuery.trim();
-  const isSearching = trimmedQuery.length > 0;
+  const isSearching = trimmedQuery.length > 1;
 
   const filteredTree = useMemo(() => {
     if (!isSearching) return tree;
@@ -281,11 +281,24 @@ export default function FolderTree({
     return new Set([...expandedFolders, ...searchAutoExpandedFolders]);
   }, [expandedFolders, searchAutoExpandedFolders]);
 
+  useEffect(() => {
+    if (isSearching) {
+      const hasPinnedResults = filteredPinnedTrees && filteredPinnedTrees.length > 0;
+      const hasBaseResults = !!filteredTree;
+
+      if (hasPinnedResults && activeSection !== 'pinned') {
+        onActiveSectionChange('pinned');
+      }
+      else if (!hasPinnedResults && hasBaseResults && activeSection !== 'current') {
+        onActiveSectionChange('current');
+      }
+    }
+  }, [isSearching, filteredTree, filteredPinnedTrees, activeSection, onActiveSectionChange]);
+
   const isPinnedOpen = activeSection === 'pinned';
   const isCurrentOpen = activeSection === 'current';
 
   const hasVisiblePinnedTrees = filteredPinnedTrees && filteredPinnedTrees.length > 0;
-  const SECTION_HEADER_HEIGHT = 30;
 
   return (
     <div
@@ -305,7 +318,7 @@ export default function FolderTree({
 
       {isVisible && (
         <div className="p-2 flex flex-col h-full">
-          <div className="sticky top-0 bg-bg-secondary z-20 pt-1 pb-2">
+          <div className="pt-1 pb-2">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" />
               <input
@@ -330,7 +343,7 @@ export default function FolderTree({
           <div className="flex-1 overflow-y-auto" onContextMenu={handleEmptyAreaContextMenu}>
             {hasVisiblePinnedTrees && (
               <>
-                <div className="sticky top-0 bg-bg-secondary z-10">
+                <div>
                   <SectionHeader
                     title="Pinned"
                     isOpen={isPinnedOpen}
@@ -369,10 +382,7 @@ export default function FolderTree({
 
             {filteredTree && (
               <>
-                <div
-                  className="sticky top-0 bg-bg-secondary z-10"
-                  style={{ top: hasVisiblePinnedTrees ? `${SECTION_HEADER_HEIGHT}px` : '0px' }}
-                >
+                <div>
                   <SectionHeader
                     title="Base Folder"
                     isOpen={isCurrentOpen}
@@ -406,6 +416,7 @@ export default function FolderTree({
               </>
             )}
 
+            {/* This condition now correctly handles the new search length requirement */}
             {!filteredTree && !hasVisiblePinnedTrees && isSearching && (
               <p className="text-text-secondary text-sm p-2 text-center">No folders found.</p>
             )}
