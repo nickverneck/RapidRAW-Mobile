@@ -3194,16 +3194,8 @@ function App() {
     const numCopied = copiedFilePaths.length;
     const copyPastedLabel = numCopied === 1 ? 'Copy image here' : `Copy ${numCopied} images here`;
     const movePastedLabel = numCopied === 1 ? 'Move image here' : `Move ${numCopied} images here`;
-    const isCurrentFolderAlreadyPinned = currentFolderPath && pinnedFolders.includes(currentFolderPath);
 
     const options = [
-      {
-        label: isCurrentFolderAlreadyPinned ? 'Unpin Current Folder' : 'Pin Current Folder',
-        icon: isCurrentFolderAlreadyPinned ? PinOff : Pin,
-        onClick: () => handleTogglePinFolder(currentFolderPath as string),
-        disabled: !currentFolderPath,
-      },
-      { type: OPTION_SEPARATOR },
       {
         label: 'Paste',
         icon: ClipboardPaste,
