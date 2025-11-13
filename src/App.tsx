@@ -2785,7 +2785,7 @@ function App() {
       { type: OPTION_SEPARATOR },
       { label: 'Auto Adjust', icon: Aperture, onClick: handleAutoAdjustments },
       {
-        label: 'Set Rating',
+        label: 'Rating',
         icon: Star,
         submenu: [0, 1, 2, 3, 4, 5].map((rating: number) => ({
           label: rating === 0 ? 'No Rating' : `${rating} Star${rating !== 1 ? 's' : ''}`,
@@ -2793,7 +2793,7 @@ function App() {
         })),
       },
       {
-        label: 'Set Color Label',
+        label: 'Color Label',
         icon: Palette,
         submenu: [
           { label: 'No Label', onClick: () => handleSetColorLabel(null) },
@@ -3062,14 +3062,14 @@ function App() {
       { type: OPTION_SEPARATOR },
       {
         icon: Star,
-        label: 'Set Rating',
+        label: 'Rating',
         submenu: [0, 1, 2, 3, 4, 5].map((rating: number) => ({
           label: rating === 0 ? 'No Rating' : `${rating} Star${rating !== 1 ? 's' : ''}`,
           onClick: () => handleRate(rating, finalSelection),
         })),
       },
       {
-        label: 'Set Color Label',
+        label: 'Color Label',
         icon: Palette,
         submenu: [
           { label: 'No Label', onClick: () => handleSetColorLabel(null, finalSelection) },

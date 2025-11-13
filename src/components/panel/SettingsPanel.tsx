@@ -467,6 +467,11 @@ export default function SettingsPanel({
     });
   };
 
+  const shortcutTagVariants = {
+    visible: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 500, damping: 30 } },
+    exit: { opacity: 0, scale: 0.8, transition: { duration: 0.15 } },
+  };
+
   const executeSetTransparent = async (transparent: boolean) => {
     onSettingsChange({ ...appSettings, transparent });
     await relaunch();
@@ -642,25 +647,41 @@ export default function SettingsPanel({
                 description="A list of tags that will appear as shortcuts in the tagging context menu."
               >
                 <div>
-                  {(appSettings?.taggingShortcuts || []).length > 0 && (
-                    <div className="flex flex-wrap gap-2 p-2 bg-bg-primary rounded-md min-h-[40px] border border-border-color mb-2">
-                      {(appSettings?.taggingShortcuts || []).map((shortcut: string) => (
-                        <div
-                          key={shortcut}
-                          className="flex items-center gap-1 bg-surface text-text-primary text-sm font-medium px-2 py-1 rounded"
-                        >
-                          <span>{shortcut}</span>
-                          <button
+                  <div className="flex flex-wrap gap-2 p-2 bg-bg-primary rounded-md min-h-[40px] border border-border-color mb-2 items-center">
+                    <AnimatePresence>
+                      {(appSettings?.taggingShortcuts || []).length > 0 ? (
+                        (appSettings?.taggingShortcuts || []).map((shortcut: string) => (
+                          <motion.div
+                            key={shortcut}
+                            layout
+                            variants={shortcutTagVariants}
+                            initial={false}
+                            animate="visible"
+                            exit="exit"
                             onClick={() => handleRemoveShortcut(shortcut)}
-                            className="rounded-full hover:bg-black/20 p-0.5"
                             title={`Remove shortcut "${shortcut}"`}
+                            className="flex items-center gap-1 bg-surface text-text-primary text-sm font-medium px-2 py-1 rounded group cursor-pointer"
                           >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                            <span>{shortcut}</span>
+                            <span className="rounded-full group-hover:bg-black/20 p-0.5 transition-colors">
+                              <X size={14} />
+                            </span>
+                          </motion.div>
+                        ))
+                      ) : (
+                        <motion.span
+                          key="no-shortcuts-placeholder"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-sm text-text-secondary italic px-1 select-none"
+                        >
+                          No shortcuts added
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </div>
                   <div className="relative">
                     <Input
                       type="text"

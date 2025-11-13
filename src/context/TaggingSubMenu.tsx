@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { X, Plus } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Invokes } from '../components/ui/AppProperties';
 
 interface TaggingSubMenuProps {
@@ -12,6 +13,13 @@ interface TaggingSubMenuProps {
 }
 
 const USER_TAG_PREFIX = 'user:';
+
+// Animation variants for adding/removing tags
+const tagVariants = {
+  // No 'hidden' variant needed for initial load, 'visible' is the default state
+  visible: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 500, damping: 30 } },
+  exit: { opacity: 0, scale: 0.8, transition: { duration: 0.15 } },
+};
 
 export default function TaggingSubMenu({
   paths,
@@ -75,23 +83,41 @@ export default function TaggingSubMenu({
   return (
     <div className="bg-surface/90 p-2 w-64 text-text-primary rounded-lg" onClick={(e) => e.stopPropagation()}>
       <div className="mb-2">
-        <div className="flex flex-wrap gap-1 p-1 bg-surface rounded-md min-h-[32px]">
-          {tags.length === 0 && <span className="text-xs text-text-secondary italic p-1">No tags added</span>}
-          {tags.map((tagItem) => (
-            <div
-              key={tagItem.tag}
-              className="flex items-center gap-1 bg-bg-primary text-text-primary text-xs font-medium px-2 py-1 rounded"
-            >
-              <span>{tagItem.tag}</span>
-              <button
-                onClick={() => handleRemoveTag(tagItem)}
-                className="rounded-full hover:bg-black/20 p-0.5"
-                title={`Remove tag "${tagItem.tag}"`}
+        <div className="flex flex-wrap gap-1 p-1 bg-surface rounded-md min-h-[32px] items-center">
+          <AnimatePresence>
+            {tags.length > 0 ? (
+              tags.map((tagItem) => (
+                <motion.div
+                  key={tagItem.tag}
+                  layout
+                  variants={tagVariants}
+                  initial={false} // Prevents animation on initial render
+                  animate="visible"
+                  exit="exit"
+                  onClick={() => handleRemoveTag(tagItem)}
+                  title={`Remove tag "${tagItem.tag}"`}
+                  className="flex items-center gap-1 bg-bg-primary text-text-primary text-xs font-medium px-2 py-1 rounded group cursor-pointer"
+                >
+                  <span>{tagItem.tag}</span>
+                  {/* This span now gets a hover effect from the parent 'group' class */}
+                  <span className="rounded-full group-hover:bg-black/20 p-0.5 transition-colors">
+                    <X size={12} />
+                  </span>
+                </motion.div>
+              ))
+            ) : (
+              <motion.span
+                key="no-tags-placeholder"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="text-xs text-text-secondary italic p-1 select-none"
               >
-                <X size={12} />
-              </button>
-            </div>
-          ))}
+                No tags added
+              </motion.span>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
