@@ -3,6 +3,7 @@ use futures::stream::{self, StreamExt};
 use image::{DynamicImage, imageops::FilterType};
 use ndarray::{Array, Axis};
 use ort::{Session, Value};
+use rayon::prelude::*;
 use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -21,6 +22,7 @@ use crate::hierarchy::TAG_HIERARCHY;
 use crate::image_processing::ImageMetadata;
 
 pub const COLOR_TAG_PREFIX: &str = "color:";
+pub const USER_TAG_PREFIX: &str = "user:";
 
 fn preprocess_clip_image(image: &DynamicImage) -> Array<f32, ndarray::Dim<[usize; 4]>> {
     let input_size = 224;
@@ -323,7 +325,16 @@ pub async fn start_background_indexing(
                         ImageMetadata::default()
                     };
 
-                    if metadata.tags.is_none() {
+                    let should_generate_tags = match &metadata.tags {
+                        None => true,
+                        Some(tags) => {
+                            !tags.iter().any(|tag| {
+                                !tag.starts_with(COLOR_TAG_PREFIX) && !tag.starts_with(USER_TAG_PREFIX)
+                            })
+                        }
+                    };
+
+                    if should_generate_tags {
                         match file_management::get_cached_or_generate_thumbnail_image(
                             &path_str,
                             &app_handle_inner,
@@ -333,11 +344,26 @@ pub async fn start_background_indexing(
                                 if let (Some(clip_model), Some(clip_tokenizer)) =
                                     (&models_inner.clip_model, &models_inner.clip_tokenizer)
                                 {
-                                    if let Ok(tags) =
+                                    if let Ok(ai_tags) =
                                         generate_tags_with_clip(&image, clip_model, clip_tokenizer)
                                     {
-                                        println!("Found tags for {}: {:?}", path_str, tags);
-                                        metadata.tags = Some(tags);
+                                        println!("Found AI tags for {}: {:?}", path_str, ai_tags);
+
+                                        let mut existing_tags: HashSet<String> = metadata
+                                            .tags
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .collect();
+
+                                        for tag in ai_tags {
+                                            existing_tags.insert(tag);
+                                        }
+
+                                        let mut final_tags: Vec<String> = existing_tags.into_iter().collect();
+                                        final_tags.sort_unstable();
+
+                                        metadata.tags = Some(final_tags);
+
                                         if let Ok(json_string) =
                                             serde_json::to_string_pretty(&metadata)
                                         {
@@ -383,6 +409,101 @@ pub async fn start_background_indexing(
     Ok(())
 }
 
+fn modify_tags_for_path(path_str: &str, modify_fn: impl Fn(&mut Vec<String>)) -> Result<(), String> {
+    let sidecar_path = get_sidecar_path(path_str);
+
+    let mut metadata: ImageMetadata = if sidecar_path.exists() {
+        fs::read_to_string(&sidecar_path)
+            .ok()
+            .and_then(|content| serde_json::from_str(&content).ok())
+            .unwrap_or_default()
+    } else {
+        ImageMetadata::default()
+    };
+
+    let mut tags = metadata.tags.unwrap_or_else(Vec::new);
+    modify_fn(&mut tags);
+
+    tags.sort_unstable();
+    tags.dedup();
+
+    if tags.is_empty() {
+        metadata.tags = None;
+    } else {
+        metadata.tags = Some(tags);
+    }
+
+    let json_string = serde_json::to_string_pretty(&metadata).map_err(|e| e.to_string())?;
+    fs::write(sidecar_path, json_string).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_tag_for_paths(paths: Vec<String>, tag: String) -> Result<(), String> {
+    paths.par_iter().for_each(|path| {
+        let tag_clone = tag.clone();
+        if let Err(e) = modify_tags_for_path(path, |tags| {
+            if !tags.contains(&tag_clone) {
+                tags.push(tag_clone.clone());
+            }
+        }) {
+            eprintln!("Failed to add tag to {}: {}", path, e);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_tag_for_paths(paths: Vec<String>, tag: String) -> Result<(), String> {
+    paths.par_iter().for_each(|path| {
+        let tag_clone = tag.clone();
+        if let Err(e) = modify_tags_for_path(path, |tags| {
+            tags.retain(|t| t != &tag_clone);
+        }) {
+            eprintln!("Failed to remove tag from {}: {}", path, e);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn clear_ai_tags(root_path: String) -> Result<usize, String> {
+    if !Path::new(&root_path).exists() {
+        return Err(format!("Root path does not exist: {}", root_path));
+    }
+
+    let mut updated_count = 0;
+    let walker = WalkDir::new(root_path).into_iter();
+
+    for entry in walker.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rrdata") {
+            if let Ok(content) = fs::read_to_string(path) {
+                if let Ok(mut metadata) = serde_json::from_str::<ImageMetadata>(&content) {
+                    if let Some(tags) = &mut metadata.tags {
+                        let original_len = tags.len();
+                        // Keep color tags and user tags, remove others (AI tags)
+                        tags.retain(|tag| {
+                            tag.starts_with(COLOR_TAG_PREFIX) || tag.starts_with(USER_TAG_PREFIX)
+                        });
+
+                        if tags.len() < original_len {
+                            if tags.is_empty() {
+                                metadata.tags = None;
+                            }
+                            if let Ok(json_string) = serde_json::to_string_pretty(&metadata) {
+                                if fs::write(path, json_string).is_ok() {
+                                    updated_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(updated_count)
+}
+
 #[tauri::command]
 pub fn clear_all_tags(root_path: String) -> Result<usize, String> {
     if !Path::new(&root_path).exists() {
@@ -399,7 +520,8 @@ pub fn clear_all_tags(root_path: String) -> Result<usize, String> {
                 if let Ok(mut metadata) = serde_json::from_str::<ImageMetadata>(&content) {
                     if let Some(tags) = &mut metadata.tags {
                         let original_len = tags.len();
-                        tags.retain(|tag| tag.starts_with(COLOR_TAG_PREFIX)); // don't remove color tags, just AI tags
+                        // Keep only color tags, remove AI and user tags
+                        tags.retain(|tag| tag.starts_with(COLOR_TAG_PREFIX));
 
                         if tags.len() < original_len {
                             if tags.is_empty() {

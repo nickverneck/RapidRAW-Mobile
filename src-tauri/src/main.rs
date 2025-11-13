@@ -2766,7 +2766,10 @@ fn main() {
             file_management::set_color_label_for_paths,
             file_management::import_files,
             tagging::start_background_indexing,
+            tagging::clear_ai_tags,
             tagging::clear_all_tags,
+            tagging::add_tag_for_paths,
+            tagging::remove_tag_for_paths,
             culling::cull_images,
         ])
         .run(tauri::generate_context!())

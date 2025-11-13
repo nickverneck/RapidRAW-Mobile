@@ -1,11 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, FC } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
-import { Option, OPTION_SEPARATOR } from '../components/ui/AppProperties';
+import { Option as AppOption, OPTION_SEPARATOR } from '../components/ui/AppProperties';
+import clsx from 'clsx';
 
 interface ContextMenuProviderProps {
   children: any;
+}
+
+interface Option extends AppOption {
+  customComponent?: FC<any>;
+  customProps?: any;
 }
 
 interface MenuItemProps {
@@ -38,13 +44,16 @@ function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, p
     setIsClient(true);
   }, []);
 
+  const customOption = options.length === 1 && options[0].customComponent ? options[0] : null;
+  const CustomComponent = customOption?.customComponent;
+
   useLayoutEffect(() => {
     if (isClient && parentRef?.current && menuRef?.current) {
       const parentRect = parentRef.current.getBoundingClientRect();
       const menuEl = menuRef.current;
 
-      const subMenuWidth = menuEl?.offsetWidth;
-      const subMenuHeight = menuEl?.offsetHeight;
+      const subMenuWidth = menuEl?.offsetWidth || 256;
+      const subMenuHeight = menuEl?.offsetHeight || 100;
 
       if (subMenuWidth === 0 || subMenuHeight === 0) {
         return;
@@ -84,15 +93,22 @@ function SubMenu({ cancelCloseSubmenu, closeSubmenu, hideContextMenu, options, p
       style={style}
       transition={{ duration: 0.1, ease: 'easeOut' }}
     >
-      <div className="bg-surface/90 backdrop-blur-md rounded-lg shadow-xl p-2 w-56" role="menu">
-        {options.map((option: any, index: number) => (
-          <MenuItem
-            hideContextMenu={hideContextMenu}
-            key={index}
-            option={option}
-            path={[...parentPath, index]}
-          />
-        ))}
+      <div
+        className={clsx('backdrop-blur-md rounded-lg shadow-xl', !CustomComponent && 'bg-surface/90 p-2 w-56')}
+        role="menu"
+      >
+        {CustomComponent && customOption ? (
+          <CustomComponent {...customOption.customProps} hideContextMenu={hideContextMenu} />
+        ) : (
+          options.map((option: any, index: number) => (
+            <MenuItem
+              hideContextMenu={hideContextMenu}
+              key={index}
+              option={option}
+              path={[...parentPath, index]}
+            />
+          ))
+        )}
       </div>
     </motion.div>
   );

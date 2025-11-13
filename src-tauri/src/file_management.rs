@@ -224,6 +224,20 @@ impl Default for CopyPasteSettings {
     }
 }
 
+fn default_tagging_shortcuts_option() -> Option<Vec<String>> {
+    Some(vec![
+        "portrait".to_string(),
+        "landscape".to_string(),
+        "architecture".to_string(),
+        "travel".to_string(),
+        "street".to_string(),
+        "family".to_string(),
+        "nature".to_string(),
+        "food".to_string(),
+        "event".to_string(),
+    ])
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -244,6 +258,8 @@ pub struct AppSettings {
     pub ui_visibility: Option<Value>,
     pub enable_ai_tagging: Option<bool>,
     pub tagging_thread_count: Option<u32>,
+    #[serde(default = "default_tagging_shortcuts_option")]
+    pub tagging_shortcuts: Option<Vec<String>>,
     pub thumbnail_size: Option<String>,
     pub thumbnail_aspect_ratio: Option<String>,
     pub ai_provider: Option<String>,
@@ -296,6 +312,7 @@ impl Default for AppSettings {
             ui_visibility: None,
             enable_ai_tagging: Some(false),
             tagging_thread_count: Some(3),
+            tagging_shortcuts: default_tagging_shortcuts_option(),
             thumbnail_size: Some("medium".to_string()),
             thumbnail_aspect_ratio: Some("cover".to_string()),
             ai_provider: Some("cpu".to_string()),

@@ -6,6 +6,7 @@ export const GLOBAL_KEYS = [' ', 'ArrowUp', 'ArrowDown', 'f', 'b', 'w'];
 export const OPTION_SEPARATOR = 'separator';
 
 export enum Invokes {
+  AddTagForPaths = 'add_tag_for_paths',
   ApplyAdjustments = 'apply_adjustments',
   ApplyAdjustmentsToPaths = 'apply_adjustments_to_paths',
   ApplyAutoAdjustmentsToPaths = 'apply_auto_adjustments_to_paths',
@@ -14,6 +15,7 @@ export enum Invokes {
   CancelExport = 'cancel_export',
   CheckComfyuiStatus = 'check_comfyui_status',
   ClearAllSidecars = 'clear_all_sidecars',
+  ClearAiTags = 'clear_ai_tags',
   ClearAllTags = 'clear_all_tags',
   ClearThumbnailCache = 'clear_thumbnail_cache',
   CopyFiles = 'copy_files',
@@ -51,6 +53,7 @@ export enum Invokes {
   LoadSettings = 'load_settings',
   MoveFiles = 'move_files',
   ReadExifForPaths = 'read_exif_for_paths',
+  RemoveTagForPaths = 'remove_tag_for_paths',
   RenameFiles = 'rename_files',
   RenameFolder = 'rename_folder',
   ResetAdjustmentsForPaths = 'reset_adjustments_for_paths',
@@ -168,7 +171,7 @@ export interface ImageFile {
   is_edited: boolean;
   modified: number;
   path: string;
-  tags: Array<string>;
+  tags: Array<string> | null;
   exif: { [key: string]: string } | null;
 }
 

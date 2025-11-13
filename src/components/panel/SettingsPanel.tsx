@@ -12,6 +12,8 @@ import {
   Trash2,
   Wifi,
   WifiOff,
+  Plus,
+  X,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -112,11 +114,11 @@ const resolutions: Array<OptionItem> = [
 ];
 
 const backendOptions: OptionItem[] = [
-    { value: 'auto', label: 'Auto' },
-    { value: 'vulkan', label: 'Vulkan' },
-    { value: 'dx12', label: 'DirectX 12' },
-    { value: 'metal', label: 'Metal' },
-    { value: 'gl', label: 'OpenGL' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'vulkan', label: 'Vulkan' },
+  { value: 'dx12', label: 'DirectX 12' },
+  { value: 'metal', label: 'Metal' },
+  { value: 'gl', label: 'OpenGL' },
 ];
 
 const KeybindItem = ({ keys, description }: KeybindItemProps) => (
@@ -154,7 +156,7 @@ const DataActionItem = ({
   title,
 }: DataActionItemProps) => (
   <div className="pb-6 border-b border-border-color last:border-b-0 last:pb-0">
-    <h3 className="font-medium text-text-primary mb-1">{title}</h3>
+    <h3 className="text-sm font-medium text-text-primary mb-2">{title}</h3>
     <p className="text-xs text-text-secondary mb-3">{description}</p>
     <Button variant="destructive" onClick={buttonAction} disabled={isProcessing || disabled}>
       {icon}
@@ -272,6 +274,8 @@ export default function SettingsPanel({
   const [clearMessage, setClearMessage] = useState('');
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [cacheClearMessage, setCacheClearMessage] = useState('');
+  const [isClearingAiTags, setIsClearingAiTags] = useState(false);
+  const [aiTagsClearMessage, setAiTagsClearMessage] = useState('');
   const [isClearingTags, setIsClearingTags] = useState(false);
   const [tagsClearMessage, setTagsClearMessage] = useState('');
   const [confirmModalState, setConfirmModalState] = useState<ConfirmModalState>({
@@ -289,6 +293,7 @@ export default function SettingsPanel({
   const [aiProvider, setAiProvider] = useState(appSettings?.aiProvider || 'cpu');
   const [comfyUiAddress, setComfyUiAddress] = useState<string>(appSettings?.comfyuiAddress || '');
   const [comfyConfig, setComfyConfig] = useState(appSettings?.comfyuiWorkflowConfig || DEFAULT_WORKFLOW_CONFIG);
+  const [newShortcut, setNewShortcut] = useState('');
 
   const [processingSettings, setProcessingSettings] = useState({
     editorPreviewResolution: appSettings?.editorPreviewResolution || 1920,
@@ -402,12 +407,42 @@ export default function SettingsPanel({
     });
   };
 
+  const executeClearAiTags = async () => {
+    setIsClearingAiTags(true);
+    setAiTagsClearMessage('Clearing AI tags from all sidecar files...');
+    try {
+      const count: number = await invoke(Invokes.ClearAiTags, { rootPath: effectiveRootPath });
+      setAiTagsClearMessage(`${count} files updated. AI tags removed.`);
+      onLibraryRefresh();
+    } catch (err: any) {
+      console.error('Failed to clear AI tags:', err);
+      setAiTagsClearMessage(`Error: ${err}`);
+    } finally {
+      setTimeout(() => {
+        setIsClearingAiTags(false);
+        setAiTagsClearMessage('');
+      }, EXECUTE_TIMEOUT);
+    }
+  };
+
+  const handleClearAiTags = () => {
+    setConfirmModalState({
+      confirmText: 'Clear AI Tags',
+      confirmVariant: 'destructive',
+      isOpen: true,
+      message:
+        'Are you sure you want to remove all AI-generated tags from all images in the current root folder?\n\nThis will not affect user-added tags. This action cannot be undone.',
+      onConfirm: executeClearAiTags,
+      title: 'Confirm AI Tag Deletion',
+    });
+  };
+
   const executeClearTags = async () => {
     setIsClearingTags(true);
-    setTagsClearMessage('Clearing AI tags from all sidecar files...');
+    setTagsClearMessage('Clearing all tags from sidecar files...');
     try {
       const count: number = await invoke(Invokes.ClearAllTags, { rootPath: effectiveRootPath });
-      setTagsClearMessage(`${count} files updated. Tags removed.`);
+      setTagsClearMessage(`${count} files updated. All non-color tags removed.`);
       onLibraryRefresh();
     } catch (err: any) {
       console.error('Failed to clear tags:', err);
@@ -426,9 +461,9 @@ export default function SettingsPanel({
       confirmVariant: 'destructive',
       isOpen: true,
       message:
-        'Are you sure you want to remove all AI-generated tags from all images in the current root folder?\n\nThis action cannot be undone.',
+        'Are you sure you want to remove all AI-generated and user-added tags from all images in the current root folder?\n\nThis action cannot be undone.',
       onConfirm: executeClearTags,
-      title: 'Confirm AI Tag Deletion',
+      title: 'Confirm All Tag Deletion',
     });
   };
 
@@ -500,6 +535,29 @@ export default function SettingsPanel({
     setConfirmModalState({ ...confirmModalState, isOpen: false });
   };
 
+  const handleAddShortcut = () => {
+    const shortcuts = appSettings?.taggingShortcuts || [];
+    const newTag = newShortcut.trim().toLowerCase();
+    if (newTag && !shortcuts.includes(newTag)) {
+      const newShortcuts = [...shortcuts, newTag].sort();
+      onSettingsChange({ ...appSettings, taggingShortcuts: newShortcuts });
+      setNewShortcut('');
+    }
+  };
+
+  const handleRemoveShortcut = (shortcutToRemove: string) => {
+    const shortcuts = appSettings?.taggingShortcuts || [];
+    const newShortcuts = shortcuts.filter((s: string) => s !== shortcutToRemove);
+    onSettingsChange({ ...appSettings, taggingShortcuts: newShortcuts });
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAddShortcut();
+    }
+  };
+
   return (
     <>
       <ConfirmModal {...confirmModalState} onClose={closeConfirmModal} />
@@ -516,39 +574,6 @@ export default function SettingsPanel({
           <h1 className="text-3xl font-bold text-accent">Settings</h1>
         </header>
         <div className="flex-1 overflow-y-auto pr-2 -mr-2 space-y-8 custom-scrollbar">
-          {/* commented out until the endpoint is available and production ready
-          <div className="p-6 bg-surface rounded-xl shadow-md">
-            <h2 className="text-xl font-semibold mb-6 text-accent">Account</h2>
-            <div className="flex items-center justify-between">
-              <div>
-                <SignedIn>
-                  <p className="text-sm text-text-primary">
-                    Signed in as <span className="font-semibold">{user?.primaryEmailAddress?.emailAddress}</span>
-                  </p>
-                  {user?.publicMetadata?.plan === 'pro' && (
-                    <p className="text-xs text-accent flex items-center gap-1.5 mt-1">
-                      <Sparkles size={14} /> Pro Member
-                    </p>
-                  )}
-                </SignedIn>
-                <SignedOut>
-                  <p className="text-sm text-text-secondary">Sign in to access generative cloud features.</p>
-                </SignedOut>
-              </div>
-              <div className="flex items-center gap-4">
-                <SignedOut>
-                  <SignInButton mode="modal">
-                    <Button>Sign In</Button>
-                  </SignInButton>
-                </SignedOut>
-                <SignedIn>
-                  <UserButton afterSignOutUrl="/" />
-                </SignedIn>
-              </div>
-            </div>
-          </div> 
-          */}
-
           <div className="p-6 bg-surface rounded-xl shadow-md">
             <h2 className="text-xl font-semibold mb-6 text-accent">General Settings</h2>
             <div className="space-y-6">
@@ -569,18 +594,6 @@ export default function SettingsPanel({
                   id="adaptive-theme-toggle"
                   label="Adaptive Editor Theme"
                   onChange={(checked) => onSettingsChange({ ...appSettings, adaptiveEditorTheme: checked })}
-                />
-              </SettingItem>
-
-              <SettingItem
-                description="Enables automatic image tagging using an AI (CLIP) model. This will download an additional model file (~600MB). Tags are used for searching a folder."
-                label="AI Tagging"
-              >
-                <Switch
-                  checked={appSettings?.enableAiTagging ?? false}
-                  id="ai-tagging-toggle"
-                  label="Automatic AI Tagging"
-                  onChange={(checked) => onSettingsChange({ ...appSettings, enableAiTagging: checked })}
                 />
               </SettingItem>
 
@@ -607,6 +620,91 @@ export default function SettingsPanel({
                   onChange={handleSetTransparent}
                 />
               </SettingItem>
+            </div>
+          </div>
+
+          <div className="p-6 bg-surface rounded-xl shadow-md">
+            <h2 className="text-xl font-semibold mb-6 text-accent">Tagging</h2>
+            <div className="space-y-6">
+              <SettingItem
+                description="Enables automatic image tagging using an AI (CLIP) model. This will download an additional model and impact performance while browsing folders. Tags are used for searching a folder."
+                label="AI Tagging"
+              >
+                <Switch
+                  checked={appSettings?.enableAiTagging ?? false}
+                  id="ai-tagging-toggle"
+                  label="Automatic AI Tagging"
+                  onChange={(checked) => onSettingsChange({ ...appSettings, enableAiTagging: checked })}
+                />
+              </SettingItem>
+              <SettingItem
+                label="Tagging Shortcuts"
+                description="A list of tags that will appear as shortcuts in the tagging context menu."
+              >
+                <div>
+                  {(appSettings?.taggingShortcuts || []).length > 0 && (
+                    <div className="flex flex-wrap gap-2 p-2 bg-bg-primary rounded-md min-h-[40px] border border-border-color mb-2">
+                      {(appSettings?.taggingShortcuts || []).map((shortcut: string) => (
+                        <div
+                          key={shortcut}
+                          className="flex items-center gap-1 bg-surface text-text-primary text-sm font-medium px-2 py-1 rounded"
+                        >
+                          <span>{shortcut}</span>
+                          <button
+                            onClick={() => handleRemoveShortcut(shortcut)}
+                            className="rounded-full hover:bg-black/20 p-0.5"
+                            title={`Remove shortcut "${shortcut}"`}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      value={newShortcut}
+                      onChange={(e) => setNewShortcut(e.target.value)}
+                      onKeyDown={handleInputKeyDown}
+                      placeholder="Add a new shortcut..."
+                      className="pr-10"
+                    />
+                    <button
+                      onClick={handleAddShortcut}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-text-secondary hover:text-text-primary hover:bg-surface"
+                      title="Add shortcut"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                </div>
+              </SettingItem>
+
+              <div className="pt-6 border-t border-border-color">
+                <div className="space-y-6">
+                  <DataActionItem
+                    buttonAction={handleClearAiTags}
+                    buttonText="Clear AI Tags"
+                    description="This will remove all AI-generated tags from your .rrdata files in the current root folder. User-added tags will be kept."
+                    disabled={!effectiveRootPath}
+                    icon={<Trash2 size={16} className="mr-2" />}
+                    isProcessing={isClearingAiTags}
+                    message={aiTagsClearMessage}
+                    title="Clear AI Tags"
+                  />
+                  <DataActionItem
+                    buttonAction={handleClearTags}
+                    buttonText="Clear All Tags"
+                    description="This will remove all AI-generated and user-added tags from your .rrdata files in the current root folder. Color labels will be kept."
+                    disabled={!effectiveRootPath}
+                    icon={<Trash2 size={16} className="mr-2" />}
+                    isProcessing={isClearingTags}
+                    message={tagsClearMessage}
+                    title="Clear All Tags"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1120,17 +1218,6 @@ export default function SettingsPanel({
                 isProcessing={isClearing}
                 message={clearMessage}
                 title="Clear All Sidecar Files"
-              />
-
-              <DataActionItem
-                buttonAction={handleClearTags}
-                buttonText="Clear All Tags"
-                description="This will remove all AI-generated tags from your .rrdata files in the current root folder."
-                disabled={!effectiveRootPath}
-                icon={<Trash2 size={16} className="mr-2" />}
-                isProcessing={isClearingTags}
-                message={tagsClearMessage}
-                title="Clear All Tags"
               />
 
               <DataActionItem

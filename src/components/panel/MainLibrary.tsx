@@ -1303,19 +1303,12 @@ export default function MainLibrary({
           onContextMenu={onEmptyAreaContextMenu}
         >
           <Search className="h-12 w-12 text-secondary mb-4" />
-          {appSettings?.enableAiTagging ? (
-            <>
-              <p className="text-lg font-semibold">No Results Found</p>
-              <p className="text-sm mt-2">Could not find an image based on filename or AI tags.</p>
-            </>
-          ) : (
-            <>
-              <p className="text-lg font-semibold">No Results Found</p>
-              <p className="text-sm mt-2 max-w-sm">
-                Filename not found. For more accurate general search, please enable automatic tagging in Settings.
-              </p>
-            </>
-          )}
+          <p className="text-lg font-semibold">No Results Found</p>
+          <p className="text-sm mt-2 max-w-sm">
+            Could not find an image based on filename or tags.
+            {!appSettings?.enableAiTagging &&
+              ' For a more comprehensive search, enable automatic tagging in Settings.'}
+          </p>
         </div>
       ) : (
         <div

@@ -25,6 +25,7 @@ import {
   RotateCcw,
   Star,
   Settings,
+  Palette,
   Tag,
   Trash2,
   Undo,
@@ -52,6 +53,7 @@ import LibraryExportPanel from './components/panel/right/LibraryExportPanel';
 import MasksPanel from './components/panel/right/MasksPanel';
 import BottomBar from './components/panel/BottomBar';
 import { ContextMenuProvider, useContextMenu } from './context/ContextMenuContext';
+import TaggingSubMenu from './context/TaggingSubMenu';
 import CreateFolderModal from './components/modals/CreateFolderModal';
 import RenameFolderModal from './components/modals/RenameFolderModal';
 import ConfirmModal from './components/modals/ConfirmModal';
@@ -865,10 +867,8 @@ function App() {
               return true;
             }
 
-            if (appSettings?.enableAiTagging) {
-              if (image.tags && image.tags.some((tag: string) => tag.toLowerCase().includes(query))) {
-                return true;
-              }
+            if (image.tags && image.tags.some((tag: string) => tag.toLowerCase().includes(query))) {
+              return true;
             }
 
             return false;
@@ -1731,6 +1731,44 @@ function App() {
     },
     [multiSelectedPaths, selectedImage, libraryActivePath, imageList],
   );
+
+  const getCommonTags = useCallback((paths: string[]): { tag: string; isUser: boolean }[] => {
+    if (paths.length === 0) return [];
+    const imageFiles = imageList.filter((img) => paths.includes(img.path));
+    if (imageFiles.length === 0) return [];
+
+    const allTagsSets = imageFiles.map((img) => {
+      const tagsWithPrefix = (img.tags || []).filter((t) => !t.startsWith('color:'));
+      return new Set(tagsWithPrefix);
+    });
+
+    if (allTagsSets.length === 0) return [];
+
+    const commonTagsWithPrefix = allTagsSets.reduce((intersection, currentSet) => {
+      return new Set([...intersection].filter((tag) => currentSet.has(tag)));
+    });
+
+    return Array.from(commonTagsWithPrefix)
+      .map((tag) => ({
+        tag: tag.startsWith('user:') ? tag.substring(5) : tag,
+        isUser: tag.startsWith('user:'),
+      }))
+      .sort((a, b) => a.tag.localeCompare(b.tag));
+  }, [imageList]);
+
+  const handleTagsChanged = useCallback((changedPaths: string[], newTags: { tag: string; isUser: boolean }[]) => {
+    setImageList((prevList) =>
+      prevList.map((image) => {
+        if (changedPaths.includes(image.path)) {
+          const colorTags = (image.tags || []).filter((t) => t.startsWith('color:'));
+          const prefixedNewTags = newTags.map((t) => (t.isUser ? `user:${t.tag}` : t.tag));
+          const finalTags = [...colorTags, ...prefixedNewTags].sort();
+          return { ...image, tags: finalTags.length > 0 ? finalTags : null };
+        }
+        return image;
+      }),
+    );
+  }, [setImageList]);
 
   const closeConfirmModal = () => setConfirmModalState({ ...confirmModalState, isOpen: false });
 
@@ -2729,6 +2767,10 @@ function App() {
   const handleEditorContextMenu = (event: any) => {
     event.preventDefault();
     event.stopPropagation();
+    if (!selectedImage) return;
+
+    const commonTags = getCommonTags([selectedImage.path]);
+
     const options: Array<Option> = [
       { label: 'Undo', icon: Undo, onClick: undo, disabled: !canUndo },
       { label: 'Redo', icon: Redo, onClick: redo, disabled: !canRedo },
@@ -2752,7 +2794,7 @@ function App() {
       },
       {
         label: 'Set Color Label',
-        icon: Tag,
+        icon: Palette,
         submenu: [
           { label: 'No Label', onClick: () => handleSetColorLabel(null) },
           ...COLOR_LABELS.map((label: Color) => ({
@@ -2760,6 +2802,21 @@ function App() {
             color: label.color,
             onClick: () => handleSetColorLabel(label.name),
           })),
+        ],
+      },
+      {
+        label: 'Tagging',
+        icon: Tag,
+        submenu: [
+          {
+            customComponent: TaggingSubMenu,
+            customProps: {
+              paths: [selectedImage.path],
+              initialTags: commonTags,
+              onTagsChanged: handleTagsChanged,
+              appSettings,
+            },
+          },
         ],
       },
       { type: OPTION_SEPARATOR },
@@ -2792,6 +2849,8 @@ function App() {
     } else {
       finalSelection = multiSelectedPaths;
     }
+
+    const commonTags = getCommonTags(finalSelection);
 
     const selectionCount = finalSelection.length;
     const isSingleSelection = selectionCount === 1;
@@ -3011,7 +3070,7 @@ function App() {
       },
       {
         label: 'Set Color Label',
-        icon: Tag,
+        icon: Palette,
         submenu: [
           { label: 'No Label', onClick: () => handleSetColorLabel(null, finalSelection) },
           ...COLOR_LABELS.map((label: Color) => ({
@@ -3019,6 +3078,21 @@ function App() {
             color: label.color,
             onClick: () => handleSetColorLabel(label.name, finalSelection),
           })),
+        ],
+      },
+      {
+        label: 'Tagging',
+        icon: Tag,
+        submenu: [
+          {
+            customComponent: TaggingSubMenu,
+            customProps: {
+              paths: finalSelection,
+              initialTags: commonTags,
+              onTagsChanged: handleTagsChanged,
+              appSettings,
+            },
+          },
         ],
       },
       { type: OPTION_SEPARATOR },
