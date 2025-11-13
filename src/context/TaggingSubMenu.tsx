@@ -142,7 +142,7 @@ export default function TaggingSubMenu({
 
       {shortcuts.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-text-primary px-1 pb-1">SHORTCUTS</p>
+          <p className="text-xs font-semibold text-text-primary px-1 py-1">SHORTCUTS</p>
           <div className="flex flex-wrap gap-1">
             {shortcuts.map((shortcut: string) => (
               <button

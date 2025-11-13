@@ -65,6 +65,12 @@ interface KeyValueLabel {
   value?: number;
 }
 
+interface SearchCriteria {
+  tags: string[];
+  text: string;
+  mode: 'AND' | 'OR';
+}
+
 interface MainLibraryProps {
   activePath: string | null;
   aiModelDownloadStatus: string | null;
@@ -94,10 +100,10 @@ interface MainLibraryProps {
   onThumbnailAspectRatioChange(aspectRatio: ThumbnailAspectRatio): void;
   onThumbnailSizeChange(size: ThumbnailSize): void;
   rootPath: string | null;
-  searchQuery: string;
+  searchCriteria: SearchCriteria;
   setFilterCriteria(criteria: FilterCriteria): void;
   setLibraryScrollTop(scrollTop: number): void;
-  setSearchQuery(query: string): void;
+  setSearchCriteria(criteria: SearchCriteria | ((prev: SearchCriteria) => SearchCriteria)): void;
   setSortCriteria(criteria: SortCriteria): void;
   sortCriteria: SortCriteria;
   theme: string;
@@ -110,8 +116,8 @@ interface MainLibraryProps {
 interface SearchInputProps {
   indexingProgress: Progress;
   isIndexing: boolean;
-  searchQuery: string;
-  setSearchQuery(query: string): void;
+  searchCriteria: SearchCriteria;
+  setSearchCriteria(criteria: SearchCriteria | ((prev: SearchCriteria) => SearchCriteria)): void;
 }
 
 interface SortOptionsProps {
@@ -204,10 +210,14 @@ const customOuterElement = forwardRef((props: any, ref: any) => (
 ));
 customOuterElement.displayName = 'CustomOuterElement';
 
-function SearchInput({ indexingProgress, isIndexing, searchQuery, setSearchQuery }: SearchInputProps) {
+function SearchInput({ indexingProgress, isIndexing, searchCriteria, setSearchCriteria }: SearchInputProps) {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { tags, text, mode } = searchCriteria;
+
+  const [contentWidth, setContentWidth] = useState(0);
 
   useEffect(() => {
     if (isSearchActive) {
@@ -217,7 +227,7 @@ function SearchInput({ indexingProgress, isIndexing, searchQuery, setSearchQuery
 
   useEffect(() => {
     function handleClickOutside(event: any) {
-      if (containerRef.current && !containerRef.current.contains(event.target) && !searchQuery) {
+      if (containerRef.current && !containerRef.current.contains(event.target) && tags.length === 0 && !text) {
         setIsSearchActive(false);
       }
     }
@@ -225,68 +235,190 @@ function SearchInput({ indexingProgress, isIndexing, searchQuery, setSearchQuery
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [searchQuery]);
+  }, [tags, text]);
 
-  const isActive = isSearchActive || !!searchQuery;
+  useEffect(() => {
+    if (contentRef.current) {
+      const timer = setTimeout(() => {
+        if (contentRef.current) {
+          setContentWidth(contentRef.current.scrollWidth);
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [tags, text, isSearchActive]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchCriteria((prev) => ({ ...prev, text: e.target.value }));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.key === ',' || e.key === 'Enter') && text.trim()) {
+      e.preventDefault();
+      setSearchCriteria((prev) => ({
+        ...prev,
+        tags: [...prev.tags, text.trim()],
+        text: '',
+      }));
+    } else if (e.key === 'Backspace' && !text && tags.length > 0) {
+      e.preventDefault();
+      const lastTag = tags[tags.length - 1];
+      setSearchCriteria((prev) => ({
+        ...prev,
+        tags: prev.tags.slice(0, -1),
+        text: lastTag,
+      }));
+    }
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    setSearchCriteria((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((tag) => tag !== tagToRemove),
+    }));
+  };
+
+  const clearSearch = () => {
+    setSearchCriteria({ tags: [], text: '', mode: 'OR' });
+    setIsSearchActive(false);
+    inputRef.current?.blur();
+  };
+
+  const toggleMode = () => {
+    setSearchCriteria((prev) => ({
+      ...prev,
+      mode: prev.mode === 'AND' ? 'OR' : 'AND',
+    }));
+  };
+
+  const isActive = isSearchActive || tags.length > 0 || !!text;
   const placeholderText =
     isIndexing && indexingProgress.total > 0
       ? `Indexing... (${indexingProgress.current}/${indexingProgress.total})`
       : isIndexing
       ? 'Indexing Images...'
-      : 'Search Images';
+      : tags.length > 0
+      ? 'Add another tag...'
+      : 'Search by tag or filename...';
+
+  const INACTIVE_WIDTH = 48;
+  const PADDING_AND_ICONS_WIDTH = 105;
+  const MAX_WIDTH = 640;
+
+  const calculatedWidth = Math.min(MAX_WIDTH, contentWidth + PADDING_AND_ICONS_WIDTH);
 
   return (
     <motion.div
-      animate={{ width: isActive ? '14rem' : '3rem' }}
+      animate={{ width: isActive ? calculatedWidth : INACTIVE_WIDTH }}
       className="relative flex items-center bg-surface rounded-md h-12"
       initial={false}
       layout
       ref={containerRef}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+      onClick={() => inputRef.current?.focus()}
     >
       <button
-        className="absolute left-0 top-0 h-12 w-12 flex items-center justify-center text-text-primary z-10"
-        onClick={() => {
+        className="absolute left-0 top-0 h-12 w-12 flex items-center justify-center text-text-primary z-10 flex-shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
           if (!isActive) {
             setIsSearchActive(true);
-          } else {
-            inputRef.current?.focus();
           }
+          inputRef.current?.focus();
         }}
-        title="Search Tags"
+        title="Search"
       >
         <Search className="w-4 h-4" />
       </button>
-      <input
-        className="w-full h-full pl-12 pr-10 bg-transparent text-text-primary placeholder-text-secondary border border-transparent rounded-md focus:outline-none focus:ring-2 focus:ring-accent transition-opacity"
-        disabled={isIndexing}
-        onBlur={() => {
-          if (!searchQuery) {
-            setIsSearchActive(false);
-          }
-        }}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        onFocus={() => setIsSearchActive(true)}
-        placeholder={placeholderText}
-        ref={inputRef}
-        style={{ opacity: isActive ? 1 : 0, pointerEvents: isActive ? 'auto' : 'none' }}
-        type="text"
-        value={searchQuery}
-      />
-      {searchQuery && !isIndexing && isActive && (
-        <button
-          onClick={() => setSearchQuery('')}
-          className="absolute inset-y-0 right-0 flex items-center pr-3 text-text-secondary hover:text-text-primary"
-          title="Clear search"
-        >
-          <X className="h-5 w-5" />
-        </button>
-      )}
-      {isIndexing && isActive && (
-        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-          <Loader2 className="h-5 w-5 text-text-secondary animate-spin" />
+
+      <div
+        className="flex items-center gap-1 pl-12 pr-16 w-full h-full overflow-x-hidden"
+        style={{ opacity: isActive ? 1 : 0, pointerEvents: isActive ? 'auto' : 'none', transition: 'opacity 0.2s' }}
+      >
+        <div ref={contentRef} className="flex items-center gap-2 h-full flex-nowrap min-w-[280px]">
+          {tags.map((tag) => (
+            <motion.div
+              key={tag}
+              layout
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              className="flex items-center gap-1 bg-bg-primary text-text-primary text-xs font-medium px-2 py-1 rounded group cursor-pointer flex-shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeTag(tag);
+              }}
+            >
+              <span>{tag}</span>
+              <span className="rounded-full group-hover:bg-black/20 p-0.5 transition-colors">
+                <X size={12} />
+              </span>
+            </motion.div>
+          ))}
+          <input
+            className="flex-grow w-full h-full bg-transparent text-text-primary placeholder-text-secondary border-none focus:outline-none"
+            disabled={isIndexing}
+            onBlur={() => {
+              if (tags.length === 0 && !text) {
+                setIsSearchActive(false);
+              }
+            }}
+            onChange={handleInputChange}
+            onFocus={() => setIsSearchActive(true)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholderText}
+            ref={inputRef}
+            type="text"
+            value={text}
+          />
         </div>
-      )}
+      </div>
+
+      <div
+        className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2"
+        style={{ opacity: isActive ? 1 : 0, pointerEvents: isActive ? 'auto' : 'none', transition: 'opacity 0.2s' }}
+      >
+        <AnimatePresence>
+          {text.trim().length > 0 &&
+            tags.length === 0 &&
+            text.trim().length < 6 &&
+            !isIndexing && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.15 }}
+                className="flex-shrink-0 bg-bg-primary text-text-secondary text-xs px-2 py-1 rounded-md whitespace-nowrap"
+              >
+                Separate tags with <kbd className="font-sans font-semibold">,</kbd>
+              </motion.div>
+            )}
+        </AnimatePresence>
+
+        {tags.length > 0 && (
+          <button
+            onClick={toggleMode}
+            className="p-1.5 rounded-md text-xs font-semibold hover:bg-bg-primary w-10 flex-shrink-0"
+            title={`Match ${mode === 'AND' ? 'ALL' : 'ANY'} tags`}
+          >
+            {mode}
+          </button>
+        )}
+        {(tags.length > 0 || text) && !isIndexing && (
+          <button
+            onClick={clearSearch}
+            className="p-1.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-bg-primary flex-shrink-0"
+            title="Clear search"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
+        {isIndexing && (
+          <div className="flex items-center pr-1 pointer-events-none flex-shrink-0">
+            <Loader2 className="h-5 w-5 text-text-secondary animate-spin" />
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -850,10 +982,10 @@ export default function MainLibrary({
   onThumbnailAspectRatioChange,
   onThumbnailSizeChange,
   rootPath,
-  searchQuery,
+  searchCriteria,
   setFilterCriteria,
   setLibraryScrollTop,
-  setSearchQuery,
+  setSearchCriteria,
   setSortCriteria,
   sortCriteria,
   theme,
@@ -1192,8 +1324,8 @@ export default function MainLibrary({
           <SearchInput
             indexingProgress={indexingProgress}
             isIndexing={isIndexing}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
+            searchCriteria={searchCriteria}
+            setSearchCriteria={setSearchCriteria}
           />
           <ViewOptionsDropdown
             filterCriteria={filterCriteria}
@@ -1265,7 +1397,7 @@ export default function MainLibrary({
                   }}
                   key={`${sortCriteria.key}-${sortCriteria.order}-${filterCriteria.rating}-${
                     filterCriteria.rawStatus || RawStatus.All
-                  }-${searchQuery}`}
+                  }-${JSON.stringify(searchCriteria)}`}
                   onScroll={({ scrollTop }) => setLibraryScrollTop(scrollTop)}
                   outerElementType={customOuterElement}
                   rowCount={rowCount}
@@ -1297,7 +1429,7 @@ export default function MainLibrary({
           </p>
           <p className="text-sm mt-2">This may take a moment.</p>
         </div>
-      ) : searchQuery ? (
+      ) : searchCriteria.tags.length > 0 || searchCriteria.text ? (
         <div
           className="flex-1 flex flex-col items-center justify-center text-text-secondary text-center"
           onContextMenu={onEmptyAreaContextMenu}

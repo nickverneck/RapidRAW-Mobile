@@ -326,7 +326,7 @@ export default function FolderTree({
                 placeholder="Search folders..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-surface border border-transparent rounded-md pl-9 pr-8 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full bg-surface border border-transparent rounded-md pl-9 pr-8 py-2 text-sm focus:outline-none"
               />
               {searchQuery && (
                 <button

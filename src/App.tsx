@@ -172,6 +172,12 @@ interface LutData {
   size: number;
 }
 
+interface SearchCriteria {
+  tags: string[];
+  text: string;
+  mode: 'AND' | 'OR';
+}
+
 const DEBUG = false;
 const REVOCATION_DELAY = 5000;
 
@@ -313,7 +319,11 @@ function App() {
   const [isPasted, setIsPasted] = useState(false);
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexingProgress, setIndexingProgress] = useState<Progress>({ current: 0, total: 0 });
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
+    tags: [],
+    text: '',
+    mode: 'OR',
+  });
   const [brushSettings, setBrushSettings] = useState<BrushSettings | null>({
     size: 50,
     feather: 50,
@@ -856,22 +866,38 @@ function App() {
       return true;
     });
 
+    const { tags: searchTags, text: searchText, mode: searchMode } = searchCriteria;
+    const lowerCaseSearchText = searchText.trim().toLowerCase();
+
     const filteredBySearch =
-      searchQuery.trim() === ''
+      searchTags.length === 0 && lowerCaseSearchText === ''
         ? filteredList
         : filteredList.filter((image: ImageFile) => {
-            const query = searchQuery.toLowerCase();
-            const filename = image?.path?.split(/[\\/]/)?.pop()?.toLowerCase();
+            const lowerCaseImageTags = (image.tags || []).map((t) => t.toLowerCase().replace('user:', ''));
+            const filename = image?.path?.split(/[\\/]/)?.pop()?.toLowerCase() || '';
 
-            if (filename?.includes(query)) {
-              return true;
+            let tagsMatch = true;
+            if (searchTags.length > 0) {
+              const lowerCaseSearchTags = searchTags.map((t) => t.toLowerCase());
+              if (searchMode === 'OR') {
+                tagsMatch = lowerCaseSearchTags.some((searchTag) =>
+                  lowerCaseImageTags.some((imgTag) => imgTag.includes(searchTag)),
+                );
+              } else {
+                tagsMatch = lowerCaseSearchTags.every((searchTag) =>
+                  lowerCaseImageTags.some((imgTag) => imgTag.includes(searchTag)),
+                );
+              }
             }
 
-            if (image.tags && image.tags.some((tag: string) => tag.toLowerCase().includes(query))) {
-              return true;
+            let textMatch = true;
+            if (lowerCaseSearchText !== '') {
+              textMatch =
+                filename.includes(lowerCaseSearchText) ||
+                lowerCaseImageTags.some((t) => t.includes(lowerCaseSearchText));
             }
 
-            return false;
+            return tagsMatch && textMatch;
           });
 
     const list = [...filteredBySearch];
@@ -972,7 +998,7 @@ function App() {
       return order === SortDirection.Ascending ? comparison : -comparison;
     });
     return list;
-  }, [imageList, sortCriteria, imageRatings, filterCriteria, supportedTypes, searchQuery, appSettings]);
+  }, [imageList, sortCriteria, imageRatings, filterCriteria, supportedTypes, searchCriteria, appSettings]);
 
   const applyAdjustments = useCallback(
     debounce((currentAdjustments) => {
@@ -1097,8 +1123,13 @@ function App() {
       if (newSettings.theme && newSettings.theme !== theme) {
         setTheme(newSettings.theme);
       }
+
+      const {
+        searchCriteria,
+        ...settingsToSave
+      } = newSettings as any;
       setAppSettings(newSettings);
-      invoke(Invokes.SaveSettings, { settings: newSettings }).catch((err) => {
+      invoke(Invokes.SaveSettings, { settings: settingsToSave }).catch((err) => {
         console.error('Failed to save settings:', err);
       });
     },
@@ -1315,7 +1346,7 @@ function App() {
     async (path: string | null, isNewRoot = false) => {
       await invoke('cancel_thumbnail_generation');
       setIsViewLoading(true);
-      setSearchQuery('');
+      setSearchCriteria({ tags: [], text: '', mode: 'OR' });
       try {
         setCurrentFolderPath(path);
         setActiveView('library');
@@ -3583,10 +3614,10 @@ function App() {
               onThumbnailAspectRatioChange={setThumbnailAspectRatio}
               onThumbnailSizeChange={setThumbnailSize}
               rootPath={rootPath}
-              searchQuery={searchQuery}
+              searchCriteria={searchCriteria}
+              setSearchCriteria={setSearchCriteria}
               setFilterCriteria={setFilterCriteria}
               setLibraryScrollTop={setLibraryScrollTop}
-              setSearchQuery={setSearchQuery}
               setSortCriteria={setSortCriteria}
               sortCriteria={sortCriteria}
               theme={theme}
