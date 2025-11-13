@@ -335,7 +335,7 @@ function SearchInput({ indexingProgress, isIndexing, searchCriteria, setSearchCr
         className="flex items-center gap-1 pl-12 pr-16 w-full h-full overflow-x-hidden"
         style={{ opacity: isActive ? 1 : 0, pointerEvents: isActive ? 'auto' : 'none', transition: 'opacity 0.2s' }}
       >
-        <div ref={contentRef} className="flex items-center gap-2 h-full flex-nowrap min-w-[280px]">
+        <div ref={contentRef} className="flex items-center gap-2 h-full flex-nowrap min-w-[340px]">
           {tags.map((tag) => (
             <motion.div
               key={tag}
@@ -1286,8 +1286,8 @@ export default function MainLibrary({
       className="flex-1 flex flex-col h-full min-w-0 bg-bg-secondary rounded-lg overflow-hidden"
       ref={libraryContainerRef}
     >
-      <header className="p-4 flex-shrink-0 flex justify-between items-center border-b border-border-color">
-        <div>
+      <header className="p-4 flex-shrink-0 flex justify-between items-center border-b border-border-color gap-4">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-primary">Library</h2>
           <div className="flex items-center gap-2">
             <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
@@ -1300,7 +1300,7 @@ export default function MainLibrary({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           {importState.status === Status.Importing && (
             <div className="flex items-center gap-2 text-sm text-accent animate-pulse">
               <FolderInput size={16} />
