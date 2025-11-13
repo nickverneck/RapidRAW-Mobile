@@ -129,7 +129,7 @@ export default function TaggingSubMenu({
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleInputKeyDown}
           placeholder="Add a tag..."
-          className="w-full bg-surface border border-border-color rounded-md pl-2 pr-8 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          className="w-full bg-surface border border-border-color rounded-md pl-2 pr-8 py-1.5 text-sm focus:outline-none"
         />
         <button
           onClick={() => handleAddTag(inputValue)}
