@@ -335,7 +335,7 @@ function SearchInput({ indexingProgress, isIndexing, searchCriteria, setSearchCr
         className="flex items-center gap-1 pl-12 pr-16 w-full h-full overflow-x-hidden"
         style={{ opacity: isActive ? 1 : 0, pointerEvents: isActive ? 'auto' : 'none', transition: 'opacity 0.2s' }}
       >
-        <div ref={contentRef} className="flex items-center gap-2 h-full flex-nowrap min-w-[340px]">
+        <div ref={contentRef} className="flex items-center gap-2 h-full flex-nowrap min-w-[320px]">
           {tags.map((tag) => (
             <motion.div
               key={tag}
