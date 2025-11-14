@@ -59,6 +59,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2025-10-14:** Open-with-file cross plattform compatibilty & single instance lock
 *   **2025-10-13:** Rewritten tagging system to support pill-like image tagging
 *   **2025-10-10:** Improved folder tree with search functionality
 *   **2025-10-08:** Added EXR file format support
@@ -68,11 +69,11 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2025-10-28:** Copy paste settings & brightness adjustment
 *   **2025-10-XX:** Working on tonemapping - ongoing...
 *   **2025-10-24:** Getting AgX right isn't as easy as it seems :=)
-*   **2025-10-22:** AgX tone mapping
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2025-10-22:** AgX tone mapping
 *   **2025-10-19:** Whole image mask component & organize mask components better
 *   **2025-10-19:** You can now apply presets to masks & improved auto adjustments
 *   **2025-10-17:** New centré adjustment, rawler now as a submodule & improved logger
