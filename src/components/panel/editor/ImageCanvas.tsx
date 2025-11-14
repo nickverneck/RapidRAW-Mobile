@@ -563,9 +563,7 @@ const ImageCanvas = memo(
         imagePathRef.current = currentImagePath;
         latestEditedUrlRef.current = null;
         const initialUrl = thumbnailUrl || originalUrl;
-        if (initialUrl) {
-          setLayers([{ id: initialUrl, url: initialUrl, opacity: 1 }]);
-        }
+        setLayers(initialUrl ? [{ id: initialUrl, url: initialUrl, opacity: 1 }] : []);
         return;
       }
 
@@ -958,24 +956,26 @@ const ImageCanvas = memo(
             }}
           >
             <div className="absolute inset-0 w-full h-full">
-              {layers.map((layer: ImageLayer) => (
-                <img
-                  alt={layer.id === ORIGINAL_LAYER ? 'Original' : 'Edited'}
-                  className="absolute inset-0 w-full h-full object-contain"
-                  key={layer.id}
-                  onTransitionEnd={() => handleTransitionEnd(layer.id)}
-                  src={layer.url ?? ''}
-                  style={{
-                    opacity: layer.opacity,
-                    transition: 'opacity 150ms ease-in-out',
-                    willChange: 'opacity',
-                    imageRendering: 'high-quality',
-                    WebkitImageRendering: 'high-quality',
-                    transform: 'translateZ(0)',
-                    backfaceVisibility: 'hidden',
-                  }}
-                />
-              ))}
+              {layers.map((layer: ImageLayer) =>
+                layer.url ? (
+                  <img
+                    alt={layer.id === ORIGINAL_LAYER ? ' ' : ' '}
+                    className="absolute inset-0 w-full h-full object-contain"
+                    key={layer.id}
+                    onTransitionEnd={() => handleTransitionEnd(layer.id)}
+                    src={layer.url}
+                    style={{
+                      opacity: layer.opacity,
+                      transition: 'opacity 150ms ease-in-out',
+                      willChange: 'opacity',
+                      imageRendering: 'high-quality',
+                      WebkitImageRendering: 'high-quality',
+                      transform: 'translateZ(0)',
+                      backfaceVisibility: 'hidden',
+                    }}
+                  />
+                ) : null,
+              )}
               {(isMasking || isAiEditing) && maskOverlayUrl && (
                 <img
                   alt="Mask Overlay"

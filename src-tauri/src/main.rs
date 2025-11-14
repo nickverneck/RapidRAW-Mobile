@@ -28,10 +28,12 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::panic;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::io::Write;
+use std::sync::Mutex;
 
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
@@ -48,8 +50,6 @@ use rayon::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::Write;
-use std::sync::Mutex;
 use tauri::{Emitter, Manager, ipc::Response};
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex as TokioMutex;
@@ -109,6 +109,7 @@ pub struct AppState {
     panorama_result: Arc<Mutex<Option<RgbImage>>>,
     indexing_task_handle: Mutex<Option<JoinHandle<()>>>,
     pub lut_cache: Mutex<HashMap<String, Arc<Lut>>>,
+    initial_file_path: Mutex<Option<String>>,
     thumbnail_cancellation_token: Arc<AtomicBool>,
 }
 
@@ -2611,14 +2612,49 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
     );
 }
 
+fn handle_file_open(app_handle: &tauri::AppHandle, path: PathBuf) {
+    if let Some(path_str) = path.to_str() {
+        if let Err(e) = app_handle.emit("open-with-file", path_str) {
+            log::error!("Failed to emit open-with-file event: {}", e);
+        }
+    }
+}
+
+#[tauri::command]
+fn frontend_ready(app_handle: tauri::AppHandle, state: tauri::State<AppState>) -> Result<(), String> {
+    if let Some(path) = state.initial_file_path.lock().unwrap().take() {
+        log::info!("Frontend is ready, emitting open-with-file for initial path: {}", &path);
+        handle_file_open(&app_handle, PathBuf::from(path));
+    }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            log::info!("New instance launched with args: {:?}", argv);
+            if argv.len() > 1 {
+                let path_str = &argv[1];
+                if let Err(e) = app.emit("open-with-file", path_str) {
+                    log::error!("Failed to emit open-with-file from single-instance handler: {}", e);
+                }
+            }
+        }))
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                if let Some(arg) = std::env::args().nth(1) {
+                     let state = app.state::<AppState>();
+                     log::info!("Windows/Linux initial open: Storing path {} for later.", &arg);
+                     *state.initial_file_path.lock().unwrap() = Some(arg);
+                }
+            }
+
             let app_handle = app.handle().clone();
             let settings: AppSettings = load_settings(app_handle.clone()).unwrap_or_default();
 
@@ -2696,6 +2732,7 @@ fn main() {
             panorama_result: Arc::new(Mutex::new(None)),
             indexing_task_handle: Mutex::new(None),
             lut_cache: Mutex::new(HashMap::new()),
+            initial_file_path: Mutex::new(None),
             thumbnail_cancellation_token: Arc::new(AtomicBool::new(false)),
         })
         .invoke_handler(tauri::generate_handler![
@@ -2728,6 +2765,7 @@ fn main() {
             generate_all_community_previews,
             save_temp_file,
             get_image_dimensions,
+            frontend_ready,
             image_processing::generate_histogram,
             image_processing::generate_waveform,
             image_processing::calculate_auto_adjustments,
@@ -2772,6 +2810,20 @@ fn main() {
             tagging::remove_tag_for_paths,
             culling::cull_images,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(#[allow(unused_variables)] |app_handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = event {
+                if let Some(url) = urls.first() {
+                    if let Ok(path) = url.to_file_path() {
+                        if let Some(path_str) = path.to_str() {
+                            let state = app_handle.state::<AppState>();
+                            *state.initial_file_path.lock().unwrap() = Some(path_str.to_string());
+                            log::info!("macOS initial open: Stored path {} for later.", path_str);
+                        }
+                    }
+                }
+            }
+        });
 }

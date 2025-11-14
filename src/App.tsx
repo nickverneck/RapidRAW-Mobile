@@ -206,6 +206,15 @@ const useDelayedRevokeBlobUrl = (url: string | null | undefined) => {
   }, []);
 };
 
+const getParentDir = (filePath: string): string => {
+  const separator = filePath.includes('/') ? '/' : '\\';
+  const lastSeparatorIndex = filePath.lastIndexOf(separator);
+  if (lastSeparatorIndex === -1) {
+    return '';
+  }
+  return filePath.substring(0, lastSeparatorIndex);
+};
+
 function App() {
   const [rootPath, setRootPath] = useState<string | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -243,6 +252,7 @@ function App() {
   const [showOriginal, setShowOriginal] = useState(false);
   const [isTreeLoading, setIsTreeLoading] = useState(false);
   const [isViewLoading, setIsViewLoading] = useState(false);
+  const [initialFileToOpen, setInitialFileToOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [histogram, setHistogram] = useState<ChannelConfig | null>(null);
   const [waveform, setWaveform] = useState<WaveformData | null>(null);
@@ -1182,6 +1192,7 @@ function App() {
             console.error('Failed to load pinned folder trees:', err);
           }
         }
+        invoke('frontend_ready').catch(e => console.error("Failed to notify backend of readiness:", e));
       })
       .catch((err) => {
         console.error('Failed to load settings:', err);
@@ -2111,6 +2122,11 @@ function App() {
           setHistogram(event.payload);
         }
       }),
+      listen('open-with-file', (event: any) => {
+        if (isEffectActive) {
+          setInitialFileToOpen(event.payload as string);
+        }
+      }),
       listen('waveform-update', (event: any) => {
         if (isEffectActive) {
           setWaveform(event.payload);
@@ -2472,6 +2488,26 @@ function App() {
       setIsTreeLoading(false);
     });
   };
+
+  useEffect(() => {
+    if (!initialFileToOpen || !appSettings) {
+      return;
+    }
+    const parentDir = getParentDir(initialFileToOpen);
+    if (currentFolderPath !== parentDir) {
+      setRootPath(parentDir);
+      handleSelectSubfolder(parentDir, true);
+      return;
+    }
+    const isImageInList = imageList.some(image => image.path === initialFileToOpen);
+    if (isImageInList) {
+      handleImageSelect(initialFileToOpen);
+      setInitialFileToOpen(null);
+    } else if (!isViewLoading) {
+      console.warn(`'open-with-file' target ${initialFileToOpen} not found in its directory after loading. Aborting.`);
+      setInitialFileToOpen(null);
+    }
+  }, [initialFileToOpen, appSettings, currentFolderPath, imageList, isViewLoading, handleSelectSubfolder, handleImageSelect]);
 
   const handleGoHome = () => {
     setRootPath(null);
