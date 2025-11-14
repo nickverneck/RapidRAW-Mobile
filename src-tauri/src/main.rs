@@ -1559,6 +1559,21 @@ fn write_image_with_metadata(
         return Ok(());
     }
 
+    let original_path = std::path::Path::new(original_path_str);
+    let original_extension = original_path
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("")
+        .to_lowercase();
+
+    if original_extension == "tiff" || original_extension == "tif" {
+        log::warn!(
+            "Skipping metadata copy from TIFF source file '{}' to JPEG to avoid corruption. This is a known limitation.",
+            original_path_str
+        );
+        return Ok(());
+    }
+
     let file_type = match output_format.to_lowercase().as_str() {
         "jpg" | "jpeg" => FileExtension::JPEG,
         "png" => FileExtension::PNG {
@@ -1568,7 +1583,6 @@ fn write_image_with_metadata(
         _ => return Ok(()),
     };
 
-    let original_path = std::path::Path::new(original_path_str);
     if !original_path.exists() {
         eprintln!(
             "Original file not found, cannot copy metadata: {}",
