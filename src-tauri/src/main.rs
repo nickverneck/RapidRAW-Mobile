@@ -2666,7 +2666,16 @@ fn frontend_ready(app_handle: tauri::AppHandle, state: tauri::State<AppState>) -
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            log::info!("New instance launched with args: {:?}", argv);
+            log::info!("New instance launched with args: {:?}. Focusing main window.", argv);
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window.unminimize() {
+                    log::error!("Failed to unminimize window: {}", e);
+                }
+                if let Err(e) = window.set_focus() {
+                    log::error!("Failed to set focus on window: {}", e);
+                }
+            }
+
             if argv.len() > 1 {
                 let path_str = &argv[1];
                 if let Err(e) = app.emit("open-with-file", path_str) {

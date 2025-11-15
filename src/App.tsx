@@ -1470,6 +1470,48 @@ function App() {
     if (currentFolderPath) handleSelectSubfolder(currentFolderPath, false);
   }, [currentFolderPath, handleSelectSubfolder]);
 
+  const refreshImageList = useCallback(async () => {
+    if (!currentFolderPath) return;
+    try {
+      const files: ImageFile[] = await invoke(Invokes.ListImagesInDir, { path: currentFolderPath });
+      const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
+      const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
+      const shouldReadExif = appSettings?.enableExifReading ?? false;
+
+      if (shouldReadExif && files.length > 0) {
+        const paths = files.map((f: ImageFile) => f.path);
+
+        if (isExifSortActive) {
+          const exifDataMap: Record<string, any> = await invoke(Invokes.ReadExifForPaths, { paths });
+          const finalImageList = files.map((image) => ({
+            ...image,
+            exif: exifDataMap[image.path] || image.exif || null,
+          }));
+          setImageList(finalImageList);
+        } else {
+          setImageList(files);
+          invoke(Invokes.ReadExifForPaths, { paths })
+            .then((exifDataMap: any) => {
+              setImageList((currentImageList) =>
+                currentImageList.map((image) => ({
+                  ...image,
+                  exif: exifDataMap[image.path] || image.exif || null,
+                })),
+              );
+            })
+            .catch((err) => {
+              console.error('Failed to read EXIF data in background:', err);
+            });
+        }
+      } else {
+        setImageList(files);
+      }
+    } catch (err) {
+      console.error('Failed to refresh image list:', err);
+      setError('Failed to refresh image list.');
+    }
+  }, [currentFolderPath, sortCriteria.key, appSettings?.enableExifReading]);
+
   const handleToggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev);
@@ -1531,13 +1573,19 @@ function App() {
         const command = options.includeAssociated ? 'delete_files_with_associated' : 'delete_files_from_disk';
         await invoke(command, { paths: pathsToDelete });
 
-        handleLibraryRefresh();
-        if (
-          selectedImage &&
-          pathsToDelete.some((p) => selectedImage.path.startsWith(p.substring(0, p.lastIndexOf('.'))))
-        ) {
-          handleBackToLibrary();
+        await refreshImageList();
+
+        if (selectedImage) {
+          const physicalPath = selectedImage.path.split('?vc=')[0];
+          const isFileBeingEditedDeleted = pathsToDelete.some(
+            (p) => p === selectedImage.path || p === physicalPath,
+          );
+
+          if (isFileBeingEditedDeleted) {
+            handleBackToLibrary();
+          }
         }
+
         setMultiSelectedPaths([]);
         if (libraryActivePath && pathsToDelete.includes(libraryActivePath)) {
           setLibraryActivePath(null);
@@ -1547,7 +1595,7 @@ function App() {
         setError(`Failed to delete files: ${err}`);
       }
     },
-    [handleLibraryRefresh, selectedImage, handleBackToLibrary, libraryActivePath],
+    [refreshImageList, selectedImage, handleBackToLibrary, libraryActivePath],
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -1847,12 +1895,12 @@ function App() {
           await invoke(Invokes.MoveFiles, { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath });
           setCopiedFilePaths([]);
         }
-        handleLibraryRefresh();
+        await refreshImageList();
       } catch (err) {
         setError(`Failed to ${mode} files: ${err}`);
       }
     },
-    [copiedFilePaths, currentFolderPath, handleLibraryRefresh],
+    [copiedFilePaths, currentFolderPath, refreshImageList],
   );
 
   const requestFullResolution = useCallback(
@@ -2411,7 +2459,7 @@ function App() {
       const savedPath: string = await invoke(Invokes.SavePanorama, {
         firstPathStr: panoramaModalState.stitchingSourcePaths[0],
       });
-      handleLibraryRefresh();
+      await refreshImageList();
       return savedPath;
     } catch (err) {
       console.error('Failed to save panorama:', err);
@@ -2426,7 +2474,7 @@ function App() {
         base64Data,
         firstPathStr: firstPath,
       });
-      handleLibraryRefresh();
+      await refreshImageList();
       return savedPath;
     } catch (err) {
       console.error('Failed to save collage:', err);
@@ -2737,7 +2785,7 @@ function App() {
             paths: renameTargetPaths,
           });
 
-          handleLibraryRefresh();
+          await refreshImageList();
 
           if (selectedImage && renameTargetPaths.includes(selectedImage.path)) {
             const oldPathIndex = renameTargetPaths.indexOf(selectedImage.path);
@@ -2767,7 +2815,7 @@ function App() {
 
       setRenameTargetPaths([]);
     },
-    [renameTargetPaths, handleLibraryRefresh, selectedImage, libraryActivePath, handleImageSelect, handleBackToLibrary],
+    [renameTargetPaths, refreshImageList, selectedImage, libraryActivePath, handleImageSelect, handleBackToLibrary],
   );
 
   const handleStartImport = async (settings: AppSettings) => {
@@ -3017,7 +3065,7 @@ function App() {
     const handleCreateVirtualCopy = async (sourcePath: string) => {
       try {
         await invoke(Invokes.CreateVirtualCopy, { sourceVirtualPath: sourcePath });
-        handleLibraryRefresh();
+        await refreshImageList();
       } catch (err) {
         console.error('Failed to create virtual copy:', err);
         setError(`Failed to create virtual copy: ${err}`);
@@ -3176,7 +3224,7 @@ function App() {
         onClick: async () => {
           try {
             await invoke(Invokes.DuplicateFile, { path: finalSelection[0] });
-            handleLibraryRefresh();
+            await refreshImageList();
           } catch (err) {
             console.error('Failed to duplicate file:', err);
             setError(`Failed to duplicate file: ${err}`);

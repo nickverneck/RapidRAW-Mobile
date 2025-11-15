@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Image as ImageIcon, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -40,6 +40,10 @@ const FilmstripThumbnail = ({
   const rating = imageRatings?.[path] || 0;
   const colorTag = tags?.find((t: string) => t.startsWith('color:'))?.substring(6);
   const colorLabel = COLOR_LABELS.find((c: Color) => c.name === colorTag);
+
+  const isVirtualCopy = useMemo(() => {
+    return path.includes('?vc=');
+  }, [path]);
 
   useEffect(() => {
     if (thumbnailAspectRatio === ThumbnailAspectRatio.Contain && thumbData) {
@@ -139,6 +143,7 @@ const FilmstripThumbnail = ({
         aspectRatio: aspectRatio ?? undefined,
         zIndex: isActive ? 2 : isSelected ? 1 : 'auto',
       }}
+      title={path.split(/[\\/]/).pop()}
     >
       {layers.length > 0 ? (
         <div className="absolute inset-0 w-full h-full">
@@ -190,6 +195,16 @@ const FilmstripThumbnail = ({
               <Star size={10} className="fill-white text-white" />
             </>
           )}
+        </div>
+      )}
+      {isVirtualCopy && (
+        <div className="absolute bottom-1 right-1">
+          <div
+            className="flex-shrink-0 bg-bg-primary/50 text-white text-[9px] font-bold px-1 py-0.5 rounded-full backdrop-blur-sm"
+            title="Virtual Copy"
+          >
+            VC
+          </div>
         </div>
       )}
     </motion.div>
