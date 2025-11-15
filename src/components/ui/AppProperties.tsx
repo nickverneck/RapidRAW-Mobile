@@ -20,6 +20,7 @@ export enum Invokes {
   ClearThumbnailCache = 'clear_thumbnail_cache',
   CopyFiles = 'copy_files',
   CreateFolder = 'create_folder',
+  CreateVirtualCopy = 'create_virtual_copy',
   CullImages = 'cull_images',
   DeleteFolder = 'delete_folder',
   DuplicateFile = 'duplicate_file',
@@ -173,6 +174,7 @@ export interface ImageFile {
   path: string;
   tags: Array<string> | null;
   exif: { [key: string]: string } | null;
+  is_virtual_copy: boolean;
 }
 
 export interface Option {

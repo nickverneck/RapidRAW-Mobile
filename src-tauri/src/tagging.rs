@@ -16,7 +16,7 @@ use walkdir::WalkDir;
 
 use crate::AppState;
 use crate::candidates::TAG_CANDIDATES;
-use crate::file_management::{self, get_sidecar_path};
+use crate::file_management::{self, parse_virtual_path};
 use crate::formats::is_supported_image_file;
 use crate::hierarchy::TAG_HIERARCHY;
 use crate::image_processing::ImageMetadata;
@@ -314,7 +314,7 @@ pub async fn start_background_indexing(
 
                 async move {
                     let path_str = path.to_string_lossy().to_string();
-                    let sidecar_path = get_sidecar_path(&path_str);
+                    let (_, sidecar_path) = parse_virtual_path(&path_str);
 
                     let mut metadata: ImageMetadata = if sidecar_path.exists() {
                         fs::read_to_string(&sidecar_path)
@@ -410,7 +410,7 @@ pub async fn start_background_indexing(
 }
 
 fn modify_tags_for_path(path_str: &str, modify_fn: impl Fn(&mut Vec<String>)) -> Result<(), String> {
-    let sidecar_path = get_sidecar_path(path_str);
+    let (_, sidecar_path) = parse_virtual_path(path_str);
 
     let mut metadata: ImageMetadata = if sidecar_path.exists() {
         fs::read_to_string(&sidecar_path)

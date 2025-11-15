@@ -24,7 +24,6 @@ import {
   Redo,
   RotateCcw,
   Star,
-  Settings,
   Palette,
   Tag,
   Trash2,
@@ -1358,6 +1357,7 @@ function App() {
       await invoke('cancel_thumbnail_generation');
       setIsViewLoading(true);
       setSearchCriteria({ tags: [], text: '', mode: 'OR' });
+      setLibraryScrollTop(0);
       try {
         setCurrentFolderPath(path);
         setActiveView('library');
@@ -1555,18 +1555,39 @@ function App() {
     if (pathsToDelete.length === 0) {
       return;
     }
+
     const isSingle = pathsToDelete.length === 1;
+
+    const selectionHasVirtualCopies =
+      isSingle &&
+      !pathsToDelete[0].includes('?vc=') &&
+      imageList.some((image) => image.path.startsWith(`${pathsToDelete[0]}?vc=`));
+
+    let modalTitle = 'Confirm Delete';
+    let modalMessage = '';
+    let confirmText = 'Delete';
+
+    if (selectionHasVirtualCopies) {
+      modalTitle = 'Delete Image and All Virtual Copies?';
+      modalMessage = `Are you sure you want to permanently delete this image and all of its virtual copies? This action cannot be undone.`;
+      confirmText = 'Delete All';
+    } else if (isSingle) {
+      modalMessage = `Are you sure you want to permanently delete this image? This action cannot be undone. Right-click for more options (e.g., deleting associated files).`;
+      confirmText = 'Delete Selected Only';
+    } else {
+      modalMessage = `Are you sure you want to permanently delete these ${pathsToDelete.length} images? This action cannot be undone. Right-click for more options (e.g., deleting associated files).`;
+      confirmText = 'Delete Selected Only';
+    }
+
     setConfirmModalState({
-      confirmText: 'Delete Selected Only',
+      confirmText,
       confirmVariant: 'destructive',
       isOpen: true,
-      message: `Are you sure you want to permanently delete ${
-        isSingle ? 'this image' : `${pathsToDelete.length} images`
-      }? This action cannot be undone. Right-click for more options (e.g., deleting associated RAW/JPEG files).`,
+      message: modalMessage,
       onConfirm: () => executeDelete(pathsToDelete, { includeAssociated: false }),
-      title: 'Confirm Delete',
+      title: modalTitle,
     });
-  }, [multiSelectedPaths, executeDelete]);
+  }, [multiSelectedPaths, executeDelete, imageList]);
 
   const handleToggleFullScreen = useCallback(() => {
     if (isFullScreen) {
@@ -2922,15 +2943,12 @@ function App() {
     const selectionCount = finalSelection.length;
     const isSingleSelection = selectionCount === 1;
     const isEditingThisImage = selectedImage?.path === path;
-    const pasteLabel = isSingleSelection ? 'Paste Adjustments' : `Paste Adjustments to ${selectionCount} Images`;
-    const resetLabel = isSingleSelection ? 'Reset Adjustments' : `Reset Adjustments on ${selectionCount} Images`;
     const deleteLabel = isSingleSelection ? 'Delete Image' : `Delete ${selectionCount} Images`;
-    const copyLabel = isSingleSelection ? 'Copy Image' : `Copy ${selectionCount} Images`;
-    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust Images`;
-    const renameLabel = isSingleSelection ? 'Rename Image' : `Rename ${selectionCount} Images`;
-    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull Images`;
-    const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
-    const stitchLabel = `Stitch Panorama`;
+
+    const selectionHasVirtualCopies =
+      isSingleSelection &&
+      !finalSelection[0].includes('?vc=') &&
+      imageList.some((image) => image.path.startsWith(`${finalSelection[0]}?vc=`));
 
     const hasAssociatedFiles = finalSelection.some((selectedPath) => {
       const lastDotIndex = selectedPath.lastIndexOf('.');
@@ -2941,35 +2959,69 @@ function App() {
       );
     });
 
+    let deleteSubmenu;
+    if (selectionHasVirtualCopies) {
+      deleteSubmenu = [
+        { label: 'Cancel', icon: X, onClick: () => {} },
+        {
+          label: 'Confirm Delete + All Virtual Copies',
+          icon: Check,
+          isDestructive: true,
+          onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+        },
+      ];
+    } else if (hasAssociatedFiles) {
+      deleteSubmenu = [
+        { label: 'Cancel', icon: X, onClick: () => {} },
+        {
+          label: 'Delete Selected Only',
+          icon: Check,
+          isDestructive: true,
+          onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+        },
+        {
+          label: 'Delete + Associated',
+          icon: Check,
+          isDestructive: true,
+          onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
+        },
+      ];
+    } else {
+      deleteSubmenu = [
+        { label: 'Cancel', icon: X, onClick: () => {} },
+        {
+          label: 'Confirm',
+          icon: Check,
+          isDestructive: true,
+          onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
+        },
+      ];
+    }
+
     const deleteOption = {
       label: deleteLabel,
       icon: Trash2,
       isDestructive: true,
-      submenu: hasAssociatedFiles
-        ? [
-            { label: 'Cancel', icon: X, onClick: () => {} },
-            {
-              label: 'Delete Selected Only',
-              icon: Check,
-              isDestructive: true,
-              onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
-            },
-            {
-              label: 'Delete + Associated (RAW/JPEG)',
-              icon: Check,
-              isDestructive: true,
-              onClick: () => executeDelete(finalSelection, { includeAssociated: true }),
-            },
-          ]
-        : [
-            { label: 'Cancel', icon: X, onClick: () => {} },
-            {
-              label: 'Confirm',
-              icon: Check,
-              isDestructive: true,
-              onClick: () => executeDelete(finalSelection, { includeAssociated: false }),
-            },
-          ],
+      submenu: deleteSubmenu,
+    };
+
+    const pasteLabel = isSingleSelection ? 'Paste Adjustments' : `Paste Adjustments to ${selectionCount} Images`;
+    const resetLabel = isSingleSelection ? 'Reset Adjustments' : `Reset Adjustments on ${selectionCount} Images`;
+    const copyLabel = isSingleSelection ? 'Copy Image' : `Copy ${selectionCount} Images`;
+    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust Images`;
+    const renameLabel = isSingleSelection ? 'Rename Image' : `Rename ${selectionCount} Images`;
+    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull Images`;
+    const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
+    const stitchLabel = `Stitch Panorama`;
+
+    const handleCreateVirtualCopy = async (sourcePath: string) => {
+      try {
+        await invoke(Invokes.CreateVirtualCopy, { sourceVirtualPath: sourcePath });
+        handleLibraryRefresh();
+      } catch (err) {
+        console.error('Failed to create virtual copy:', err);
+        setError(`Failed to create virtual copy: ${err}`);
+      }
     };
 
     const handleApplyAutoAdjustmentsToSelection = () => {
@@ -3052,6 +3104,12 @@ function App() {
             label: autoAdjustLabel,
             icon: Aperture,
             onClick: handleApplyAutoAdjustmentsToSelection,
+          },
+          {
+            disabled: !isSingleSelection,
+            icon: CopyPlus,
+            label: 'Create Virtual Copy',
+            onClick: () => handleCreateVirtualCopy(finalSelection[0]),
           },
           {
             disabled: selectionCount < 2  || selectionCount > 9,

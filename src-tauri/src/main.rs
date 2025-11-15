@@ -61,7 +61,10 @@ use crate::ai_processing::{
     generate_image_embeddings, get_or_init_ai_models, run_sam_decoder, run_sky_seg_model,
     run_u2netp_model,
 };
-use crate::file_management::{AppSettings, get_sidecar_path, load_settings, read_file_mapped};
+use crate::file_management::{
+    AppSettings, load_settings, parse_virtual_path,
+    read_file_mapped,
+};
 use crate::formats::is_raw_file;
 use crate::image_loader::{
     composite_patches_on_image, load_and_composite, load_base_image_from_bytes,
@@ -376,7 +379,9 @@ async fn load_image(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<LoadImageResult, String> {
-    let sidecar_path = get_sidecar_path(&path);
+    let (source_path, sidecar_path) = parse_virtual_path(&path);
+    let source_path_str = source_path.to_string_lossy().to_string();
+
     let metadata: ImageMetadata = if sidecar_path.exists() {
         let file_content = fs::read_to_string(sidecar_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&file_content).unwrap_or_default()
@@ -387,7 +392,7 @@ async fn load_image(
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
-    let path_clone = path.clone();
+    let path_clone = source_path_str.clone();
     let (pristine_img, exif_data) = tokio::task::spawn_blocking(move || {
         let result: Result<(DynamicImage, HashMap<String, String>), String> = (|| {
             match read_file_mapped(Path::new(&path_clone)) {
@@ -425,12 +430,12 @@ async fn load_image(
     .map_err(|e| e.to_string())??;
 
     let (orig_width, orig_height) = pristine_img.dimensions();
-    let is_raw = is_raw_file(&path);
+    let is_raw = is_raw_file(&source_path_str);
 
     *state.cached_preview.lock().unwrap() = None;
     *state.gpu_image_cache.lock().unwrap() = None;
     *state.original_image.lock().unwrap() = Some(LoadedImage {
-        path: path.clone(),
+        path: source_path_str.clone(),
         image: pristine_img,
         is_raw,
     });
@@ -446,7 +451,8 @@ async fn load_image(
 
 #[tauri::command]
 fn get_image_dimensions(path: String) -> Result<ImageDimensions, String> {
-    image::image_dimensions(&path)
+    let (source_path, _) = parse_virtual_path(&path);
+    image::image_dimensions(&source_path)
         .map(|(width, height)| ImageDimensions { width, height })
         .map_err(|e| e.to_string())
 }
@@ -1003,11 +1009,14 @@ async fn export_image(
     let task = tokio::spawn(async move {
         let state = app_handle.state::<AppState>();
         let processing_result: Result<(), String> = (|| {
+            let (source_path, _) = parse_virtual_path(&original_path);
+            let source_path_str = source_path.to_string_lossy().to_string();
+
             let base_image = composite_patches_on_image(&original_image_data, &js_adjustments)
                 .map_err(|e| format!("Failed to composite AI patches for export: {}", e))?;
 
             let final_image = process_image_for_export(
-                &original_path,
+                &source_path_str,
                 &base_image,
                 &js_adjustments,
                 &export_settings,
@@ -1028,7 +1037,7 @@ async fn export_image(
 
             write_image_with_metadata(
                 &mut image_bytes,
-                &original_path,
+                &source_path_str,
                 &extension,
                 export_settings.keep_metadata,
                 export_settings.strip_gps,
@@ -1103,7 +1112,9 @@ async fn batch_export_images(
                 );
 
                 let result: Result<(), String> = (|| {
-                    let sidecar_path = get_sidecar_path(image_path_str);
+                    let (source_path, sidecar_path) = parse_virtual_path(image_path_str);
+                    let source_path_str = source_path.to_string_lossy().to_string();
+
                     let metadata: ImageMetadata = if sidecar_path.exists() {
                         let file_content = fs::read_to_string(sidecar_path)
                             .map_err(|e| format!("Failed to read sidecar: {}", e))?;
@@ -1112,17 +1123,17 @@ async fn batch_export_images(
                         ImageMetadata::default()
                     };
                     let js_adjustments = metadata.adjustments;
-                    let is_raw = is_raw_file(image_path_str);
+                    let is_raw = is_raw_file(&source_path_str);
 
-                    let mmap = read_file_mapped(Path::new(image_path_str))
-                        .map_err(|e| format!("Failed to mmap file {}: {}", image_path_str, e))?;
+                    let mmap = read_file_mapped(Path::new(&source_path_str))
+                        .map_err(|e| format!("Failed to mmap file {}: {}", source_path_str, e))?;
 
                     let base_image =
-                        load_and_composite(&mmap[..], image_path_str, &js_adjustments, false, highlight_compression)
+                        load_and_composite(&mmap[..], &source_path_str, &js_adjustments, false, highlight_compression)
                             .map_err(|e| format!("Failed to load image: {}", e))?;
 
                     let final_image = process_image_for_export(
-                        image_path_str,
+                        &source_path_str,
                         &base_image,
                         &js_adjustments,
                         &export_settings,
@@ -1131,7 +1142,7 @@ async fn batch_export_images(
                         is_raw,
                     )?;
 
-                    let original_path = std::path::Path::new(image_path_str);
+                    let original_path = std::path::Path::new(&source_path_str);
 
                     let file_date: DateTime<Utc> = Metadata::new_from_path(original_path)
                         .ok()
@@ -1182,7 +1193,7 @@ async fn batch_export_images(
 
                     write_image_with_metadata(
                         &mut image_bytes,
-                        image_path_str,
+                        &source_path_str,
                         &output_format,
                         export_settings.keep_metadata,
                         export_settings.strip_gps,
@@ -1411,9 +1422,10 @@ async fn estimate_batch_export_size(
     }
     let context = get_or_init_gpu_context(&state)?;
     let first_path = &paths[0];
-    let is_raw = is_raw_file(first_path);
+    let (source_path, sidecar_path) = parse_virtual_path(first_path);
+    let source_path_str = source_path.to_string_lossy().to_string();
+    let is_raw = is_raw_file(&source_path_str);
 
-    let sidecar_path = get_sidecar_path(first_path);
     let metadata: ImageMetadata = if sidecar_path.exists() {
         let file_content = fs::read_to_string(sidecar_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&file_content).unwrap_or_default()
@@ -1426,9 +1438,9 @@ async fn estimate_batch_export_size(
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
     const ESTIMATE_DIM: u32 = 1280;
-    let img_bytes = read_file_mapped(Path::new(first_path)).map_err(|e| e.to_string())?;
+    let img_bytes = read_file_mapped(Path::new(&source_path_str)).map_err(|e| e.to_string())?;
     let original_image =
-        load_base_image_from_bytes(&img_bytes, first_path, true, highlight_compression).map_err(|e| e.to_string())?;
+        load_base_image_from_bytes(&img_bytes, &source_path_str, true, highlight_compression).map_err(|e| e.to_string())?;
 
     let base_image_preview = downscale_f32_image(&original_image, ESTIMATE_DIM, ESTIMATE_DIM);
 
@@ -1452,7 +1464,7 @@ async fn estimate_batch_export_size(
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
-    let unique_hash = calculate_full_job_hash(first_path, &js_adjustments).wrapping_add(1);
+    let unique_hash = calculate_full_job_hash(&source_path_str, &js_adjustments).wrapping_add(1);
 
     let processed_preview = process_and_get_dynamic_image(
         &context,
@@ -1985,7 +1997,7 @@ async fn invoke_generative_replace_with_mask_def(
     patch_definition: AiPatchDefinition,
     current_adjustments: Value,
     use_fast_inpaint: bool,
-    token: Option<String>, // reserved parameter for future authentication, when the optional generative cloud service releases
+    token: Option<String>,
     app_handle: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<String, String> {
@@ -2169,10 +2181,15 @@ async fn stitch_panorama(
         return Err("Please select at least two images to stitch.".to_string());
     }
 
+    let source_paths: Vec<String> = paths
+        .iter()
+        .map(|p| parse_virtual_path(p).0.to_string_lossy().into_owned())
+        .collect();
+
     let panorama_result_handle = state.panorama_result.clone();
 
     let task = tokio::task::spawn_blocking(move || {
-        let panorama_result = panorama_stitching::stitch_images(paths, app_handle.clone());
+        let panorama_result = panorama_stitching::stitch_images(source_paths, app_handle.clone());
 
         match panorama_result {
             Ok(panorama_image) => {
@@ -2266,11 +2283,13 @@ async fn generate_all_community_previews(
 
     let mut base_thumbnails: Vec<(DynamicImage, bool)> = Vec::new();
     for image_path in image_paths.iter() {
-        let image_bytes = fs::read(image_path).map_err(|e| e.to_string())?;
+        let (source_path, _) = parse_virtual_path(image_path);
+        let source_path_str = source_path.to_string_lossy().to_string();
+        let image_bytes = fs::read(&source_path).map_err(|e| e.to_string())?;
         let original_image =
-            crate::image_loader::load_base_image_from_bytes(&image_bytes, &image_path, true, highlight_compression )
+            crate::image_loader::load_base_image_from_bytes(&image_bytes, &source_path_str, true, highlight_compression )
                 .map_err(|e| e.to_string())?;
-        let is_raw = is_raw_file(image_path);
+        let is_raw = is_raw_file(&source_path_str);
         base_thumbnails.push((
             downscale_f32_image(&original_image, PROCESSING_DIM, PROCESSING_DIM),
             is_raw,
@@ -2400,7 +2419,7 @@ async fn save_panorama(
                 .to_string()
         })?;
 
-    let first_path = Path::new(&first_path_str);
+    let (first_path, _) = parse_virtual_path(&first_path_str);
     let parent_dir = first_path
         .parent()
         .ok_or_else(|| "Could not determine parent directory of the first image.".to_string())?;
@@ -2431,7 +2450,7 @@ async fn save_collage(base64_data: String, first_path_str: String) -> Result<Str
         .decode(encoded_data)
         .map_err(|e| format!("Failed to decode base64: {}", e))?;
 
-    let first_path = Path::new(&first_path_str);
+    let (first_path, _) = parse_virtual_path(&first_path_str);
     let parent_dir = first_path
         .parent()
         .ok_or_else(|| "Could not determine parent directory of the first image.".to_string())?;
@@ -2457,13 +2476,14 @@ fn generate_preview_for_path(
     app_handle: tauri::AppHandle,
 ) -> Result<Response, String> {
     let context = get_or_init_gpu_context(&state)?;
-    let new_path = Path::new(&path);
-    let is_raw = is_raw_file(&path);
-    let image = read_file_mapped(&new_path).map_err(|e| e.to_string())?;
+    let (source_path, _) = parse_virtual_path(&path);
+    let source_path_str = source_path.to_string_lossy().to_string();
+    let is_raw = is_raw_file(&source_path_str);
+    let image = read_file_mapped(&source_path).map_err(|e| e.to_string())?;
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
     let base_image =
-        load_and_composite(&image[..], &path, &js_adjustments, false,highlight_compression).map_err(|e| e.to_string())?;
+        load_and_composite(&image[..], &source_path_str, &js_adjustments, false,highlight_compression).map_err(|e| e.to_string())?;
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(&base_image, &js_adjustments);
     let (img_w, img_h) = transformed_image.dimensions();
@@ -2478,7 +2498,7 @@ fn generate_preview_for_path(
     let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
     let lut_path = js_adjustments["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
-    let unique_hash = calculate_full_job_hash(&path, &js_adjustments);
+    let unique_hash = calculate_full_job_hash(&source_path_str, &js_adjustments);
     let final_image = process_and_get_dynamic_image(
         &context,
         &state,
@@ -2817,6 +2837,7 @@ fn main() {
             file_management::clear_thumbnail_cache,
             file_management::set_color_label_for_paths,
             file_management::import_files,
+            file_management::create_virtual_copy,
             tagging::start_background_indexing,
             tagging::clear_ai_tags,
             tagging::clear_all_tags,
