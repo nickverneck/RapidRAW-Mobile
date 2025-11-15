@@ -104,7 +104,7 @@ interface MainLibraryProps {
   setFilterCriteria(criteria: FilterCriteria): void;
   setLibraryScrollTop(scrollTop: number): void;
   setSearchCriteria(criteria: SearchCriteria | ((prev: SearchCriteria) => SearchCriteria)): void;
-  setSortCriteria(criteria: SortCriteria): void;
+  setSortCriteria(criteria: SortCriteria | ((prev: SortCriteria) => SortCriteria)): void;
   sortCriteria: SortCriteria;
   theme: string;
   thumbnailAspectRatio: ThumbnailAspectRatio;
@@ -1021,6 +1021,14 @@ export default function MainLibrary({
   const loadedThumbnailsRef = useRef(new Set<string>());
   const layoutCache = useRef({ columnCount: 0, cellHeight: 0 });
 
+  const handleSortChange = useCallback(
+    (criteria: SortCriteria | ((prev: SortCriteria) => SortCriteria)) => {
+      onClearSelection();
+      setSortCriteria(criteria);
+    },
+    [onClearSelection, setSortCriteria],
+  );
+
   const sortOptions = useMemo(() => {
     const exifEnabled = appSettings?.enableExifReading ?? false;
     return [
@@ -1392,7 +1400,7 @@ export default function MainLibrary({
             onSelectSize={onThumbnailSizeChange}
             onSelectAspectRatio={onThumbnailAspectRatioChange}
             setFilterCriteria={setFilterCriteria}
-            setSortCriteria={setSortCriteria}
+            setSortCriteria={handleSortChange}
             sortCriteria={sortCriteria}
             sortOptions={sortOptions}
             thumbnailSize={thumbnailSize}
