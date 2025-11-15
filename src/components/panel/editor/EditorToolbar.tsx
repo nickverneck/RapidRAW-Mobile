@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { Eye, EyeOff, ArrowLeft, Maximize, Loader2, Undo, Redo, Waves } from 'lucide-react';
 import clsx from 'clsx';
 import { SelectedImage } from '../../ui/AppProperties';
@@ -42,9 +42,22 @@ const EditorToolbar = memo(
     const [disableLoaderTransition, setDisableLoaderTransition] = useState(false);
     const hideTimeoutRef = useRef<number | null>(null);
     const prevIsLoadingRef = useRef(isLoading);
+    const [isVcHovered, setIsVcHovered] = useState(false);
 
     const showResolution = selectedImage.width > 0 && selectedImage.height > 0;
     const [displayedResolution, setDisplayedResolution] = useState('');
+
+    const { baseName, isVirtualCopy, vcId } = useMemo(() => {
+      const path = selectedImage.path;
+      const parts = path.split('?vc=');
+      const fullFileName = parts[0].split(/[\/\\]/).pop() || '';
+
+      return {
+        baseName: fullFileName,
+        isVirtualCopy: parts.length > 1,
+        vcId: parts.length > 1 ? parts[1] : null,
+      };
+    }, [selectedImage.path]);
 
     useEffect(() => {
       if (showResolution) {
@@ -89,9 +102,25 @@ const EditorToolbar = memo(
         </button>
 
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-surface text-text-secondary text-xs px-4 py-2 rounded-full select-none truncate flex items-center max-w-[50%]">
-          <span className="font-medium text-text-primary truncate">
-            {selectedImage.path.split(/[\/\\]/).pop()}
-          </span>
+          <span className="font-medium text-text-primary truncate">{baseName}</span>
+
+          {isVirtualCopy && (
+            <div
+              className="ml-2 flex-shrink-0 bg-accent/20 text-accent text-xs font-bold px-2 py-0.5 rounded-full flex items-center overflow-hidden cursor-default"
+              onMouseEnter={() => setIsVcHovered(true)}
+              onMouseLeave={() => setIsVcHovered(false)}
+            >
+              <span>VC</span>
+              <div
+                className={clsx(
+                  'transition-all duration-300 ease-out overflow-hidden whitespace-nowrap',
+                  isVcHovered ? 'max-w-20 opacity-100' : 'max-w-0 opacity-0',
+                )}
+              >
+                <span>-{vcId}</span>
+              </div>
+            </div>
+          )}
 
           <div
             className={clsx(

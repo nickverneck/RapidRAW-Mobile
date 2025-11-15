@@ -2964,7 +2964,7 @@ function App() {
       deleteSubmenu = [
         { label: 'Cancel', icon: X, onClick: () => {} },
         {
-          label: 'Confirm Delete + All Virtual Copies',
+          label: 'Confirm Delete + Virtual Copies',
           icon: Check,
           isDestructive: true,
           onClick: () => executeDelete(finalSelection, { includeAssociated: false }),

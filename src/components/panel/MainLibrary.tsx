@@ -764,6 +764,15 @@ function Thumbnail({
   const [layers, setLayers] = useState<ImageLayer[]>([]);
   const latestThumbDataRef = useRef<string | undefined>(undefined);
 
+  const { baseName, isVirtualCopy } = useMemo(() => {
+    const fullFileName = path.split(/[\\/]/).pop() || '';
+    const parts = fullFileName.split('?vc=');
+    return {
+      baseName: parts[0],
+      isVirtualCopy: parts.length > 1,
+    };
+  }, [path]);
+
   useEffect(() => {
     if (data) {
       setShowPlaceholder(false);
@@ -895,8 +904,16 @@ function Thumbnail({
           )}
         </div>
       )}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-        <p className="text-white text-xs truncate">{path.split(/[\\/]/).pop()}</p>
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 flex items-end justify-between">
+        <p className="text-white text-xs truncate pr-2">{baseName}</p>
+        {isVirtualCopy && (
+          <div
+            className="flex-shrink-0 bg-bg-primary/50 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full backdrop-blur-sm"
+            title="Virtual Copy"
+          >
+            VC
+          </div>
+        )}
       </div>
     </div>
   );
