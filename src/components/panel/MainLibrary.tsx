@@ -1019,6 +1019,7 @@ export default function MainLibrary({
   const [latestVersion, setLatestVersion] = useState('');
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
   const loadedThumbnailsRef = useRef(new Set<string>());
+  const layoutCache = useRef({ columnCount: 0, cellHeight: 0 });
 
   const sortOptions = useMemo(() => {
     const exifEnabled = appSettings?.enableExifReading ?? false;
@@ -1035,6 +1036,48 @@ export default function MainLibrary({
   }, [appSettings?.enableExifReading]);
 
   useEffect(() => {
+    if (!activePath || imageList.length === 0) {
+      return;
+    }
+
+    const scrollableElement = libraryContainerRef.current?.querySelector('.custom-scrollbar');
+    if (!scrollableElement) {
+      return;
+    }
+
+    const { columnCount, cellHeight } = layoutCache.current;
+    if (columnCount === 0 || cellHeight === 0) {
+      return;
+    }
+
+    const activeIndex = imageList.findIndex((img) => img.path === activePath);
+    if (activeIndex === -1) {
+      return;
+    }
+
+    const rowIndex = Math.floor(activeIndex / columnCount);
+
+    const cellTop = rowIndex * cellHeight;
+    const cellBottom = cellTop + cellHeight;
+
+    const currentScrollTop = scrollableElement.scrollTop;
+    const gridHeight = scrollableElement.clientHeight;
+    const PADDING = 32; 
+
+    if (cellTop < currentScrollTop) {
+      scrollableElement.scrollTo({
+        top: cellTop - PADDING,
+        behavior: 'smooth',
+      });
+    } else if (cellBottom > currentScrollTop + gridHeight) {
+      scrollableElement.scrollTo({
+        top: cellBottom - gridHeight + PADDING,
+        behavior: 'smooth',
+      });
+    }
+  }, [activePath, imageList]);
+
+  useEffect(() => {
     const exifEnabled = appSettings?.enableExifReading ?? true;
     const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
     const isCurrentSortExif = exifSortKeys.includes(sortCriteria.key);
@@ -1047,7 +1090,7 @@ export default function MainLibrary({
   useEffect(() => {
     let showTimer: number | undefined;
     let hideTimer: number | undefined;
-  
+
     if (isThumbnailsLoading || isLoading) {
       showTimer = window.setTimeout(() => {
         setIsLoaderVisible(true);
@@ -1232,7 +1275,7 @@ export default function MainLibrary({
               </div>
               <div className="absolute bottom-8 left-8 lg:left-16 text-xs text-text-secondary space-y-1">
                 <p>
-                Images by{' '}
+                  Images by{' '}
                   <a
                     href="https://instagram.com/timonkaech.photography"
                     className="hover:underline"
@@ -1240,7 +1283,7 @@ export default function MainLibrary({
                     rel="noopener noreferrer"
                   >
                     Timon Käch
-                  </a>  
+                  </a>
                 </p>
                 {appVersion && (
                   <div className="flex items-center space-x-2">
@@ -1392,6 +1435,7 @@ export default function MainLibrary({
               const gridWidth = isScrollbarVisible ? width - SCROLLBAR_SIZE : width;
               const cellWidth = gridWidth / columnCount;
               const cellHeight = cellWidth;
+              layoutCache.current = { columnCount, cellHeight };
 
               return (
                 <Grid

@@ -216,6 +216,14 @@ export const useKeyboardShortcuts = ({
           event.preventDefault();
           setIsWaveformVisible((prev: boolean) => !prev);
         }
+      } else {
+        if ((key === 'enter' || key === ' ') && !isCtrl) {
+          event.preventDefault();
+          if (libraryActivePath) {
+            handleImageSelect(libraryActivePath);
+          }
+          return;
+        }
       }
 
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
