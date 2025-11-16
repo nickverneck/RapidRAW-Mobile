@@ -13,7 +13,7 @@ export const THEMES: Array<ThemeProps> = [
     name: 'Dark',
     splashImage: '/splash-dark.jpg',
     cssVariables: {
-      '--color-bg-primary-rgb': '38, 38, 38',
+      '--color-bg-primary-rgb': '45, 45, 45',
       '--opacity-bg-primary': '0.6',
       '--color-bg-secondary-rgb': '34, 34, 34',
       '--opacity-bg-secondary': '0.75',

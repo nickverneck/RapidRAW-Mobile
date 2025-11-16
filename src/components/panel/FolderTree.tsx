@@ -416,12 +416,11 @@ export default function FolderTree({
               </>
             )}
 
-            {/* This condition now correctly handles the new search length requirement */}
             {!filteredTree && !hasVisiblePinnedTrees && isSearching && (
               <p className="text-text-secondary text-sm p-2 text-center">No folders found.</p>
             )}
 
-            {!tree && !isSearching && (
+            {!tree && pinnedFolderTrees.length === 0 && !isSearching && (
               <div className="pt-1">
                 {isLoading ? (
                   <p className="text-text-secondary text-sm animate-pulse p-2">Loading folder structure...</p>
