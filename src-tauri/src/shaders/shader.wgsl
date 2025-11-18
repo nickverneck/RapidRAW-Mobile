@@ -521,78 +521,35 @@ fn apply_white_balance(color: vec3<f32>, temp: f32, tnt: f32) -> vec3<f32> {
 }
 
 fn apply_creative_color(color: vec3<f32>, sat: f32, vib: f32) -> vec3<f32> {
-    // 1. Global Saturation (Standard Linear)
-    // We apply this first so Vibrance acts on the "base" state of the image.
     var processed = color;
     let luma = get_luma(processed);
     
     if (sat != 0.0) {
         processed = mix(vec3<f32>(luma), processed, 1.0 + sat);
     }
-
     if (vib == 0.0) { return processed; }
-
-    // 2. Calculate Saturation Intensity
-    // We use a cheaper, more robust method than full HSV for the intensity check
     let c_max = max(processed.r, max(processed.g, processed.b));
     let c_min = min(processed.r, min(processed.g, processed.b));
     let delta = c_max - c_min;
-
-    // SAFETY CHECK: Fixes "Aqua/Yellow Spots"
-    // If the pixel is effectively grey (low delta), do not apply Vibrance.
-    // Calculating Hue on grey pixels creates mathematical noise.
     if (delta < 0.02) {
         return processed;
     }
-
-    // Current saturation (0.0 to 1.0)
     let current_sat = delta / max(c_max, 0.001);
-
-    // 3. Apply Vibrance
     if (vib > 0.0) {
-        // --- POSITIVE VIBRANCE ---
-        
-        // A. Saturation Mask: Boost muted colors (low sat) more than vivid ones.
-        // The (1.0 - current_sat) ensures we don't clip already bright colors.
         let sat_mask = 1.0 - smoothstep(0.4, 0.9, current_sat);
-
-        // B. Skin Protection
-        // We need HSV hue to detect skin accurately.
         let hsv = rgb_to_hsv(processed);
         let hue = hsv.x;
-        
-        // Skin is centered around 25 degrees (Orange).
-        // We use a wide, soft falloff (+/- 30 degrees) to blend naturally.
         let skin_center = 25.0;
         let hue_dist = min(abs(hue - skin_center), 360.0 - abs(hue - skin_center));
-        let is_skin = smoothstep(35.0, 10.0, hue_dist); // 1.0 if skin, 0.0 if not
-
-        // C. Combine
-        // If it is skin, we reduce the effect strength by 40% (multiply by 0.6).
-        // We do NOT block it entirely, or the face looks grey.
+        let is_skin = smoothstep(35.0, 10.0, hue_dist);
         let skin_dampener = mix(1.0, 0.6, is_skin);
-        
-        // Strength multiplier (3.0) makes the slider feel responsive like Lightroom
         let amount = vib * sat_mask * skin_dampener * 3.0;
-        
         processed = mix(vec3<f32>(luma), processed, 1.0 + amount);
-
     } else {
-        // --- NEGATIVE VIBRANCE (Desaturation) ---
-        
-        // Fixes "Unnatural Desaturation":
-        // When desaturating, we DO NOT protect skin. 
-        // Protecting skin while desaturating the background creates the "spotty" look.
-        // We simply desaturate muted tones faster than saturated tones.
-        
-        // Pixels with low saturation get hit harder by the desaturation.
-        // Pixels with high saturation resist the desaturation.
-        let desat_mask = 1.0 - smoothstep(0.2, 0.8, current_sat);
-        
+        let desat_mask = 1.0 - smoothstep(0.2, 0.8, current_sat);  
         let amount = vib * desat_mask;
         processed = mix(vec3<f32>(luma), processed, 1.0 + amount);
     }
-
     return processed;
 }
 
