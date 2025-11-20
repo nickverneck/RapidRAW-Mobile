@@ -2569,7 +2569,6 @@ fn apply_window_effect(theme: String, window: impl raw_window_handle::HasWindowH
 
     #[cfg(target_os = "linux")]
     {
-        // Explicitly ignore these variables on Linux to silence warnings
         let _ = (theme, window);
     }
 }
