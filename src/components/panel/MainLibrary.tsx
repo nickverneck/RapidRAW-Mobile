@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback, forwardRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
@@ -1154,14 +1154,22 @@ export default function MainLibrary({
   const [showSettings, setShowSettings] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [supportedTypes, setSupportedTypes] = useState<SupportedTypes | null>(null);
-  const listContainerRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<List>(null);
+  const listRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
   const loadedThumbnailsRef = useRef(new Set<string>());
 
   const { width: containerWidth, height: containerHeight, ref: resizeRef } = useResizeObserver();
+
+  const setContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      resizeRef(node);
+      containerRef.current = node;
+    },
+    [resizeRef],
+  );
 
   const groups = useMemo(() => {
     if (libraryViewMode === LibraryViewMode.Flat) return null;
@@ -1243,59 +1251,28 @@ export default function MainLibrary({
     if (!activePath || !listRef.current || multiSelectedPaths.length > 1 || calculatedRowsData.rows.length === 0)
       return;
 
-    const { rows, rowHeight, columnCount } = calculatedRowsData;
-    let targetTop = 0;
-    let found = false;
+    const { rows } = calculatedRowsData;
+    let targetRowIndex = -1;
 
-    if (libraryViewMode === LibraryViewMode.Recursive) {
-      const groups = groupImagesByFolder(imageList, currentFolderPath);
-      for (const group of groups) {
-        if (group.images.length === 0) continue;
-
-        targetTop += headerHeight;
-
-        const imageIndex = group.images.findIndex((img) => img.path === activePath);
-        if (imageIndex !== -1) {
-          const rowIndex = Math.floor(imageIndex / columnCount);
-          targetTop += rowIndex * rowHeight;
-          found = true;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.type === 'images') {
+        const found = row.images.some((img: ImageFile) => img.path === activePath);
+        if (found) {
+          targetRowIndex = i;
           break;
         }
-
-        const rowsInGroup = Math.ceil(group.images.length / columnCount);
-        targetTop += rowsInGroup * rowHeight;
-      }
-    } else {
-      const index = imageList.findIndex((img) => img.path === activePath);
-      if (index !== -1) {
-        const rowIndex = Math.floor(index / columnCount);
-        targetTop = rowIndex * rowHeight;
-        found = true;
       }
     }
 
-    if (found && listContainerRef.current) {
-      const clientHeight = listContainerRef.current.clientHeight;
-      const scrollTop = libraryScrollTop;
-      const itemBottom = targetTop + rowHeight;
-      const SCROLL_OFFSET = 120;
-
-      if (itemBottom > scrollTop + clientHeight) {
-        listRef.current.scrollTo(itemBottom - clientHeight + SCROLL_OFFSET);
-      } else if (targetTop < scrollTop) {
-        listRef.current.scrollTo(targetTop - SCROLL_OFFSET);
-      }
+    if (targetRowIndex !== -1) {
+      listRef.current.scrollToRow({
+        index: targetRowIndex,
+        behavior: 'smooth',
+        align: 'smart',
+      });
     }
-  }, [
-    activePath,
-    imageList,
-    libraryViewMode,
-    thumbnailSize,
-    currentFolderPath,
-    multiSelectedPaths.length,
-    calculatedRowsData,
-    libraryScrollTop,
-  ]);
+  }, [activePath, calculatedRowsData, multiSelectedPaths.length]);
 
   useEffect(() => {
     const exifEnabled = appSettings?.enableExifReading ?? true;
@@ -1376,24 +1353,21 @@ export default function MainLibrary({
 
   useEffect(() => {
     const handleWheel = (event: any) => {
-      const container = listContainerRef.current;
-      if (!container || !container.contains(event.target)) {
-        return;
-      }
+      if (containerRef.current && containerRef.current.contains(event.target)) {
+        if (event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          const currentIndex = thumbnailSizeOptions.findIndex((o: ThumbnailSizeOption) => o.id === thumbnailSize);
+          if (currentIndex === -1) {
+            return;
+          }
 
-      if (event.ctrlKey || event.metaKey) {
-        event.preventDefault();
-        const currentIndex = thumbnailSizeOptions.findIndex((o: ThumbnailSizeOption) => o.id === thumbnailSize);
-        if (currentIndex === -1) {
-          return;
-        }
-
-        const nextIndex =
-          event.deltaY < 0
-            ? Math.min(currentIndex + 1, thumbnailSizeOptions.length - 1)
-            : Math.max(currentIndex - 1, 0);
-        if (nextIndex !== currentIndex) {
-          onThumbnailSizeChange(thumbnailSizeOptions[nextIndex].id);
+          const nextIndex =
+            event.deltaY < 0
+              ? Math.min(currentIndex + 1, thumbnailSizeOptions.length - 1)
+              : Math.max(currentIndex - 1, 0);
+          if (nextIndex !== currentIndex) {
+            onThumbnailSizeChange(thumbnailSizeOptions[nextIndex].id);
+          }
         }
       }
     };
@@ -1645,12 +1619,12 @@ export default function MainLibrary({
           className="flex-1 w-full h-full min-h-0 relative overflow-hidden"
           onClick={onClearSelection}
           onContextMenu={onEmptyAreaContextMenu}
-          ref={resizeRef}
+          ref={setContainerRef}
           style={{ width: '100%', height: '100%' }}
         >
           {containerWidth > 0 && containerHeight > 0 && (
             <List
-              ref={listRef}
+              listRef={listRef}
               className="custom-scrollbar"
               width={containerWidth}
               height={containerHeight}
