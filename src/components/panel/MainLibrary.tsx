@@ -1,3 +1,5 @@
+// IMPORTANT TODO: FIX RESTORE SCROLL AFTER CLOSING EDITOR AND RETURNING BACK TO LIBRARY. IT DOESN'T WANT TO WORK WITH REACT-WINDOW V2 :/
+
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
@@ -1248,6 +1250,14 @@ export default function MainLibrary({
   };
 
   useEffect(() => {
+    if (listRef.current && containerWidth > 0 && containerHeight > 0 && libraryScrollTop > 0) {
+      if (!activePath) {
+        listRef.current.scrollTo(libraryScrollTop);
+      }
+    }
+  }, [containerWidth, containerHeight, activePath]);
+
+  useEffect(() => {
     if (!activePath || !listRef.current || multiSelectedPaths.length > 1 || calculatedRowsData.rows.length === 0)
       return;
 
@@ -1647,8 +1657,7 @@ export default function MainLibrary({
                 gap: ITEM_GAP,
                 outerPadding: OUTER_PADDING,
               }}
-              initialScrollOffset={libraryScrollTop}
-              onScroll={({ scrollOffset }) => setLibraryScrollTop(scrollOffset)}
+              onScroll={(event) => setLibraryScrollTop(event.currentTarget.scrollTop)}
             />
           )}
         </div>
