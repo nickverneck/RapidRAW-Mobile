@@ -96,6 +96,7 @@ import {
   ImageFile,
   Option,
   OPTION_SEPARATOR,
+  LibraryViewMode,
   Panel,
   Progress,
   RawStatus,
@@ -311,6 +312,7 @@ function App() {
     effects: false,
   });
   const [isLibraryExportPanelVisible, setIsLibraryExportPanelVisible] = useState(false);
+  const [libraryViewMode, setLibraryViewMode] = useState<LibraryViewMode>(LibraryViewMode.Flat);
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(256);
   const [rightPanelWidth, setRightPanelWidth] = useState<number>(320);
   const [bottomPanelHeight, setBottomPanelHeight] = useState<number>(144);
@@ -520,6 +522,12 @@ function App() {
       isEffectActive = false;
     };
   }, [showOriginal, selectedImage?.path, adjustments, transformedOriginalUrl]);
+
+  useEffect(() => {
+    if (currentFolderPath) {
+      refreshImageList();
+    }
+  }, [libraryViewMode]);
 
   useEffect(() => {
     const unlisten = listen('comfyui-status-update', (event: any) => {
@@ -1368,7 +1376,7 @@ function App() {
           setExpandedFolders((prev) => {
             const newSet = new Set(prev);
             const allRoots = [rootPath, ...pinnedFolders].filter(Boolean) as string[];
-            const relevantRoot = allRoots.find(r => path.startsWith(r));
+            const relevantRoot = allRoots.find((r) => path.startsWith(r));
 
             if (relevantRoot) {
               const separator = path.includes('/') ? '/' : '\\';
@@ -1418,7 +1426,11 @@ function App() {
           setUncroppedAdjustedPreviewUrl(null);
           setHistogram(null);
         }
-        const files: ImageFile[] = await invoke(Invokes.ListImagesInDir, { path });
+
+        const command =
+          libraryViewMode === LibraryViewMode.Recursive ? Invokes.ListImagesRecursive : Invokes.ListImagesInDir;
+
+        const files: ImageFile[] = await invoke(command, { path });
         const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
         const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
         const shouldReadExif = appSettings?.enableExifReading ?? false;
@@ -1463,7 +1475,15 @@ function App() {
         setIsViewLoading(false);
       }
     },
-    [appSettings, handleSettingsChange, selectedImage, rootPath, sortCriteria.key, pinnedFolders],
+    [
+      appSettings,
+      handleSettingsChange,
+      selectedImage,
+      rootPath,
+      sortCriteria.key,
+      pinnedFolders,
+      libraryViewMode,
+    ],
   );
 
   const handleLibraryRefresh = useCallback(() => {
@@ -1473,7 +1493,10 @@ function App() {
   const refreshImageList = useCallback(async () => {
     if (!currentFolderPath) return;
     try {
-      const files: ImageFile[] = await invoke(Invokes.ListImagesInDir, { path: currentFolderPath });
+      const command =
+        libraryViewMode === LibraryViewMode.Recursive ? Invokes.ListImagesRecursive : Invokes.ListImagesInDir;
+
+      const files: ImageFile[] = await invoke(command, { path: currentFolderPath });
       const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
       const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
       const shouldReadExif = appSettings?.enableExifReading ?? false;
@@ -1510,7 +1533,7 @@ function App() {
       console.error('Failed to refresh image list:', err);
       setError('Failed to refresh image list.');
     }
-  }, [currentFolderPath, sortCriteria.key, appSettings?.enableExifReading]);
+  }, [currentFolderPath, sortCriteria.key, appSettings?.enableExifReading, libraryViewMode]);
 
   const handleToggleFolder = useCallback((path: string) => {
     setExpandedFolders((prev) => {
@@ -3742,6 +3765,7 @@ function App() {
               isLoading={isViewLoading}
               isTreeLoading={isTreeLoading}
               libraryScrollTop={libraryScrollTop}
+              libraryViewMode={libraryViewMode}
               multiSelectedPaths={multiSelectedPaths}
               onClearSelection={handleClearSelection}
               onContextMenu={handleThumbnailContextMenu}
@@ -3757,9 +3781,10 @@ function App() {
               onThumbnailSizeChange={setThumbnailSize}
               rootPath={rootPath}
               searchCriteria={searchCriteria}
-              setSearchCriteria={setSearchCriteria}
               setFilterCriteria={setFilterCriteria}
               setLibraryScrollTop={setLibraryScrollTop}
+              setLibraryViewMode={setLibraryViewMode}
+              setSearchCriteria={setSearchCriteria}
               setSortCriteria={setSortCriteria}
               sortCriteria={sortCriteria}
               theme={theme}

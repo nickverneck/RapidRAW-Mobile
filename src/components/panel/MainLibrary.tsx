@@ -10,6 +10,7 @@ import {
   Home,
   Image as ImageIcon,
   Loader2,
+  FolderOpen,
   RefreshCw,
   Settings,
   SlidersHorizontal,
@@ -19,7 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FixedSizeGrid as Grid } from 'react-window';
+import { VariableSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import Button from '../ui/Button';
 import SettingsPanel from './SettingsPanel';
@@ -29,6 +30,7 @@ import {
   FilterCriteria,
   ImageFile,
   Invokes,
+  LibraryViewMode,
   Progress,
   RawStatus,
   SortCriteria,
@@ -39,13 +41,6 @@ import {
 } from '../ui/AppProperties';
 import { Color, COLOR_LABELS } from '../../utils/adjustments';
 import { ImportState, Status } from './right/ExportImportProperties';
-
-interface CellProps {
-  columnIndex: number;
-  data: any;
-  rowIndex: number;
-  style: any;
-}
 
 interface DropdownMenuProps {
   buttonContent: any;
@@ -86,6 +81,7 @@ interface MainLibraryProps {
   isIndexing: boolean;
   isTreeLoading: boolean;
   libraryScrollTop: number;
+  libraryViewMode: LibraryViewMode;
   multiSelectedPaths: Array<string>;
   onClearSelection(): void;
   onContextMenu(event: any, path: string): void;
@@ -103,6 +99,7 @@ interface MainLibraryProps {
   searchCriteria: SearchCriteria;
   setFilterCriteria(criteria: FilterCriteria): void;
   setLibraryScrollTop(scrollTop: number): void;
+  setLibraryViewMode(mode: LibraryViewMode): void;
   setSearchCriteria(criteria: SearchCriteria | ((prev: SearchCriteria) => SearchCriteria)): void;
   setSortCriteria(criteria: SortCriteria | ((prev: SortCriteria) => SortCriteria)): void;
   sortCriteria: SortCriteria;
@@ -169,9 +166,11 @@ interface ThumbnailAspectRatioProps {
 
 interface ViewOptionsProps {
   filterCriteria: FilterCriteria;
+  libraryViewMode: LibraryViewMode;
   onSelectSize(size: ThumbnailSize): any;
   onSelectAspectRatio(aspectRatio: ThumbnailAspectRatio): any;
   setFilterCriteria(criteria: Partial<FilterCriteria>): void;
+  setLibraryViewMode(mode: LibraryViewMode): void;
   setSortCriteria(criteria: SortCriteria): void;
   sortCriteria: SortCriteria;
   sortOptions: Array<Omit<SortCriteria, 'order'> & { label?: string; disabled?: boolean }>;
@@ -209,6 +208,45 @@ const customOuterElement = forwardRef((props: any, ref: any) => (
   <div ref={ref} {...props} className="custom-scrollbar" />
 ));
 customOuterElement.displayName = 'CustomOuterElement';
+
+const InnerGridElement = forwardRef(({ style, ...rest }: any, ref: any) => (
+  <div
+    ref={ref}
+    style={{
+      ...style,
+      height: `${parseFloat(style.height) + 24}px`,
+    }}
+    {...rest}
+  />
+));
+InnerGridElement.displayName = 'InnerGridElement';
+
+const groupImagesByFolder = (images: ImageFile[], rootPath: string | null) => {
+  const groups: Record<string, ImageFile[]> = {};
+
+  images.forEach((img) => {
+    const physicalPath = img.path.split('?vc=')[0];
+    const separator = physicalPath.includes('/') ? '/' : '\\';
+    const lastSep = physicalPath.lastIndexOf(separator);
+    const dir = lastSep > -1 ? physicalPath.substring(0, lastSep) : physicalPath;
+
+    if (!groups[dir]) {
+      groups[dir] = [];
+    }
+    groups[dir].push(img);
+  });
+
+  const sortedKeys = Object.keys(groups).sort((a, b) => {
+    if (a === rootPath) return -1;
+    if (b === rootPath) return 1;
+    return a.localeCompare(b);
+  });
+
+  return sortedKeys.map((dir) => ({
+    path: dir,
+    images: groups[dir],
+  }));
+};
 
 function SearchInput({ indexingProgress, isIndexing, searchCriteria, setSearchCriteria }: SearchInputProps) {
   const [isSearchActive, setIsSearchActive] = useState(false);
@@ -379,20 +417,17 @@ function SearchInput({ indexingProgress, isIndexing, searchCriteria, setSearchCr
         style={{ opacity: isActive ? 1 : 0, pointerEvents: isActive ? 'auto' : 'none', transition: 'opacity 0.2s' }}
       >
         <AnimatePresence>
-          {text.trim().length > 0 &&
-            tags.length === 0 &&
-            text.trim().length < 6 &&
-            !isIndexing && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.15 }}
-                className="flex-shrink-0 bg-bg-primary text-text-secondary text-xs px-2 py-1 rounded-md whitespace-nowrap"
-              >
-                Separate tags with <kbd className="font-sans font-semibold">,</kbd>
-              </motion.div>
-            )}
+          {text.trim().length > 0 && tags.length === 0 && text.trim().length < 6 && !isIndexing && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              className="flex-shrink-0 bg-bg-primary text-text-secondary text-xs px-2 py-1 rounded-md whitespace-nowrap"
+            >
+              Separate tags with <kbd className="font-sans font-semibold">,</kbd>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {tags.length > 0 && (
@@ -665,15 +700,37 @@ function SortOptions({ sortCriteria, setSortCriteria, sortOptions }: SortOptions
         <div className="text-xs font-semibold text-text-secondary uppercase">Sort by</div>
         <button
           onClick={handleOrderToggle}
-          title={`Sort ${
-            sortCriteria.order === SortDirection.Ascending ? 'Descending' : 'Ascending'
-          }`}
+          title={`Sort ${sortCriteria.order === SortDirection.Ascending ? 'Descending' : 'Ascending'}`}
           className="absolute top-1/2 right-3 -translate-y-1/2 p-1 bg-transparent border-none text-text-secondary hover:text-text-primary focus:outline-none focus:ring-1 focus:ring-accent rounded"
         >
           {sortCriteria.order === SortDirection.Ascending ? (
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m18 15-6-6-6 6" />
+            </svg>
           ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           )}
         </button>
       </div>
@@ -699,11 +756,45 @@ function SortOptions({ sortCriteria, setSortCriteria, sortOptions }: SortOptions
   );
 }
 
+function ViewModeOptions({ mode, setMode }: { mode: LibraryViewMode; setMode: (m: LibraryViewMode) => void }) {
+  return (
+    <>
+      <div className="px-3 py-2 text-xs font-semibold text-text-secondary uppercase">Display Mode</div>
+      <button
+        className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${
+          mode === LibraryViewMode.Flat
+            ? 'bg-card-active text-text-primary font-semibold'
+            : 'text-text-primary hover:bg-bg-primary'
+        }`}
+        onClick={() => setMode(LibraryViewMode.Flat)}
+        role="menuitem"
+      >
+        <span>Current Folder</span>
+        {mode === LibraryViewMode.Flat && <Check size={16} />}
+      </button>
+      <button
+        className={`w-full text-left px-3 py-2 text-sm rounded-md flex items-center justify-between transition-colors duration-150 ${
+          mode === LibraryViewMode.Recursive
+            ? 'bg-card-active text-text-primary font-semibold'
+            : 'text-text-primary hover:bg-bg-primary'
+        }`}
+        onClick={() => setMode(LibraryViewMode.Recursive)}
+        role="menuitem"
+      >
+        <span>Recursive</span>
+        {mode === LibraryViewMode.Recursive && <Check size={16} />}
+      </button>
+    </>
+  );
+}
+
 function ViewOptionsDropdown({
   filterCriteria,
+  libraryViewMode,
   onSelectSize,
   onSelectAspectRatio,
   setFilterCriteria,
+  setLibraryViewMode,
   setSortCriteria,
   sortCriteria,
   sortOptions,
@@ -741,6 +832,9 @@ function ViewOptionsDropdown({
         </div>
         <div className="w-1/4 p-2">
           <SortOptions sortCriteria={sortCriteria} setSortCriteria={setSortCriteria} sortOptions={sortOptions} />
+          <div className="pt-2 border-t border-border-color mt-2">
+            <ViewModeOptions mode={libraryViewMode} setMode={setLibraryViewMode} />
+          </div>
         </div>
       </div>
     </DropdownMenu>
@@ -919,12 +1013,10 @@ function Thumbnail({
   );
 }
 
-const Cell = ({ columnIndex, rowIndex, style, data }: CellProps) => {
+const Row = ({ index, style, data }: any) => {
   const {
+    rows,
     activePath,
-    columnCount,
-    imageList,
-    imageRatings,
     multiSelectedPaths,
     onContextMenu,
     onImageClick,
@@ -932,40 +1024,84 @@ const Cell = ({ columnIndex, rowIndex, style, data }: CellProps) => {
     thumbnails,
     thumbnailAspectRatio,
     loadedThumbnails,
+    imageRatings,
+    rootPath,
+    itemWidth,
+    outerPadding,
+    gap,
   } = data;
-  const index = rowIndex * columnCount + columnIndex;
-  if (index >= imageList.length) {
-    return null;
+
+  const row = rows[index];
+  const top = parseFloat(style.top) + outerPadding;
+
+  if (row.type === 'header') {
+    let displayPath = row.path;
+    if (rootPath && row.path.startsWith(rootPath)) {
+      displayPath = row.path.substring(rootPath.length);
+      if (displayPath.startsWith('/') || displayPath.startsWith('\\')) {
+        displayPath = displayPath.substring(1);
+      }
+    }
+    if (!displayPath) displayPath = 'Current Folder';
+
+    return (
+      <div
+        style={{
+          ...style,
+          top,
+          left: 0,
+          width: style.width,
+          paddingLeft: outerPadding,
+          paddingRight: outerPadding,
+          boxSizing: 'border-box',
+        }}
+        className="flex items-end pb-2"
+      >
+        <div className="flex items-center gap-2 w-full border-b border-border-color pb-1">
+          <FolderOpen size={16} className="text-text-secondary" />
+          <span className="text-sm font-semibold text-text-secondary truncate" title={row.path}>
+            {displayPath}
+          </span>
+          <span className="text-xs text-text-secondary opacity-60 ml-auto">{row.count} images</span>
+        </div>
+      </div>
+    );
   }
 
-  const imageFile = imageList[index];
-  const handleLoad = useCallback(() => {
-    loadedThumbnails.add(imageFile.path);
-  }, [loadedThumbnails, imageFile.path]);
-
   return (
-    <div style={style}>
-      <motion.div
-        animate={{ opacity: 1, scale: 1 }}
-        className="p-2 h-full"
-        initial={{ opacity: 0.9, scale: 0.95 }}
-        key={imageFile.path}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
-      >
-        <Thumbnail
-          data={thumbnails[imageFile.path]}
-          isActive={activePath === imageFile.path}
-          isSelected={multiSelectedPaths.includes(imageFile.path)}
-          onContextMenu={(e: any) => onContextMenu(e, imageFile.path)}
-          onImageClick={onImageClick}
-          onImageDoubleClick={onImageDoubleClick}
-          onLoad={handleLoad}
-          path={imageFile.path}
-          rating={imageRatings?.[imageFile.path] || 0}
-          tags={imageFile.tags}
-          aspectRatio={thumbnailAspectRatio}
-        />
-      </motion.div>
+    <div
+      style={{
+        ...style,
+        top,
+        left: style.left + outerPadding,
+        width: style.width - outerPadding * 2,
+        display: 'flex',
+        gap: gap,
+      }}
+    >
+      {row.images.map((imageFile: ImageFile) => (
+        <div
+          key={imageFile.path}
+          style={{
+            width: itemWidth,
+            height: itemWidth,
+          }}
+        >
+          <Thumbnail
+            data={thumbnails[imageFile.path]}
+            isActive={activePath === imageFile.path}
+            isSelected={multiSelectedPaths.includes(imageFile.path)}
+            onContextMenu={(e: any) => onContextMenu(e, imageFile.path)}
+            onImageClick={onImageClick}
+            onImageDoubleClick={onImageDoubleClick}
+            onLoad={() => loadedThumbnails.add(imageFile.path)}
+            path={imageFile.path}
+            rating={imageRatings?.[imageFile.path] || 0}
+            tags={imageFile.tags}
+            aspectRatio={thumbnailAspectRatio}
+          />
+        </div>
+      ))}
     </div>
   );
 };
@@ -985,6 +1121,7 @@ export default function MainLibrary({
   isThumbnailsLoading,
   isTreeLoading,
   libraryScrollTop,
+  libraryViewMode,
   multiSelectedPaths,
   onClearSelection,
   onContextMenu,
@@ -1002,6 +1139,7 @@ export default function MainLibrary({
   searchCriteria,
   setFilterCriteria,
   setLibraryScrollTop,
+  setLibraryViewMode,
   setSearchCriteria,
   setSortCriteria,
   sortCriteria,
@@ -1015,11 +1153,17 @@ export default function MainLibrary({
   const [appVersion, setAppVersion] = useState('');
   const [supportedTypes, setSupportedTypes] = useState<SupportedTypes | null>(null);
   const libraryContainerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<List>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
   const loadedThumbnailsRef = useRef(new Set<string>());
-  const layoutCache = useRef({ columnCount: 0, cellHeight: 0 });
+
+  const groups = useMemo(() => {
+    if (libraryViewMode === LibraryViewMode.Flat) return null;
+    return groupImagesByFolder(imageList, currentFolderPath);
+  }, [imageList, currentFolderPath, libraryViewMode]);
 
   const handleSortChange = useCallback(
     (criteria: SortCriteria | ((prev: SortCriteria) => SortCriteria)) => {
@@ -1044,46 +1188,74 @@ export default function MainLibrary({
   }, [appSettings?.enableExifReading]);
 
   useEffect(() => {
-    if (!activePath || imageList.length === 0) {
-      return;
+    if (!activePath || !libraryContainerRef.current || multiSelectedPaths.length > 1) return;
+
+    const container = libraryContainerRef.current;
+    const width = container.clientWidth;
+    const OUTER_PADDING = 12;
+    const ITEM_GAP = 12;
+    const minThumbWidth = thumbnailSizeOptions.find((o) => o.id === thumbnailSize)?.size || 240;
+    const availableWidth = width - OUTER_PADDING * 2;
+    const columnCount = Math.max(1, Math.floor((availableWidth + ITEM_GAP) / (minThumbWidth + ITEM_GAP)));
+    const itemWidth = (availableWidth - ITEM_GAP * (columnCount - 1)) / columnCount;
+    const rowHeight = itemWidth + ITEM_GAP;
+    const headerHeight = 40;
+
+    let targetTop = 0;
+    let found = false;
+
+    if (libraryViewMode === LibraryViewMode.Recursive) {
+      const groups = groupImagesByFolder(imageList, currentFolderPath);
+      for (const group of groups) {
+        if (group.images.length === 0) continue;
+
+        // Header
+        targetTop += headerHeight;
+
+        const imageIndex = group.images.findIndex((img) => img.path === activePath);
+        if (imageIndex !== -1) {
+          const rowIndex = Math.floor(imageIndex / columnCount);
+          targetTop += rowIndex * rowHeight;
+          found = true;
+          break;
+        }
+
+        // Add all rows in this group
+        const rowsInGroup = Math.ceil(group.images.length / columnCount);
+        targetTop += rowsInGroup * rowHeight;
+      }
+    } else {
+      const index = imageList.findIndex((img) => img.path === activePath);
+      if (index !== -1) {
+        const rowIndex = Math.floor(index / columnCount);
+        targetTop = rowIndex * rowHeight;
+        found = true;
+      }
     }
 
-    const scrollableElement = libraryContainerRef.current?.querySelector('.custom-scrollbar');
-    if (!scrollableElement) {
-      return;
+    if (found && outerRef.current) {
+      const element = outerRef.current;
+      const clientHeight = element.clientHeight;
+      const scrollTop = element.scrollTop;
+      const itemBottom = targetTop + rowHeight;
+      const SCROLL_OFFSET = 120; // Padding to scroll a bit more than needed
+
+      // Check if below viewport
+      if (itemBottom > scrollTop + clientHeight) {
+        element.scrollTo({
+          top: itemBottom - clientHeight + SCROLL_OFFSET,
+          behavior: 'smooth',
+        });
+      }
+      // Check if above viewport
+      else if (targetTop < scrollTop) {
+        element.scrollTo({
+          top: targetTop - SCROLL_OFFSET,
+          behavior: 'smooth',
+        });
+      }
     }
-
-    const { columnCount, cellHeight } = layoutCache.current;
-    if (columnCount === 0 || cellHeight === 0) {
-      return;
-    }
-
-    const activeIndex = imageList.findIndex((img) => img.path === activePath);
-    if (activeIndex === -1) {
-      return;
-    }
-
-    const rowIndex = Math.floor(activeIndex / columnCount);
-
-    const cellTop = rowIndex * cellHeight;
-    const cellBottom = cellTop + cellHeight;
-
-    const currentScrollTop = scrollableElement.scrollTop;
-    const gridHeight = scrollableElement.clientHeight;
-    const PADDING = 32; 
-
-    if (cellTop < currentScrollTop) {
-      scrollableElement.scrollTo({
-        top: cellTop - PADDING,
-        behavior: 'smooth',
-      });
-    } else if (cellBottom > currentScrollTop + gridHeight) {
-      scrollableElement.scrollTo({
-        top: cellBottom - gridHeight + PADDING,
-        behavior: 'smooth',
-      });
-    }
-  }, [activePath, imageList]);
+  }, [activePath, imageList, libraryViewMode, thumbnailSize, currentFolderPath, multiSelectedPaths.length]);
 
   useEffect(() => {
     const exifEnabled = appSettings?.enableExifReading ?? true;
@@ -1397,9 +1569,11 @@ export default function MainLibrary({
           />
           <ViewOptionsDropdown
             filterCriteria={filterCriteria}
+            libraryViewMode={libraryViewMode}
             onSelectSize={onThumbnailSizeChange}
             onSelectAspectRatio={onThumbnailAspectRatioChange}
             setFilterCriteria={setFilterCriteria}
+            setLibraryViewMode={setLibraryViewMode}
             setSortCriteria={handleSortChange}
             sortCriteria={sortCriteria}
             sortOptions={sortOptions}
@@ -1433,29 +1607,62 @@ export default function MainLibrary({
         <div className="flex-1 w-full h-full" onClick={onClearSelection} onContextMenu={onEmptyAreaContextMenu}>
           <AutoSizer>
             {({ height, width }) => {
-              const SCROLLBAR_SIZE = 10;
-              const PADDING = 8;
+              const OUTER_PADDING = 12;
+              const ITEM_GAP = 12;
               const minThumbWidth = thumbnailSizeOptions.find((o) => o.id === thumbnailSize)?.size || 240;
-              const columnCount = Math.max(1, Math.floor(width / (minThumbWidth + PADDING * 2)));
-              const rowCount = Math.ceil(imageList.length / columnCount);
-              const preliminaryCellWidth = width / columnCount;
-              const isScrollbarVisible = rowCount * preliminaryCellWidth > height;
-              const gridWidth = isScrollbarVisible ? width - SCROLLBAR_SIZE : width;
-              const cellWidth = gridWidth / columnCount;
-              const cellHeight = cellWidth;
-              layoutCache.current = { columnCount, cellHeight };
+
+              const availableWidth = width - OUTER_PADDING * 2;
+              const columnCount = Math.max(1, Math.floor((availableWidth + ITEM_GAP) / (minThumbWidth + ITEM_GAP)));
+              const itemWidth = (availableWidth - ITEM_GAP * (columnCount - 1)) / columnCount;
+              const rowHeight = itemWidth + ITEM_GAP;
+              const headerHeight = 40;
+
+              let rows: any[] = [];
+
+              if (libraryViewMode === LibraryViewMode.Recursive && groups) {
+                groups.forEach((group) => {
+                  if (group.images.length === 0) return;
+
+                  rows.push({ type: 'header', path: group.path, count: group.images.length });
+
+                  for (let i = 0; i < group.images.length; i += columnCount) {
+                    rows.push({
+                      type: 'images',
+                      images: group.images.slice(i, i + columnCount),
+                      startIndex: i,
+                    });
+                  }
+                });
+              } else {
+                for (let i = 0; i < imageList.length; i += columnCount) {
+                  rows.push({
+                    type: 'images',
+                    images: imageList.slice(i, i + columnCount),
+                    startIndex: i,
+                  });
+                }
+              }
+
+              const getItemSize = (index: number) => {
+                return rows[index].type === 'header' ? headerHeight : rowHeight;
+              };
 
               return (
-                <Grid
-                  columnCount={columnCount}
-                  columnWidth={cellWidth}
+                <List
+                  ref={listRef}
+                  outerRef={outerRef}
                   height={height}
-                  initialScrollTop={libraryScrollTop}
+                  itemCount={rows.length}
+                  itemSize={getItemSize}
+                  width={width}
+                  initialScrollOffset={libraryScrollTop}
+                  onScroll={({ scrollOffset }) => setLibraryScrollTop(scrollOffset)}
+                  outerElementType={customOuterElement}
+                  innerElementType={InnerGridElement}
+                  key={`${width}-${thumbnailSize}-${libraryViewMode}`}
                   itemData={{
+                    rows,
                     activePath,
-                    columnCount,
-                    imageList,
-                    imageRatings,
                     multiSelectedPaths,
                     onContextMenu,
                     onImageClick,
@@ -1463,18 +1670,15 @@ export default function MainLibrary({
                     thumbnails,
                     thumbnailAspectRatio,
                     loadedThumbnails: loadedThumbnailsRef.current,
+                    imageRatings,
+                    rootPath: currentFolderPath,
+                    itemWidth,
+                    outerPadding: OUTER_PADDING,
+                    gap: ITEM_GAP,
                   }}
-                  key={`${currentFolderPath}-${sortCriteria.key}-${sortCriteria.order}-${filterCriteria.rating}-${
-                    filterCriteria.rawStatus || RawStatus.All
-                  }-${JSON.stringify(searchCriteria)}`}
-                  onScroll={({ scrollTop }) => setLibraryScrollTop(scrollTop)}
-                  outerElementType={customOuterElement}
-                  rowCount={rowCount}
-                  rowHeight={cellHeight}
-                  width={width}
                 >
-                  {Cell}
-                </Grid>
+                  {Row}
+                </List>
               );
             }}
           </AutoSizer>

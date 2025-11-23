@@ -503,6 +503,99 @@ pub fn list_images_in_dir(path: String) -> Result<Vec<ImageFile>, String> {
     Ok(result_list)
 }
 
+#[tauri::command]
+pub fn list_images_recursive(path: String) -> Result<Vec<ImageFile>, String> {
+    let root_path = Path::new(&path);
+    let mut image_files = HashMap::new();
+    let mut sidecars_by_source = HashMap::new();
+
+    let sidecar_re = Regex::new(r"^(.*)\.([a-f0-9]{6})\.rrdata$").unwrap();
+    let original_sidecar_re = Regex::new(r"^(.*)\.rrdata$").unwrap();
+
+    for entry in WalkDir::new(root_path).into_iter().filter_map(Result::ok) {
+        let entry_path = entry.path();
+        if !entry_path.is_file() {
+            continue;
+        }
+        
+        let file_name = entry_path.file_name().unwrap_or_default().to_string_lossy();
+
+        if is_supported_image_file(&entry_path.to_string_lossy()) {
+            let path_str = entry_path.to_string_lossy().into_owned();
+            image_files.insert(path_str, entry_path.to_path_buf());
+        } else if file_name.ends_with(".rrdata") {
+            if let Some(caps) = sidecar_re.captures(&file_name) {
+                let source_filename = caps.get(1).map_or("", |m| m.as_str());
+                let copy_id = caps.get(2).map_or("", |m| m.as_str());
+                if let Some(parent) = entry_path.parent() {
+                    let source_path = parent.join(source_filename);
+                    sidecars_by_source
+                        .entry(source_path.to_string_lossy().into_owned())
+                        .or_insert_with(Vec::new)
+                        .push(Some(copy_id.to_string()));
+                }
+            } else if let Some(caps) = original_sidecar_re.captures(&file_name) {
+                let source_filename = caps.get(1).map_or("", |m| m.as_str());
+                if let Some(parent) = entry_path.parent() {
+                    let source_path = parent.join(source_filename);
+                    sidecars_by_source
+                        .entry(source_path.to_string_lossy().into_owned())
+                        .or_insert_with(Vec::new)
+                        .push(None);
+                }
+            }
+        }
+    }
+
+    let mut result_list = Vec::new();
+    for (path_str, path_buf) in image_files {
+        let modified = fs::metadata(&path_buf)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        let sidecar_versions = sidecars_by_source.entry(path_str.clone()).or_insert_with(|| vec![None]);
+
+        for copy_id_opt in sidecar_versions {
+            let (virtual_path, sidecar_path, is_virtual_copy) = match copy_id_opt {
+                Some(id) => {
+                    let new_virtual_path = format!("{}?vc={}", path_str, id);
+                    (
+                        new_virtual_path.clone(),
+                        parse_virtual_path(&new_virtual_path).1,
+                        true,
+                    )
+                }
+                None => (path_str.clone(), parse_virtual_path(&path_str).1, false),
+            };
+
+            let (is_edited, tags) = if sidecar_path.exists() {
+                if let Ok(content) = fs::read_to_string(sidecar_path) {
+                    if let Ok(metadata) = serde_json::from_str::<ImageMetadata>(&content) {
+                        let edited = metadata.adjustments.as_object().map_or(false, |a| {
+                            a.keys().len() > 1 || (a.keys().len() == 1 && !a.contains_key("rating"))
+                        });
+                        (edited, metadata.tags)
+                    } else { (false, None) }
+                } else { (false, None) }
+            } else { (false, None) };
+
+            result_list.push(ImageFile {
+                path: virtual_path,
+                modified,
+                is_edited,
+                tags,
+                exif: None,
+                is_virtual_copy,
+            });
+        }
+    }
+
+    Ok(result_list)
+}
+
 #[derive(Serialize, Debug)]
 pub struct FolderNode {
     pub name: String,

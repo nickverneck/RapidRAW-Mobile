@@ -48,6 +48,7 @@ export enum Invokes {
   InvokeGenerativeReplace = 'invoke_generative_replace',
   InvokeGenerativeReplaseWithMaskDef = 'invoke_generative_replace_with_mask_def',
   ListImagesInDir = 'list_images_in_dir',
+  ListImagesRecursive = 'list_images_recursive',
   LoadImage = 'load_image',
   LoadMetadata = 'load_metadata',
   LoadPresets = 'load_presets',
@@ -154,6 +155,11 @@ export interface BrushSettings {
   feather: number;
   size: number;
   tool: ToolType;
+}
+
+export enum LibraryViewMode {
+  Flat = 'flat',
+  Recursive = 'recursive',
 }
 
 export interface FilterCriteria {
