@@ -214,7 +214,7 @@ const InnerGridElement = forwardRef(({ style, ...rest }: any, ref: any) => (
     ref={ref}
     style={{
       ...style,
-      height: `${parseFloat(style.height) + 24}px`,
+      height: `${parseFloat(style.height)}px`,
     }}
     {...rest}
   />
