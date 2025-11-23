@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, forwardRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, forwardRef } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
@@ -20,8 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { VariableSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { List, RowComponentProps } from 'react-window';
 import Button from '../ui/Button';
 import SettingsPanel from './SettingsPanel';
 import { ThemeProps, THEMES, DEFAULT_THEME_ID } from '../../utils/themes';
@@ -204,22 +203,33 @@ const thumbnailAspectRatioOptions: Array<ThumbnailAspectRatioOption> = [
   { id: ThumbnailAspectRatio.Contain, label: 'Original Ratio' },
 ];
 
-const customOuterElement = forwardRef((props: any, ref: any) => (
-  <div ref={ref} {...props} className="custom-scrollbar" />
-));
-customOuterElement.displayName = 'CustomOuterElement';
+const useResizeObserver = () => {
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const observerRef = useRef<ResizeObserver | null>(null);
 
-const InnerGridElement = forwardRef(({ style, ...rest }: any, ref: any) => (
-  <div
-    ref={ref}
-    style={{
-      ...style,
-      height: `${parseFloat(style.height)}px`,
-    }}
-    {...rest}
-  />
-));
-InnerGridElement.displayName = 'InnerGridElement';
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+
+    if (node) {
+      const observer = new ResizeObserver((entries) => {
+        if (entries[0]) {
+          const { width, height } = entries[0].contentRect;
+          setDimensions({ width, height });
+        }
+      });
+      observer.observe(node);
+      observerRef.current = observer;
+
+      const { width, height } = node.getBoundingClientRect();
+      setDimensions({ width, height });
+    }
+  }, []);
+
+  return { ref, width: dimensions.width, height: dimensions.height };
+};
 
 const groupImagesByFolder = (images: ImageFile[], rootPath: string | null) => {
   const groups: Record<string, ImageFile[]> = {};
@@ -826,15 +836,15 @@ function ViewOptionsDropdown({
               onSelectAspectRatio={onSelectAspectRatio}
             />
           </div>
+          <div className="pt-2">
+            <ViewModeOptions mode={libraryViewMode} setMode={setLibraryViewMode} />
+          </div>
         </div>
         <div className="w-2/4 p-2 border-r border-border-color">
           <FilterOptions filterCriteria={filterCriteria} setFilterCriteria={setFilterCriteria} />
         </div>
         <div className="w-1/4 p-2">
           <SortOptions sortCriteria={sortCriteria} setSortCriteria={setSortCriteria} sortOptions={sortOptions} />
-          <div className="pt-2 border-t border-border-color mt-2">
-            <ViewModeOptions mode={libraryViewMode} setMode={setLibraryViewMode} />
-          </div>
         </div>
       </div>
     </DropdownMenu>
@@ -1013,26 +1023,36 @@ function Thumbnail({
   );
 }
 
-const Row = ({ index, style, data }: any) => {
-  const {
-    rows,
-    activePath,
-    multiSelectedPaths,
-    onContextMenu,
-    onImageClick,
-    onImageDoubleClick,
-    thumbnails,
-    thumbnailAspectRatio,
-    loadedThumbnails,
-    imageRatings,
-    rootPath,
-    itemWidth,
-    outerPadding,
-    gap,
-  } = data;
-
+const Row = ({
+  index,
+  style,
+  rows,
+  activePath,
+  multiSelectedPaths,
+  onContextMenu,
+  onImageClick,
+  onImageDoubleClick,
+  thumbnails,
+  thumbnailAspectRatio,
+  loadedThumbnails,
+  imageRatings,
+  rootPath,
+  itemWidth,
+  gap,
+  outerPadding,
+}: RowComponentProps<any>) => {
   const row = rows[index];
-  const top = parseFloat(style.top) + outerPadding;
+  const isFirst = index === 0;
+  const isLast = index === rows.length - 1;
+
+  const rowStyle = {
+    ...style,
+    paddingLeft: outerPadding,
+    paddingRight: outerPadding,
+    paddingTop: isFirst ? outerPadding : 0,
+    paddingBottom: isLast ? outerPadding : 0,
+    boxSizing: 'border-box' as const,
+  };
 
   if (row.type === 'header') {
     let displayPath = row.path;
@@ -1045,18 +1065,7 @@ const Row = ({ index, style, data }: any) => {
     if (!displayPath) displayPath = 'Current Folder';
 
     return (
-      <div
-        style={{
-          ...style,
-          top,
-          left: 0,
-          width: style.width,
-          paddingLeft: outerPadding,
-          paddingRight: outerPadding,
-          boxSizing: 'border-box',
-        }}
-        className="flex items-end pb-2"
-      >
+      <div style={rowStyle} className="flex flex-col justify-start pt-2">
         <div className="flex items-center gap-2 w-full border-b border-border-color pb-1">
           <FolderOpen size={16} className="text-text-secondary" />
           <span className="text-sm font-semibold text-text-secondary truncate" title={row.path}>
@@ -1069,39 +1078,32 @@ const Row = ({ index, style, data }: any) => {
   }
 
   return (
-    <div
-      style={{
-        ...style,
-        top,
-        left: style.left + outerPadding,
-        width: style.width - outerPadding * 2,
-        display: 'flex',
-        gap: gap,
-      }}
-    >
-      {row.images.map((imageFile: ImageFile) => (
-        <div
-          key={imageFile.path}
-          style={{
-            width: itemWidth,
-            height: itemWidth,
-          }}
-        >
-          <Thumbnail
-            data={thumbnails[imageFile.path]}
-            isActive={activePath === imageFile.path}
-            isSelected={multiSelectedPaths.includes(imageFile.path)}
-            onContextMenu={(e: any) => onContextMenu(e, imageFile.path)}
-            onImageClick={onImageClick}
-            onImageDoubleClick={onImageDoubleClick}
-            onLoad={() => loadedThumbnails.add(imageFile.path)}
-            path={imageFile.path}
-            rating={imageRatings?.[imageFile.path] || 0}
-            tags={imageFile.tags}
-            aspectRatio={thumbnailAspectRatio}
-          />
-        </div>
-      ))}
+    <div style={rowStyle}>
+      <div style={{ display: 'flex', gap: gap }}>
+        {row.images.map((imageFile: ImageFile) => (
+          <div
+            key={imageFile.path}
+            style={{
+              width: itemWidth,
+              height: itemWidth,
+            }}
+          >
+            <Thumbnail
+              data={thumbnails[imageFile.path]}
+              isActive={activePath === imageFile.path}
+              isSelected={multiSelectedPaths.includes(imageFile.path)}
+              onContextMenu={(e: any) => onContextMenu(e, imageFile.path)}
+              onImageClick={onImageClick}
+              onImageDoubleClick={onImageDoubleClick}
+              onLoad={() => loadedThumbnails.add(imageFile.path)}
+              path={imageFile.path}
+              rating={imageRatings?.[imageFile.path] || 0}
+              tags={imageFile.tags}
+              aspectRatio={thumbnailAspectRatio}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -1152,13 +1154,14 @@ export default function MainLibrary({
   const [showSettings, setShowSettings] = useState(false);
   const [appVersion, setAppVersion] = useState('');
   const [supportedTypes, setSupportedTypes] = useState<SupportedTypes | null>(null);
-  const libraryContainerRef = useRef<HTMLDivElement>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<List>(null);
-  const outerRef = useRef<HTMLDivElement>(null);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [latestVersion, setLatestVersion] = useState('');
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
   const loadedThumbnailsRef = useRef(new Set<string>());
+
+  const { width: containerWidth, height: containerHeight, ref: resizeRef } = useResizeObserver();
 
   const groups = useMemo(() => {
     if (libraryViewMode === LibraryViewMode.Flat) return null;
@@ -1187,20 +1190,60 @@ export default function MainLibrary({
     ];
   }, [appSettings?.enableExifReading]);
 
-  useEffect(() => {
-    if (!activePath || !libraryContainerRef.current || multiSelectedPaths.length > 1) return;
+  const OUTER_PADDING = 12;
+  const ITEM_GAP = 12;
+  const minThumbWidth = thumbnailSizeOptions.find((o) => o.id === thumbnailSize)?.size || 240;
+  const headerHeight = 40;
 
-    const container = libraryContainerRef.current;
-    const width = container.clientWidth;
-    const OUTER_PADDING = 12;
-    const ITEM_GAP = 12;
-    const minThumbWidth = thumbnailSizeOptions.find((o) => o.id === thumbnailSize)?.size || 240;
+  const calculatedRowsData = useMemo(() => {
+    const width = containerWidth || 800;
+
     const availableWidth = width - OUTER_PADDING * 2;
+
     const columnCount = Math.max(1, Math.floor((availableWidth + ITEM_GAP) / (minThumbWidth + ITEM_GAP)));
     const itemWidth = (availableWidth - ITEM_GAP * (columnCount - 1)) / columnCount;
     const rowHeight = itemWidth + ITEM_GAP;
-    const headerHeight = 40;
 
+    let rows: any[] = [];
+
+    if (libraryViewMode === LibraryViewMode.Recursive && groups) {
+      groups.forEach((group) => {
+        if (group.images.length === 0) return;
+
+        rows.push({ type: 'header', path: group.path, count: group.images.length });
+
+        for (let i = 0; i < group.images.length; i += columnCount) {
+          rows.push({
+            type: 'images',
+            images: group.images.slice(i, i + columnCount),
+            startIndex: i,
+          });
+        }
+      });
+    } else {
+      for (let i = 0; i < imageList.length; i += columnCount) {
+        rows.push({
+          type: 'images',
+          images: imageList.slice(i, i + columnCount),
+          startIndex: i,
+        });
+      }
+    }
+
+    return { rows, itemWidth, rowHeight, columnCount };
+  }, [containerWidth, libraryViewMode, groups, imageList, minThumbWidth, OUTER_PADDING, ITEM_GAP]);
+
+  const getItemSize = (index: number) => {
+    let size = calculatedRowsData.rows[index].type === 'header' ? headerHeight : calculatedRowsData.rowHeight;
+    if (index === 0) size += OUTER_PADDING;
+    return size;
+  };
+
+  useEffect(() => {
+    if (!activePath || !listRef.current || multiSelectedPaths.length > 1 || calculatedRowsData.rows.length === 0)
+      return;
+
+    const { rows, rowHeight, columnCount } = calculatedRowsData;
     let targetTop = 0;
     let found = false;
 
@@ -1209,7 +1252,6 @@ export default function MainLibrary({
       for (const group of groups) {
         if (group.images.length === 0) continue;
 
-        // Header
         targetTop += headerHeight;
 
         const imageIndex = group.images.findIndex((img) => img.path === activePath);
@@ -1220,7 +1262,6 @@ export default function MainLibrary({
           break;
         }
 
-        // Add all rows in this group
         const rowsInGroup = Math.ceil(group.images.length / columnCount);
         targetTop += rowsInGroup * rowHeight;
       }
@@ -1233,29 +1274,28 @@ export default function MainLibrary({
       }
     }
 
-    if (found && outerRef.current) {
-      const element = outerRef.current;
-      const clientHeight = element.clientHeight;
-      const scrollTop = element.scrollTop;
+    if (found && listContainerRef.current) {
+      const clientHeight = listContainerRef.current.clientHeight;
+      const scrollTop = libraryScrollTop;
       const itemBottom = targetTop + rowHeight;
-      const SCROLL_OFFSET = 120; // Padding to scroll a bit more than needed
+      const SCROLL_OFFSET = 120;
 
-      // Check if below viewport
       if (itemBottom > scrollTop + clientHeight) {
-        element.scrollTo({
-          top: itemBottom - clientHeight + SCROLL_OFFSET,
-          behavior: 'smooth',
-        });
-      }
-      // Check if above viewport
-      else if (targetTop < scrollTop) {
-        element.scrollTo({
-          top: targetTop - SCROLL_OFFSET,
-          behavior: 'smooth',
-        });
+        listRef.current.scrollTo(itemBottom - clientHeight + SCROLL_OFFSET);
+      } else if (targetTop < scrollTop) {
+        listRef.current.scrollTo(targetTop - SCROLL_OFFSET);
       }
     }
-  }, [activePath, imageList, libraryViewMode, thumbnailSize, currentFolderPath, multiSelectedPaths.length]);
+  }, [
+    activePath,
+    imageList,
+    libraryViewMode,
+    thumbnailSize,
+    currentFolderPath,
+    multiSelectedPaths.length,
+    calculatedRowsData,
+    libraryScrollTop,
+  ]);
 
   useEffect(() => {
     const exifEnabled = appSettings?.enableExifReading ?? true;
@@ -1336,7 +1376,7 @@ export default function MainLibrary({
 
   useEffect(() => {
     const handleWheel = (event: any) => {
-      const container = libraryContainerRef.current;
+      const container = listContainerRef.current;
       if (!container || !container.contains(event.target)) {
         return;
       }
@@ -1522,10 +1562,7 @@ export default function MainLibrary({
   }
 
   return (
-    <div
-      className="flex-1 flex flex-col h-full min-w-0 bg-bg-secondary rounded-lg overflow-hidden"
-      ref={libraryContainerRef}
-    >
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-bg-secondary rounded-lg overflow-hidden">
       <header className="p-4 flex-shrink-0 flex justify-between items-center border-b border-border-color gap-4">
         <div className="min-w-0">
           <h2 className="text-2xl font-bold text-primary">Library</h2>
@@ -1604,84 +1641,42 @@ export default function MainLibrary({
         </div>
       </header>
       {imageList.length > 0 ? (
-        <div className="flex-1 w-full h-full" onClick={onClearSelection} onContextMenu={onEmptyAreaContextMenu}>
-          <AutoSizer>
-            {({ height, width }) => {
-              const OUTER_PADDING = 12;
-              const ITEM_GAP = 12;
-              const minThumbWidth = thumbnailSizeOptions.find((o) => o.id === thumbnailSize)?.size || 240;
-
-              const availableWidth = width - OUTER_PADDING * 2;
-              const columnCount = Math.max(1, Math.floor((availableWidth + ITEM_GAP) / (minThumbWidth + ITEM_GAP)));
-              const itemWidth = (availableWidth - ITEM_GAP * (columnCount - 1)) / columnCount;
-              const rowHeight = itemWidth + ITEM_GAP;
-              const headerHeight = 40;
-
-              let rows: any[] = [];
-
-              if (libraryViewMode === LibraryViewMode.Recursive && groups) {
-                groups.forEach((group) => {
-                  if (group.images.length === 0) return;
-
-                  rows.push({ type: 'header', path: group.path, count: group.images.length });
-
-                  for (let i = 0; i < group.images.length; i += columnCount) {
-                    rows.push({
-                      type: 'images',
-                      images: group.images.slice(i, i + columnCount),
-                      startIndex: i,
-                    });
-                  }
-                });
-              } else {
-                for (let i = 0; i < imageList.length; i += columnCount) {
-                  rows.push({
-                    type: 'images',
-                    images: imageList.slice(i, i + columnCount),
-                    startIndex: i,
-                  });
-                }
-              }
-
-              const getItemSize = (index: number) => {
-                return rows[index].type === 'header' ? headerHeight : rowHeight;
-              };
-
-              return (
-                <List
-                  ref={listRef}
-                  outerRef={outerRef}
-                  height={height}
-                  itemCount={rows.length}
-                  itemSize={getItemSize}
-                  width={width}
-                  initialScrollOffset={libraryScrollTop}
-                  onScroll={({ scrollOffset }) => setLibraryScrollTop(scrollOffset)}
-                  outerElementType={customOuterElement}
-                  innerElementType={InnerGridElement}
-                  key={`${width}-${thumbnailSize}-${libraryViewMode}`}
-                  itemData={{
-                    rows,
-                    activePath,
-                    multiSelectedPaths,
-                    onContextMenu,
-                    onImageClick,
-                    onImageDoubleClick,
-                    thumbnails,
-                    thumbnailAspectRatio,
-                    loadedThumbnails: loadedThumbnailsRef.current,
-                    imageRatings,
-                    rootPath: currentFolderPath,
-                    itemWidth,
-                    outerPadding: OUTER_PADDING,
-                    gap: ITEM_GAP,
-                  }}
-                >
-                  {Row}
-                </List>
-              );
-            }}
-          </AutoSizer>
+        <div
+          className="flex-1 w-full h-full min-h-0 relative overflow-hidden"
+          onClick={onClearSelection}
+          onContextMenu={onEmptyAreaContextMenu}
+          ref={resizeRef}
+          style={{ width: '100%', height: '100%' }}
+        >
+          {containerWidth > 0 && containerHeight > 0 && (
+            <List
+              ref={listRef}
+              className="custom-scrollbar"
+              width={containerWidth}
+              height={containerHeight}
+              rowCount={calculatedRowsData.rows.length}
+              rowHeight={getItemSize}
+              rowComponent={Row}
+              rowProps={{
+                rows: calculatedRowsData.rows,
+                activePath,
+                multiSelectedPaths,
+                onContextMenu,
+                onImageClick,
+                onImageDoubleClick,
+                thumbnails,
+                thumbnailAspectRatio,
+                loadedThumbnails: loadedThumbnailsRef.current,
+                imageRatings,
+                rootPath: currentFolderPath,
+                itemWidth: calculatedRowsData.itemWidth,
+                gap: ITEM_GAP,
+                outerPadding: OUTER_PADDING,
+              }}
+              initialScrollOffset={libraryScrollTop}
+              onScroll={({ scrollOffset }) => setLibraryScrollTop(scrollOffset)}
+            />
+          )}
         </div>
       ) : isIndexing || aiModelDownloadStatus || importState.status === Status.Importing ? (
         <div

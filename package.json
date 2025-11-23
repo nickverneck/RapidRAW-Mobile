@@ -28,8 +28,7 @@
     "react-draggable": "^4.5.0",
     "react-image-crop": "^11.0.10",
     "react-konva": "^19.0.10",
-    "react-virtualized-auto-sizer": "^1.0.26",
-    "react-window": "^1.8.11",
+    "react-window": "^2.2.3",
     "react-zoom-pan-pinch": "^3.7.0",
     "uuid": "^13.0.0"
   },
