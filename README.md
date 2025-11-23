@@ -59,20 +59,22 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
-*   **2025-10-15:** Virtual copies & library improvements
-*   **2025-10-14:** Open-with-file cross plattform compatibilty & single instance lock
-*   **2025-10-13:** Rewritten tagging system to support pill-like image tagging
-*   **2025-10-10:** Improved folder tree with search functionality
-*   **2025-10-08:** Added EXR file format support
-*   **2025-10-XX:** Improving AgX
+*   **2025-11-22:** DNG loader improvements
+*   **2025-11-18:** Improved vibrancy adjustment
+*   **2025-11-15:** Virtual copies & library improvements
+*   **2025-11-14:** Open-with-file cross plattform compatibilty & single instance lock
+*   **2025-11-13:** Rewritten tagging system to support pill-like image tagging
+*   **2025-11-10:** Improved folder tree with search functionality
+*   **2025-11-08:** Added EXR file format support
+*   **2025-11-XX:** Improving AgX
 *   **2025-11-02:** Optimize image loading & add processing engine settings
 *   **2025-10-31:** Expose highlights compression point to user & improve keybinds detection
-*   **2025-10-28:** Copy paste settings & brightness adjustment
-*   **2025-10-XX:** Working on tonemapping - ongoing...
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2025-10-28:** Copy paste settings & brightness adjustment
+*   **2025-10-XX:** Working on tonemapping - ongoing...
 *   **2025-10-24:** Getting AgX right isn't as easy as it seems :=)
 *   **2025-10-22:** AgX tone mapping
 *   **2025-10-19:** Whole image mask component & organize mask components better
