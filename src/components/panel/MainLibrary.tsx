@@ -826,15 +826,15 @@ function ViewOptionsDropdown({
               onSelectAspectRatio={onSelectAspectRatio}
             />
           </div>
+          <div className="pt-2">
+            <ViewModeOptions mode={libraryViewMode} setMode={setLibraryViewMode} />
+          </div>
         </div>
         <div className="w-2/4 p-2 border-r border-border-color">
           <FilterOptions filterCriteria={filterCriteria} setFilterCriteria={setFilterCriteria} />
         </div>
         <div className="w-1/4 p-2">
           <SortOptions sortCriteria={sortCriteria} setSortCriteria={setSortCriteria} sortOptions={sortOptions} />
-          <div className="pt-2 border-t border-border-color mt-2">
-            <ViewModeOptions mode={libraryViewMode} setMode={setLibraryViewMode} />
-          </div>
         </div>
       </div>
     </DropdownMenu>
