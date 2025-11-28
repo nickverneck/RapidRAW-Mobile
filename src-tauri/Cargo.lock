@@ -34,6 +34,7 @@ dependencies = [
  "ort",
  "os_info",
  "pollster",
+ "qoi",
  "rand 0.9.2",
  "raw-window-handle",
  "rawler",
