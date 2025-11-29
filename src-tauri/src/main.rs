@@ -30,7 +30,7 @@ use std::io::Cursor;
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::io::Write;
 use std::sync::Mutex;
@@ -1080,6 +1080,7 @@ async fn batch_export_images(
 
     let context = get_or_init_gpu_context(&state)?;
     let context = Arc::new(context);
+    let progress_counter = Arc::new(AtomicUsize::new(0));
 
     let task = tokio::spawn(async move {
         let state = app_handle.state::<AppState>();
@@ -1102,10 +1103,12 @@ async fn batch_export_images(
                     return Err("Export cancelled".to_string());
                 }
 
+                let current_progress = progress_counter.fetch_add(1, Ordering::SeqCst) + 1;
+
                 let _ = app_handle.emit(
                     "batch-export-progress",
                     serde_json::json!({
-                        "current": global_index,
+                        "current": current_progress,
                         "total": total_paths,
                         "path": image_path_str
                     }),
