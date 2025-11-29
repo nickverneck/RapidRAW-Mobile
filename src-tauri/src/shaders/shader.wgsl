@@ -1060,7 +1060,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
         if (influence > 0.001) {
             let mask_adj = adjustments.mask_adjustments[i];
 
-            var mask_base_linear = globally_adjusted_linear;
+            var mask_base_linear = composite_rgb_linear;
             mask_base_linear = apply_local_contrast(mask_base_linear, sharpness_blurred, mask_adj.sharpness, adjustments.global.is_raw_image);
             mask_base_linear = apply_local_contrast(mask_base_linear, clarity_blurred, mask_adj.clarity, adjustments.global.is_raw_image);
             mask_base_linear = apply_local_contrast(mask_base_linear, structure_blurred, mask_adj.structure, adjustments.global.is_raw_image);
