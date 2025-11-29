@@ -268,10 +268,10 @@ fn hsv_to_rgb(c: vec3<f32>) -> vec3<f32> {
     return rgb_prime + vec3<f32>(m, m, m);
 }
 
-fn get_raw_hsl_influence(hue: f32, range: HslRange) -> f32 {
-    let dist = min(abs(hue - range.center), 360.0 - abs(hue - range.center));
+fn get_raw_hsl_influence(hue: f32, center: f32, width: f32) -> f32 {
+    let dist = min(abs(hue - center), 360.0 - abs(hue - center));
     const sharpness = 1.5; 
-    let falloff = dist / (range.width * 0.5);
+    let falloff = dist / (width * 0.5);
     return exp(-sharpness * falloff * falloff);
 }
 
@@ -569,7 +569,8 @@ fn apply_hsl_panel(color: vec3<f32>, hsl_adjustments: array<HslColor, 8>, coords
     var raw_influences: array<f32, 8>;
     var total_raw_influence: f32 = 0.0;
     for (var i = 0u; i < 8u; i = i + 1u) {
-        let influence = get_raw_hsl_influence(original_hue, HSL_RANGES[i]);
+        let range = HSL_RANGES[i];
+        let influence = get_raw_hsl_influence(original_hue, range.center, range.width);
         raw_influences[i] = influence;
         total_raw_influence += influence;
     }
