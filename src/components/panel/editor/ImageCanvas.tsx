@@ -65,6 +65,7 @@ interface ImageLayer {
 
 interface MaskOverlay {
   adjustments: Adjustments;
+  isToolActive: boolean;
   isSelected: boolean;
   onMaskMouseEnter(): void;
   onMaskMouseLeave(): void;
@@ -92,6 +93,7 @@ function linesIntersect(eraserLine: DrawnLine, drawnLine: DrawnLine) {
 const MaskOverlay = memo(
   ({
     adjustments,
+    isToolActive,
     isSelected,
     onMaskMouseEnter,
     onMaskMouseLeave,
@@ -106,6 +108,7 @@ const MaskOverlay = memo(
     const crop = adjustments.crop;
     const cropX = crop ? crop.x : 0;
     const cropY = crop ? crop.y : 0;
+    const handleSelect = isToolActive ? undefined : onSelect;
 
     useEffect(() => {
       if (isSelected && trRef.current && shapeRef.current) {
@@ -225,8 +228,8 @@ const MaskOverlay = memo(
 
     const commonProps = {
       dash: [4, 4],
-      onClick: onSelect,
-      onTap: onSelect,
+      onClick: handleSelect,
+      onTap: handleSelect,
       opacity: isSelected ? 1 : 0.7,
       stroke: isSelected ? '#0ea5e9' : subMask.mode === SubMaskMode.Subtractive ? '#f43f5e' : 'white',
       strokeScaleEnabled: false,
@@ -254,7 +257,7 @@ const MaskOverlay = memo(
     if (subMask.type === Mask.Brush) {
       const { lines = [] } = subMask.parameters;
       return (
-        <Group onClick={onSelect} onTap={onSelect}>
+        <Group onClick={handleSelect} onTap={handleSelect}>
           {lines.map((line: DrawnLine, i: number) => (
             <Line
               dash={[4, 4]}
@@ -338,7 +341,7 @@ const MaskOverlay = memo(
       return (
         <Group
           draggable={isSelected}
-          onClick={onSelect}
+          onClick={handleSelect}
           onDragEnd={handleGroupDragEnd}
           onMouseEnter={(e: any) => {
             onMaskMouseEnter();
@@ -354,7 +357,7 @@ const MaskOverlay = memo(
               stage.container().style.cursor = 'default';
             }
           }}
-          onTap={onSelect}
+          onTap={handleSelect}
           rotation={(angle * 180) / Math.PI}
           x={groupX}
           y={groupY}
@@ -1020,6 +1023,7 @@ const ImageCanvas = memo(
                   <MaskOverlay
                     adjustments={adjustments}
                     isSelected={subMask.id === (isMasking ? activeMaskId : activeAiSubMaskId)}
+                    isToolActive={isToolActive}
                     key={subMask.id}
                     onMaskMouseEnter={() => !isToolActive && setIsMaskHovered(true)}
                     onMaskMouseLeave={() => !isToolActive && setIsMaskHovered(false)}
