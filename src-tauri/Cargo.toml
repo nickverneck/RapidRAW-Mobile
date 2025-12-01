@@ -3,7 +3,7 @@ name = "RapidRAW"
 description = "A blazingly-fast, non-destructive, and GPU-accelerated RAW image editor built with performance in mind."
 authors = ["Timon Käch"]
 edition = "2024"
-rust-version = "1.90"
+rust-version = "1.91"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
