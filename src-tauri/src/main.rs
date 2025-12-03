@@ -109,7 +109,7 @@ pub struct AppState {
     ai_state: Mutex<Option<AiState>>,
     ai_init_lock: TokioMutex<()>,
     export_task_handle: Mutex<Option<JoinHandle<()>>>,
-    panorama_result: Arc<Mutex<Option<RgbImage>>>,
+    panorama_result: Arc<Mutex<Option<DynamicImage>>>,
     indexing_task_handle: Mutex<Option<JoinHandle<()>>>,
     pub lut_cache: Mutex<HashMap<String, Arc<Lut>>>,
     initial_file_path: Mutex<Option<String>>,
@@ -2204,16 +2204,18 @@ async fn stitch_panorama(
                 } else {
                     ((800.0 * w as f32 / h as f32).round() as u32, 800)
                 };
-                let preview_image = image::imageops::resize(
+
+                let preview_f32 = crate::image_processing::downscale_f32_image(
                     &panorama_image,
                     new_w,
-                    new_h,
-                    image::imageops::FilterType::Triangle,
+                    new_h
                 );
+
+                let preview_u8 = preview_f32.to_rgb8();
 
                 let mut buf = Cursor::new(Vec::new());
 
-                if let Err(e) = preview_image.write_to(&mut buf, ImageFormat::Png) {
+                if let Err(e) = preview_u8.write_to(&mut buf, ImageFormat::Png) {
                     return Err(format!("Failed to encode panorama preview: {}", e));
                 }
 
@@ -2434,7 +2436,9 @@ async fn save_panorama(
     let output_filename = format!("{}_Pano.png", stem);
     let output_path = parent_dir.join(output_filename);
 
-    panorama_image
+    let image_to_save = panorama_image.to_rgb8();
+
+    image_to_save
         .save(&output_path)
         .map_err(|e| format!("Failed to save panorama image: {}", e))?;
 
