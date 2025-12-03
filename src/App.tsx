@@ -3183,7 +3183,7 @@ function App() {
             onClick: () => handleCreateVirtualCopy(finalSelection[0]),
           },
           {
-            disabled: selectionCount < 2  || selectionCount > 9,
+            disabled: selectionCount < 2  || selectionCount > 30,
             icon: Images,
             label: stitchLabel,
             onClick: () => {
