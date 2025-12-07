@@ -322,6 +322,7 @@ function App() {
   const [thumbnailAspectRatio, setThumbnailAspectRatio] = useState(ThumbnailAspectRatio.Cover);
   const [copiedAdjustments, setCopiedAdjustments] = useState<Adjustments | null>(null);
   const [isStraightenActive, setIsStraightenActive] = useState(false);
+  const [isWbPickerActive, setIsWbPickerActive] = useState(false);
   const [copiedFilePaths, setCopiedFilePaths] = useState<Array<string>>([]);
   const [aiModelDownloadStatus, setAiModelDownloadStatus] = useState<string | null>(null);
   const [copiedSectionAdjustments, setCopiedSectionAdjustments] = useState(null);
@@ -442,6 +443,14 @@ function App() {
     },
     [setAdjustments],
   );
+
+  const toggleWbPicker = useCallback(() => {
+    setIsWbPickerActive((prev) => !prev);
+  }, []);
+
+  const handleWbPicked = useCallback(() => {
+    //setIsWbPickerActive(false); // lets keep it active
+  }, []);
 
   useEffect(() => {
     setLiveAdjustments(historyAdjustments);
@@ -1583,6 +1592,7 @@ function App() {
     setActiveMaskId(null);
     setActiveMaskContainerId(null);
     setActiveAiPatchContainerId(null);
+    setIsWbPickerActive(false);
     setActiveAiSubMaskId(null);
     setLibraryActivePath(lastActivePath);
   }, [selectedImage?.path]);
@@ -2131,6 +2141,7 @@ function App() {
       setActiveMaskContainerId(null);
       setActiveAiPatchContainerId(null);
       setActiveAiSubMaskId(null);
+      setIsWbPickerActive(false); 
 
       if (transformWrapperRef.current) {
         transformWrapperRef.current.resetTransform(0);
@@ -3553,6 +3564,8 @@ function App() {
               onZoomed={handleUserTransform}
               renderedRightPanel={renderedRightPanel}
               selectedImage={selectedImage}
+              isWbPickerActive={isWbPickerActive}
+              onWbPicked={handleWbPicked}
               setAdjustments={setAdjustments}
               setShowOriginal={setShowOriginal}
               showOriginal={showOriginal}
@@ -3645,6 +3658,8 @@ function App() {
                           theme={theme}
                           handleLutSelect={handleLutSelect}
                           appSettings={appSettings}
+                          isWbPickerActive={isWbPickerActive}
+                          toggleWbPicker={toggleWbPicker}
                         />
                       )}
                       {renderedRightPanel === Panel.Metadata && <MetadataPanel selectedImage={selectedImage} />}

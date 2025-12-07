@@ -31,6 +31,8 @@ interface ControlsProps {
   setCopiedSectionAdjustments(adjustments: any): void;
   theme: string;
   appSettings: AppSettings | null;
+  isWbPickerActive?: boolean;
+  toggleWbPicker?: () => void;
 }
 
 export default function Controls({
@@ -46,6 +48,8 @@ export default function Controls({
   setCopiedSectionAdjustments,
   theme,
   appSettings,
+  isWbPickerActive,
+  toggleWbPicker,
 }: ControlsProps) {
   const { showContextMenu } = useContextMenu();
 
@@ -205,6 +209,8 @@ export default function Controls({
                   theme={theme}
                   handleLutSelect={handleLutSelect}
                   appSettings={appSettings}
+                  isWbPickerActive={isWbPickerActive}
+                  toggleWbPicker={toggleWbPicker}
                 />
               </CollapsibleSection>
             </div>

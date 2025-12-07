@@ -55,6 +55,9 @@ interface ImageCanvasProps {
   fullResolutionUrl?: string | null;
   isFullResolution?: boolean;
   isLoadingFullRes?: boolean;
+  isWbPickerActive?: boolean;
+  onWbPicked?: () => void;
+  setAdjustments(fn: (prev: Adjustments) => Adjustments): void;
 }
 
 interface ImageLayer {
@@ -492,6 +495,9 @@ const ImageCanvas = memo(
     fullResolutionUrl,
     isFullResolution,
     isLoadingFullRes,
+    isWbPickerActive = false,
+    onWbPicked,
+    setAdjustments,
   }: ImageCanvasProps) => {
     const [isCropViewVisible, setIsCropViewVisible] = useState(false);
     const [layers, setLayers] = useState<Array<ImageLayer>>([]);
@@ -643,8 +649,95 @@ const ImageCanvas = memo(
       }
     }, [isCropping, uncroppedAdjustedPreviewUrl]);
 
+    const handleWbClick = useCallback((e: any) => {
+      if (!isWbPickerActive || !finalPreviewUrl || !onWbPicked) return;
+      
+      const stage = e.target.getStage();
+      const pointerPos = stage.getPointerPosition();
+      if (!pointerPos) return;
+
+      const x = (pointerPos.x - imageRenderSize.offsetX) / imageRenderSize.scale;
+      const y = (pointerPos.y - imageRenderSize.offsetY) / imageRenderSize.scale;
+
+      const imgWidth = imageRenderSize.width / imageRenderSize.scale;
+      const imgHeight = imageRenderSize.height / imageRenderSize.scale;
+      
+      if (x < 0 || x > imgWidth || y < 0 || y > imgHeight) return;
+
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = finalPreviewUrl;
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(img, 0, 0);
+
+        const scaleX = img.width / imgWidth;
+        const scaleY = img.height / imgHeight;
+        const srcX = Math.floor(x * scaleX);
+        const srcY = Math.floor(y * scaleY);
+
+        const radius = 5; 
+        const startX = Math.max(0, srcX - radius);
+        const startY = Math.max(0, srcY - radius);
+        const endX = Math.min(img.width, srcX + radius + 1);
+        const endY = Math.min(img.height, srcY + radius + 1);
+        const w = endX - startX;
+        const h = endY - startY;
+
+        if (w <= 0 || h <= 0) return;
+
+        const imageData = ctx.getImageData(startX, startY, w, h);
+        const data = imageData.data;
+        
+        let rTotal = 0, gTotal = 0, bTotal = 0;
+        let count = 0;
+
+        for (let i = 0; i < data.length; i += 4) {
+          rTotal += data[i];
+          gTotal += data[i + 1];
+          bTotal += data[i + 2];
+          count++;
+        }
+
+        const avgR = rTotal / count;
+        const avgG = gTotal / count;
+        const avgB = bTotal / count;
+
+        const linR = Math.pow(avgR / 255.0, 2.2);
+        const linG = Math.pow(avgG / 255.0, 2.2);
+        const linB = Math.pow(avgB / 255.0, 2.2);
+
+        const sumRB = linR + linB;
+        const deltaTemp = sumRB > 0.0001 ? ((linB - linR) / sumRB) * 125.0 : 0;
+
+        const linM = sumRB / 2.0;
+        const sumGM = linG + linM;
+        const deltaTint = sumGM > 0.0001 ? ((linG - linM) / sumGM) * 400.0 : 0;
+
+        setAdjustments((prev: Adjustments) => ({
+          ...prev,
+          temperature: Math.max(-100, Math.min(100, (prev.temperature || 0) + deltaTemp)),
+          tint: Math.max(-100, Math.min(100, (prev.tint || 0) + deltaTint)),
+        }));
+
+        onWbPicked();
+      };
+    }, [isWbPickerActive, finalPreviewUrl, imageRenderSize, onWbPicked, setAdjustments]);
+
     const handleMouseDown = useCallback(
       (e: any) => {
+        if (isWbPickerActive) {
+          e.evt.preventDefault();
+          handleWbClick(e);
+          return;
+        }
+
         if (isToolActive) {
           e.evt.preventDefault();
           isDrawing.current = true;
@@ -674,11 +767,15 @@ const ImageCanvas = memo(
           }
         }
       },
-      [isBrushActive, isAiSubjectActive, brushSettings, onSelectMask, onSelectAiSubMask, isMasking, isAiEditing],
+      [isWbPickerActive, handleWbClick, isBrushActive, isAiSubjectActive, brushSettings, onSelectMask, onSelectAiSubMask, isMasking, isAiEditing],
     );
 
     const handleMouseMove = useCallback(
       (e: any) => {
+        if (isWbPickerActive) {
+          return;
+        }
+
         if (isToolActive) {
           const stage = e.target.getStage();
           const pos = stage.getPointerPosition();
@@ -708,7 +805,7 @@ const ImageCanvas = memo(
           setPreviewLine(updatedLine);
         }
       },
-      [isToolActive],
+      [isToolActive, isWbPickerActive],
     );
 
     const handleMouseUp = useCallback(() => {
@@ -1006,7 +1103,7 @@ const ImageCanvas = memo(
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             style={{
-              cursor: isToolActive ? 'crosshair' : 'default',
+              cursor: isWbPickerActive ? 'crosshair' : isToolActive ? 'crosshair' : 'default',
               left: `${imageRenderSize.offsetX}px`,
               opacity: showOriginal ? 0 : 1,
               pointerEvents: showOriginal ? 'none' : 'auto',
