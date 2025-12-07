@@ -59,6 +59,8 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2025-12-07:** Write EXIF metadata to file
+*   **2025-12-07:** Color picker for white balance
 *   **2025-11-30:** HSL luminance artifacts fix
 *   **2025-11-29:** Improved mask stacking & many bug fixes
 *   **2025-11-28:** QOI support
@@ -67,12 +69,12 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2025-11-22:** DNG loader improvements
 *   **2025-11-18:** Improved vibrancy adjustment
 *   **2025-11-15:** Virtual copies & library improvements
-*   **2025-11-14:** Open-with-file cross plattform compatibilty & single instance lock
-*   **2025-11-13:** Rewritten tagging system to support pill-like image tagging
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2025-11-14:** Open-with-file cross plattform compatibilty & single instance lock
+*   **2025-11-13:** Rewritten tagging system to support pill-like image tagging
 *   **2025-11-10:** Improved folder tree with search functionality
 *   **2025-11-08:** Added EXR file format support
 *   **2025-11-XX:** Improving AgX
