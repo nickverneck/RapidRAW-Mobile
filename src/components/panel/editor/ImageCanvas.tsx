@@ -861,23 +861,12 @@ const ImageCanvas = memo(
 
         const existingLines = activeSubMask.parameters.lines || [];
 
-        if (brushSettings?.tool === ToolType.Eraser) {
-          const remainingLines = existingLines.filter(
-            (drawnLine: DrawnLine) => !linesIntersect(imageSpaceLine, drawnLine),
-          );
-          if (remainingLines.length !== existingLines.length) {
-            updateSubMask(activeId, {
-              parameters: { ...activeSubMask.parameters, lines: remainingLines },
-            });
-          }
-        } else {
-          updateSubMask(activeId, {
-            parameters: {
-              ...activeSubMask.parameters,
-              lines: [...existingLines, imageSpaceLine],
-            },
-          });
-        }
+        updateSubMask(activeId, {
+          parameters: {
+            ...activeSubMask.parameters,
+            lines: [...existingLines, imageSpaceLine],
+          },
+        });
       }
     }, [
       activeAiSubMaskId,
