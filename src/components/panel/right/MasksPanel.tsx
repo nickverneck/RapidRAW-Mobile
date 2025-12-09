@@ -25,7 +25,7 @@ import {
 } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 import { Mask, MaskType, SubMask, MASK_PANEL_CREATION_TYPES, OTHERS_MASK_TYPES } from './Masks';
-import { BrushSettings, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
+import { BrushSettings, OPTION_SEPARATOR, SelectedImage, AppSettings } from '../../ui/AppProperties';
 import { createSubMask } from '../../../utils/maskUtils';
 import { usePresets } from '../../../hooks/usePresets';
 
@@ -34,6 +34,7 @@ interface MasksPanelProps {
   activeMaskId: string | null;
   adjustments: Adjustments;
   aiModelDownloadStatus: string | null;
+  appSettings: AppSettings | null;
   brushSettings: BrushSettings | null;
   copiedMask: MaskContainer | null;
   histogram: any;
@@ -65,6 +66,7 @@ export default function MasksPanel({
   activeMaskId,
   adjustments,
   aiModelDownloadStatus,
+  appSettings,
   brushSettings,
   copiedMask,
   histogram,
@@ -414,6 +416,7 @@ export default function MasksPanel({
             activeSubMask={activeSubMask}
             adjustments={adjustments}
             aiModelDownloadStatus={aiModelDownloadStatus}
+            appSettings={appSettings}
             brushSettings={brushSettings}
             editingMask={editingContainer}
             histogram={histogram}

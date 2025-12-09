@@ -32,7 +32,7 @@ import {
 } from './Masks';
 import { INITIAL_MASK_ADJUSTMENTS, ADJUSTMENT_SECTIONS, MaskContainer, Adjustments } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
-import { BrushSettings, Option, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
+import { AppSettings, BrushSettings, Option, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
 import { createSubMask } from '../../../utils/maskUtils';
 import { usePresets } from '../../../hooks/usePresets';
 
@@ -51,6 +51,7 @@ interface MaskControlsProps {
   activeSubMask: SubMask | null;
   adjustments: Adjustments;
   aiModelDownloadStatus: string | null;
+  appSettings: AppSettings | null;
   brushSettings: BrushSettings | null;
   editingMask: MaskContainer;
   histogram: string;
@@ -161,6 +162,7 @@ export default function MaskControls({
   activeSubMask,
   adjustments,
   aiModelDownloadStatus,
+  appSettings,
   brushSettings,
   editingMask,
   histogram,
@@ -678,6 +680,7 @@ export default function MaskControls({
                   setAdjustments={setMaskContainerAdjustments}
                   histogram={histogram}
                   isForMask={true}
+                  appSettings={appSettings}
                 />
               </CollapsibleSection>
             );
