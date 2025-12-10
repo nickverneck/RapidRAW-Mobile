@@ -263,16 +263,13 @@ const MaskOverlay = memo(
         <Group onClick={handleSelect} onTap={handleSelect}>
           {lines.map((line: DrawnLine, i: number) => (
             <Line
-              dash={[4, 4]}
               hitStrokeWidth={line.brushSize * scale}
               key={i}
               lineCap="round"
               lineJoin="round"
-              opacity={isSelected ? 1 : 0.7}
               points={line.points.flatMap((p: Coord) => [(p.x - cropX) * scale, (p.y - cropY) * scale])}
-              stroke={isSelected ? '#0ea5e9' : subMask.mode === SubMaskMode.Subtractive ? '#f43f5e' : 'white'}
+              stroke="transparent"
               strokeScaleEnabled={false}
-              strokeWidth={isSelected ? 3 : 2}
               tension={0.5}
             />
           ))}
