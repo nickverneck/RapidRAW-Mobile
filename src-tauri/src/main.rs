@@ -2762,6 +2762,16 @@ fn setup_logging(app_handle: &tauri::AppHandle) {
     );
 }
 
+#[tauri::command]
+fn get_log_file_path(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let log_dir = app_handle
+        .path()
+        .app_log_dir()
+        .map_err(|e| e.to_string())?;
+    let log_file_path = log_dir.join("app.log");
+    Ok(log_file_path.to_string_lossy().to_string())
+}
+
 fn handle_file_open(app_handle: &tauri::AppHandle, path: PathBuf) {
     if let Some(path_str) = path.to_str() {
         if let Err(e) = app_handle.emit("open-with-file", path_str) {
@@ -2916,6 +2926,7 @@ fn main() {
             test_comfyui_connection,
             invoke_generative_replace_with_mask_def,
             get_supported_file_types,
+            get_log_file_path,
             save_collage,
             stitch_panorama,
             save_panorama,
