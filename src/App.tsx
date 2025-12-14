@@ -1984,6 +1984,10 @@ function App() {
 
   const handleFullResolutionLogic = useCallback(
     (targetZoomPercent: number, currentDisplayWidth: number) => {
+      if (appSettings?.enableZoomHifi === false) {
+        return;
+      }
+
       if (!initialFitScale) {
         return;
       }
@@ -2027,6 +2031,7 @@ function App() {
       adjustments,
       fullResolutionUrl,
       visualAdjustmentsKey,
+      appSettings,
     ],
   );
 

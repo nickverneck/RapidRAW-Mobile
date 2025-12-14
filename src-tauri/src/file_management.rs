@@ -245,6 +245,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub pinned_folders: Vec<String>,
     pub editor_preview_resolution: Option<u32>,
+    #[serde(default)]
+    pub enable_zoom_hifi: Option<bool>,
     pub sort_criteria: Option<SortCriteria>,
     pub filter_criteria: Option<FilterCriteria>,
     pub theme: Option<String>,
@@ -297,6 +299,7 @@ impl Default for AppSettings {
             last_root_path: None,
             pinned_folders: Vec::new(),
             editor_preview_resolution: Some(1920),
+            enable_zoom_hifi: Some(true),
             sort_criteria: None,
             filter_criteria: None,
             theme: Some("dark".to_string()),

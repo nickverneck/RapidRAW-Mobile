@@ -882,6 +882,18 @@ export default function SettingsPanel({
                     </SettingItem>
 
                     <SettingItem
+                      label="High Quality Zoom"
+                      description="Load a higher quality version of the image when zooming in for more detail. Disabling this can improve performance."
+                    >
+                      <Switch
+                        checked={appSettings?.enableZoomHifi ?? true}
+                        id="zoom-hifi-toggle"
+                        label="Enable High Quality Zoom"
+                        onChange={(checked) => onSettingsChange({ ...appSettings, enableZoomHifi: checked })}
+                      />
+                    </SettingItem>
+
+                    <SettingItem
                       label="RAW Highlight Recovery"
                       description="Controls how much detail is recovered from clipped highlights in RAW files. Higher values recover more detail but can introduce purple artefacts."
                     >
