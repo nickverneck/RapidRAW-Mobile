@@ -1510,33 +1510,46 @@ function App() {
       const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
       const shouldReadExif = appSettings?.enableExifReading ?? false;
 
-      if (shouldReadExif && files.length > 0) {
-        const paths = files.map((f: ImageFile) => f.path);
+      let freshExifData: Record<string, any> | null = null;
 
-        if (isExifSortActive) {
-          const exifDataMap: Record<string, any> = await invoke(Invokes.ReadExifForPaths, { paths });
-          const finalImageList = files.map((image) => ({
-            ...image,
-            exif: exifDataMap[image.path] || image.exif || null,
-          }));
-          setImageList(finalImageList);
-        } else {
-          setImageList(files);
-          invoke(Invokes.ReadExifForPaths, { paths })
-            .then((exifDataMap: any) => {
-              setImageList((currentImageList) =>
-                currentImageList.map((image) => ({
-                  ...image,
-                  exif: exifDataMap[image.path] || image.exif || null,
-                })),
-              );
-            })
-            .catch((err) => {
-              console.error('Failed to read EXIF data in background:', err);
-            });
-        }
-      } else {
-        setImageList(files);
+      if (shouldReadExif && files.length > 0 && isExifSortActive) {
+        const paths = files.map((f: ImageFile) => f.path);
+        freshExifData = await invoke(Invokes.ReadExifForPaths, { paths });
+      }
+
+      setImageList((prevList) => {
+        const prevMap = new Map(prevList.map((img) => [img.path, img]));
+
+        return files.map((newFile) => {
+          if (freshExifData && freshExifData[newFile.path]) {
+            newFile.exif = freshExifData[newFile.path];
+            return newFile;
+          }
+          const existing = prevMap.get(newFile.path);
+          if (existing && existing.modified === newFile.modified) {
+            return existing;
+          }
+
+          return newFile;
+        });
+      });
+
+      if (shouldReadExif && files.length > 0 && !isExifSortActive) {
+        const paths = files.map((f: ImageFile) => f.path);
+        invoke(Invokes.ReadExifForPaths, { paths })
+          .then((exifDataMap: any) => {
+            setImageList((currentImageList) =>
+              currentImageList.map((image) => {
+                if (exifDataMap[image.path] && !image.exif) {
+                   return { ...image, exif: exifDataMap[image.path] };
+                }
+                return image;
+              }),
+            );
+          })
+          .catch((err) => {
+            console.error('Failed to read EXIF data in background:', err);
+          });
       }
     } catch (err) {
       console.error('Failed to refresh image list:', err);
@@ -1597,11 +1610,92 @@ function App() {
     setLibraryActivePath(lastActivePath);
   }, [selectedImage?.path]);
 
+  const handleImageSelect = useCallback(
+    (path: string) => {
+      if (selectedImage?.path === path) {
+        return;
+      }
+      applyAdjustments.cancel();
+      debouncedSave.cancel();
+
+      setSelectedImage({
+        exif: null,
+        height: 0,
+        isRaw: false,
+        isReady: false,
+        metadata: null,
+        originalUrl: null,
+        path,
+        thumbnailUrl: thumbnails[path],
+        width: 0,
+      });
+      setOriginalSize({ width: 0, height: 0 });
+      setPreviewSize({ width: 0, height: 0 });
+      setMultiSelectedPaths([path]);
+      setLibraryActivePath(null);
+      setIsViewLoading(true);
+      setError(null);
+      setHistogram(null);
+      setFinalPreviewUrl(null);
+      setUncroppedAdjustedPreviewUrl(null);
+      setFullScreenUrl(null);
+      setFullResolutionUrl(null);
+      setTransformedOriginalUrl(null);
+      setLiveAdjustments(INITIAL_ADJUSTMENTS);
+      resetAdjustmentsHistory(INITIAL_ADJUSTMENTS);
+      setShowOriginal(false);
+      setActiveMaskId(null);
+      setActiveMaskContainerId(null);
+      setActiveAiPatchContainerId(null);
+      setActiveAiSubMaskId(null);
+      setIsWbPickerActive(false); 
+
+      if (transformWrapperRef.current) {
+        transformWrapperRef.current.resetTransform(0);
+      }
+
+      setZoom(1);
+      setIsLibraryExportPanelVisible(false);
+    },
+    [selectedImage?.path, applyAdjustments, debouncedSave, thumbnails, resetAdjustmentsHistory],
+  );
+
   const executeDelete = useCallback(
     async (pathsToDelete: Array<string>, options = { includeAssociated: false }) => {
       if (!pathsToDelete || pathsToDelete.length === 0) {
         return;
       }
+
+      let nextImagePath: string | null = null;
+      if (selectedImage) {
+        const physicalPath = selectedImage.path.split('?vc=')[0];
+        const isFileBeingEditedDeleted = pathsToDelete.some(
+          (p) => p === selectedImage.path || p === physicalPath,
+        );
+
+        if (isFileBeingEditedDeleted) {
+          const currentIndex = sortedImageList.findIndex((img) => img.path === selectedImage.path);
+          if (currentIndex !== -1) {
+            const nextCandidate = sortedImageList
+              .slice(currentIndex + 1)
+              .find((img) => !pathsToDelete.includes(img.path));
+
+            if (nextCandidate) {
+              nextImagePath = nextCandidate.path;
+            } else {
+              const prevCandidate = sortedImageList
+                .slice(0, currentIndex)
+                .reverse()
+                .find((img) => !pathsToDelete.includes(img.path));
+              
+              if (prevCandidate) {
+                nextImagePath = prevCandidate.path;
+              }
+            }
+          }
+        }
+      }
+
       try {
         const command = options.includeAssociated ? 'delete_files_with_associated' : 'delete_files_from_disk';
         await invoke(command, { paths: pathsToDelete });
@@ -1615,20 +1709,24 @@ function App() {
           );
 
           if (isFileBeingEditedDeleted) {
-            handleBackToLibrary();
+            if (nextImagePath) {
+              handleImageSelect(nextImagePath);
+            } else {
+              handleBackToLibrary();
+            }
           }
         }
 
         setMultiSelectedPaths([]);
         if (libraryActivePath && pathsToDelete.includes(libraryActivePath)) {
-          setLibraryActivePath(null);
+          setLibraryActivePath(nextImagePath || null);
         }
       } catch (err) {
         console.error('Failed to delete files:', err);
         setError(`Failed to delete files: ${err}`);
       }
     },
-    [refreshImageList, selectedImage, handleBackToLibrary, libraryActivePath],
+    [refreshImageList, selectedImage, handleBackToLibrary, libraryActivePath, sortedImageList, handleImageSelect],
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -2108,57 +2206,19 @@ function App() {
     [originalSize, baseRenderSize, handleFullResolutionLogic, adjustments.orientationSteps],
   );
 
-  const handleImageSelect = useCallback(
-    (path: string) => {
-      if (selectedImage?.path === path) {
-        return;
-      }
-      applyAdjustments.cancel();
-      debouncedSave.cancel();
-
-      setSelectedImage({
-        exif: null,
-        height: 0,
-        isRaw: false,
-        isReady: false,
-        metadata: null,
-        originalUrl: null,
-        path,
-        thumbnailUrl: thumbnails[path],
-        width: 0,
-      });
-      setOriginalSize({ width: 0, height: 0 });
-      setPreviewSize({ width: 0, height: 0 });
-      setMultiSelectedPaths([path]);
-      setLibraryActivePath(null);
-      setIsViewLoading(true);
-      setError(null);
-      setHistogram(null);
-      setFinalPreviewUrl(null);
-      setUncroppedAdjustedPreviewUrl(null);
-      setFullScreenUrl(null);
-      setFullResolutionUrl(null);
-      setTransformedOriginalUrl(null);
-      setLiveAdjustments(INITIAL_ADJUSTMENTS);
-      resetAdjustmentsHistory(INITIAL_ADJUSTMENTS);
-      setShowOriginal(false);
-      setActiveMaskId(null);
-      setActiveMaskContainerId(null);
-      setActiveAiPatchContainerId(null);
-      setActiveAiSubMaskId(null);
-      setIsWbPickerActive(false); 
-
-      if (transformWrapperRef.current) {
-        transformWrapperRef.current.resetTransform(0);
-      }
-
-      setZoom(1);
-      setIsLibraryExportPanelVisible(false);
-    },
-    [selectedImage?.path, applyAdjustments, debouncedSave, thumbnails, resetAdjustmentsHistory],
-  );
+  const isAnyModalOpen = 
+    isCreateFolderModalOpen ||
+    isRenameFolderModalOpen ||
+    isRenameFileModalOpen ||
+    isImportModalOpen ||
+    isCopyPasteSettingsModalOpen ||
+    confirmModalState.isOpen ||
+    panoramaModalState.isOpen ||
+    cullingModalState.isOpen ||
+    collageModalState.isOpen;
 
   useKeyboardShortcuts({
+    isModalOpen: isAnyModalOpen,
     activeAiPatchContainerId,
     activeAiSubMaskId,
     activeMaskContainerId,

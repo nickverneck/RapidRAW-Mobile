@@ -51,8 +51,12 @@ export default function ConfirmModal({
   const handleKeyDown = useCallback(
     (e: any) => {
       if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
         handleConfirm();
       } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
         onClose();
       }
     },
