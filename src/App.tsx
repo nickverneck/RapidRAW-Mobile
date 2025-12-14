@@ -1325,18 +1325,27 @@ function App() {
     return () => clearTimeout(timer);
   }, [theme]);
 
-  const handleRefreshFolderTree = useCallback(async () => {
-    if (!rootPath) {
-      return;
+  const refreshAllFolderTrees = useCallback(async () => {
+    if (rootPath) {
+      try {
+        const treeData = await invoke(Invokes.GetFolderTree, { path: rootPath });
+        setFolderTree(treeData);
+      } catch (err) {
+        console.error('Failed to refresh main folder tree:', err);
+        setError(`Failed to refresh folder tree: ${err}.`);
+      }
     }
-    try {
-      const treeData = await invoke(Invokes.GetFolderTree, { path: rootPath });
-      setFolderTree(treeData);
-    } catch (err) {
-      console.error('Failed to refresh folder tree:', err);
-      setError(`Failed to refresh folder tree: ${err}.`);
+
+    const currentPins = appSettings?.pinnedFolders || [];
+    if (currentPins.length > 0) {
+      try {
+        const trees = await invoke(Invokes.GetPinnedFolderTrees, { paths: currentPins });
+        setPinnedFolderTrees(trees);
+      } catch (err) {
+        console.error('Failed to refresh pinned folder trees:', err);
+      }
     }
-  }, [rootPath]);
+  }, [rootPath, appSettings?.pinnedFolders]);
 
   const pinnedFolders = useMemo(() => appSettings?.pinnedFolders || [], [appSettings]);
 
@@ -2404,7 +2413,7 @@ function App() {
       listen('import-complete', () => {
         if (isEffectActive) {
           setImportState((prev: ImportState) => ({ ...prev, status: Status.Success }));
-          handleRefreshFolderTree();
+          refreshAllFolderTrees();
           if (currentFolderPathRef.current) {
             handleSelectSubfolder(currentFolderPathRef.current, false);
           }
@@ -2424,7 +2433,7 @@ function App() {
       isEffectActive = false;
       listeners.forEach((p) => p.then((unlisten) => unlisten()));
     };
-  }, [handleRefreshFolderTree, handleSelectSubfolder]);
+  }, [refreshAllFolderTrees, handleSelectSubfolder]);
 
   useEffect(() => {
     if ([Status.Success, Status.Error, Status.Cancelled].includes(exportState.status)) {
@@ -3395,7 +3404,7 @@ function App() {
     if (folderName && folderName.trim() !== '' && folderActionTarget) {
       try {
         await invoke(Invokes.CreateFolder, { path: `${folderActionTarget}/${folderName.trim()}` });
-        handleRefreshFolderTree();
+        refreshAllFolderTrees();
       } catch (err) {
         setError(`Failed to create folder: ${err}`);
       }
@@ -3405,20 +3414,41 @@ function App() {
   const handleRenameFolder = async (newName: string) => {
     if (newName && newName.trim() !== '' && folderActionTarget) {
       try {
-        await invoke(Invokes.RenameFolder, { path: folderActionTarget, newName: newName.trim() });
-        if (rootPath === folderActionTarget) {
-          const newRootPath = folderActionTarget.substring(0, folderActionTarget.lastIndexOf('/') + 1) + newName.trim();
-          setRootPath(newRootPath);
-          handleSettingsChange({ ...appSettings, lastRootPath: newRootPath } as AppSettings);
+        const oldPath = folderActionTarget;
+        const trimmedNewName = newName.trim();
+
+        await invoke(Invokes.RenameFolder, { path: oldPath, newName: trimmedNewName });
+
+        const parentDir = getParentDir(oldPath);
+        const separator = oldPath.includes('/') ? '/' : '\\';
+        const newPath = parentDir ? `${parentDir}${separator}${trimmedNewName}` : trimmedNewName;
+
+        const newAppSettings = { ...appSettings } as AppSettings;
+        let settingsChanged = false;
+
+        if (rootPath === oldPath) {
+          setRootPath(newPath);
+          newAppSettings.lastRootPath = newPath;
+          settingsChanged = true;
         }
-        if (currentFolderPath?.startsWith(folderActionTarget)) {
-          const newCurrentPath = currentFolderPath.replace(
-            folderActionTarget,
-            folderActionTarget.substring(0, folderActionTarget.lastIndexOf('/') + 1) + newName.trim(),
-          );
+        if (currentFolderPath?.startsWith(oldPath)) {
+          const newCurrentPath = currentFolderPath.replace(oldPath, newPath);
           setCurrentFolderPath(newCurrentPath);
         }
-        handleRefreshFolderTree();
+
+        const currentPins = appSettings?.pinnedFolders || [];
+        if (currentPins.includes(oldPath)) {
+          const newPins = currentPins.map(p => (p === oldPath ? newPath : p)).sort((a, b) => a.localeCompare(b));
+          newAppSettings.pinnedFolders = newPins;
+          settingsChanged = true;
+        }
+
+        if (settingsChanged) {
+          handleSettingsChange(newAppSettings);
+        }
+
+        await refreshAllFolderTrees();
+
       } catch (err) {
         setError(`Failed to rename folder: ${err}`);
       }
@@ -3493,7 +3523,7 @@ function App() {
                 await invoke(Invokes.MoveFiles, { sourcePaths: copiedFilePaths, destinationFolder: targetPath });
                 setCopiedFilePaths([]);
                 setMultiSelectedPaths([]);
-                handleRefreshFolderTree();
+                refreshAllFolderTrees();
                 handleLibraryRefresh();
               } catch (err) {
                 setError(`Failed to move files: ${err}`);
@@ -3527,7 +3557,7 @@ function App() {
                     try {
                       await invoke(Invokes.DeleteFolder, { path: targetPath });
                       if (currentFolderPath?.startsWith(targetPath)) await handleSelectSubfolder(rootPath);
-                      handleRefreshFolderTree();
+                      refreshAllFolderTrees();
                     } catch (err) {
                       setError(`Failed to delete folder: ${err}`);
                     }
@@ -3572,7 +3602,7 @@ function App() {
                 await invoke(Invokes.MoveFiles, { sourcePaths: copiedFilePaths, destinationFolder: currentFolderPath });
                 setCopiedFilePaths([]);
                 setMultiSelectedPaths([]);
-                handleRefreshFolderTree();
+                refreshAllFolderTrees();
                 handleLibraryRefresh();
               } catch (err) {
                 setError(`Failed to move files: ${err}`);
