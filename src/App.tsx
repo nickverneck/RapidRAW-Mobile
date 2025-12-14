@@ -1666,15 +1666,17 @@ function App() {
         return;
       }
 
+      const activePath = selectedImage ? selectedImage.path : libraryActivePath;
       let nextImagePath: string | null = null;
-      if (selectedImage) {
-        const physicalPath = selectedImage.path.split('?vc=')[0];
-        const isFileBeingEditedDeleted = pathsToDelete.some(
-          (p) => p === selectedImage.path || p === physicalPath,
+
+      if (activePath) {
+        const physicalPath = activePath.split('?vc=')[0];
+        const isActiveImageDeleted = pathsToDelete.some(
+          (p) => p === activePath || p === physicalPath,
         );
 
-        if (isFileBeingEditedDeleted) {
-          const currentIndex = sortedImageList.findIndex((img) => img.path === selectedImage.path);
+        if (isActiveImageDeleted) {
+          const currentIndex = sortedImageList.findIndex((img) => img.path === activePath);
           if (currentIndex !== -1) {
             const nextCandidate = sortedImageList
               .slice(currentIndex + 1)
@@ -1693,6 +1695,8 @@ function App() {
               }
             }
           }
+        } else {
+          nextImagePath = activePath;
         }
       }
 
@@ -1715,11 +1719,14 @@ function App() {
               handleBackToLibrary();
             }
           }
-        }
-
-        setMultiSelectedPaths([]);
-        if (libraryActivePath && pathsToDelete.includes(libraryActivePath)) {
-          setLibraryActivePath(nextImagePath || null);
+        } else {
+          if (nextImagePath) {
+            setMultiSelectedPaths([nextImagePath]);
+            setLibraryActivePath(nextImagePath);
+          } else {
+            setMultiSelectedPaths([]);
+            setLibraryActivePath(null);
+          }
         }
       } catch (err) {
         console.error('Failed to delete files:', err);
