@@ -130,8 +130,6 @@ export default function BottomBar({
   const showSelectionCounter = numSelected > 1;
 
   useEffect(() => {
-    // This logic ensures smooth sliding. We only update the slider position
-    // from props when the user is NOT actively dragging it.
     if (isZoomReady && !isDraggingSlider.current) {
       setLatchedSliderValue(currentOriginalPercent);
       setLatchedDisplayPercent(Math.round(currentOriginalPercent * 100));
@@ -141,12 +139,7 @@ export default function BottomBar({
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newZoom = parseFloat(e.target.value);
     setLatchedSliderValue(newZoom);
-    
-    // Fixed: Simply use the raw zoom value (0.1 - 2.0) to calculate percentage.
-    // The previous formula attempted to calculate "percent of fit", but App.tsx
-    // interprets this value as "percent of original", so simple multiplication is correct.
     setLatchedDisplayPercent(Math.round(newZoom * 100));
-    
     onZoomChange(newZoom);
   };
 
@@ -156,7 +149,6 @@ export default function BottomBar({
 
   const handleMouseUp = () => {
     isDraggingSlider.current = false;
-    // Re-sync with actual props on release to ensure precision
     if (isZoomReady) {
       setLatchedDisplayPercent(Math.round(currentOriginalPercent * 100));
     }
