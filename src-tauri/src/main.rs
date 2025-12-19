@@ -1127,12 +1127,34 @@ async fn batch_export_images(
                     let js_adjustments = metadata.adjustments;
                     let is_raw = is_raw_file(&source_path_str);
 
-                    let mmap = read_file_mapped(Path::new(&source_path_str))
-                        .map_err(|e| format!("Failed to mmap file {}: {}", source_path_str, e))?;
-
-                    let base_image =
-                        load_and_composite(&mmap[..], &source_path_str, &js_adjustments, false, highlight_compression)
-                            .map_err(|e| format!("Failed to load image: {}", e))?;
+                    let base_image = match read_file_mapped(Path::new(&source_path_str)) {
+                        Ok(mmap) => load_and_composite(
+                            &mmap,
+                            &source_path_str,
+                            &js_adjustments,
+                            false,
+                            highlight_compression,
+                        )
+                        .map_err(|e| format!("Failed to load image from mmap: {}", e))?,
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to memory-map file '{}': {}. Falling back to standard read.",
+                                source_path_str,
+                                e
+                            );
+                            let bytes = fs::read(&source_path_str).map_err(|io_err| {
+                                format!("Fallback read failed for {}: {}", source_path_str, io_err)
+                            })?;
+                            load_and_composite(
+                                &bytes,
+                                &source_path_str,
+                                &js_adjustments,
+                                false,
+                                highlight_compression,
+                            )
+                            .map_err(|e| format!("Failed to load image from bytes: {}", e))?
+                        }
+                    };
 
                     let final_image = process_image_for_export(
                         &source_path_str,
@@ -1440,9 +1462,21 @@ async fn estimate_batch_export_size(
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
     const ESTIMATE_DIM: u32 = 1280;
-    let img_bytes = read_file_mapped(Path::new(&source_path_str)).map_err(|e| e.to_string())?;
-    let original_image =
-        load_base_image_from_bytes(&img_bytes, &source_path_str, true, highlight_compression).map_err(|e| e.to_string())?;
+
+    let original_image = match read_file_mapped(Path::new(&source_path_str)) {
+        Ok(mmap) => load_base_image_from_bytes(&mmap, &source_path_str, true, highlight_compression)
+            .map_err(|e| e.to_string())?,
+        Err(e) => {
+            log::warn!(
+                "Failed to memory-map file '{}': {}. Falling back to standard read.",
+                source_path_str,
+                e
+            );
+            let bytes = fs::read(&source_path_str).map_err(|io_err| io_err.to_string())?;
+            load_base_image_from_bytes(&bytes, &source_path_str, true, highlight_compression)
+                .map_err(|e| e.to_string())?
+        }
+    };
 
     let base_image_preview = downscale_f32_image(&original_image, ESTIMATE_DIM, ESTIMATE_DIM);
 
@@ -1457,7 +1491,9 @@ async fn estimate_batch_export_size(
 
     let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
         .iter()
-        .filter_map(|def| generate_mask_bitmap(def, preview_w, preview_h, 1.0, unscaled_crop_offset))
+        .filter_map(|def| {
+            generate_mask_bitmap(def, preview_w, preview_h, 1.0, unscaled_crop_offset)
+        })
         .collect();
 
     let mut all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
@@ -2593,11 +2629,36 @@ fn generate_preview_for_path(
     let (source_path, _) = parse_virtual_path(&path);
     let source_path_str = source_path.to_string_lossy().to_string();
     let is_raw = is_raw_file(&source_path_str);
-    let image = read_file_mapped(&source_path).map_err(|e| e.to_string())?;
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
-    let base_image =
-        load_and_composite(&image[..], &source_path_str, &js_adjustments, false,highlight_compression).map_err(|e| e.to_string())?;
+
+    let base_image = match read_file_mapped(&source_path) {
+        Ok(mmap) => load_and_composite(
+            &mmap,
+            &source_path_str,
+            &js_adjustments,
+            false,
+            highlight_compression,
+        )
+        .map_err(|e| e.to_string())?,
+        Err(e) => {
+            log::warn!(
+                "Failed to memory-map file '{}': {}. Falling back to standard read.",
+                source_path_str,
+                e
+            );
+            let bytes = fs::read(&source_path).map_err(|io_err| io_err.to_string())?;
+            load_and_composite(
+                &bytes,
+                &source_path_str,
+                &js_adjustments,
+                false,
+                highlight_compression,
+            )
+            .map_err(|e| e.to_string())?
+        }
+    };
+
     let (transformed_image, unscaled_crop_offset) =
         apply_all_transformations(&base_image, &js_adjustments);
     let (img_w, img_h) = transformed_image.dimensions();
