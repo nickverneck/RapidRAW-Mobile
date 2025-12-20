@@ -1081,6 +1081,11 @@ async fn batch_export_images(
     let context = Arc::new(context);
     let progress_counter = Arc::new(AtomicUsize::new(0));
 
+    let available_cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+    let num_threads = (available_cores / 2).clamp(1, 4); 
+    
+    log::info!("Starting batch export. System cores: {}, Export threads: {}", available_cores, num_threads);
+
     let task = tokio::spawn(async move {
         let state = app_handle.state::<AppState>();
         let output_folder_path = std::path::Path::new(&output_folder);
@@ -1088,153 +1093,166 @@ async fn batch_export_images(
         let settings = load_settings(app_handle.clone()).unwrap_or_default();
         let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
-        let results: Vec<Result<(), String>> = paths
-            .par_iter()
-            .enumerate()
-            .map(|(global_index, image_path_str)| {
-                if app_handle
-                    .state::<AppState>()
-                    .export_task_handle
-                    .lock()
-                    .unwrap()
-                    .is_none()
-                {
-                    return Err("Export cancelled".to_string());
-                }
+        let pool_result = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_threads)
+            .build();
 
-                let current_progress = progress_counter.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Err(e) = pool_result {
+            let _ = app_handle.emit("export-error", format!("Failed to initialize worker threads: {}", e));
+            *app_handle.state::<AppState>().export_task_handle.lock().unwrap() = None;
+            return;
+        }
+        let pool = pool_result.unwrap();
 
-                let _ = app_handle.emit(
-                    "batch-export-progress",
-                    serde_json::json!({
-                        "current": current_progress,
-                        "total": total_paths,
-                        "path": image_path_str
-                    }),
-                );
+        let results: Vec<Result<(), String>> = pool.install(|| {
+            paths
+                .par_iter()
+                .enumerate()
+                .map(|(global_index, image_path_str)| {
+                    if app_handle
+                        .state::<AppState>()
+                        .export_task_handle
+                        .lock()
+                        .unwrap()
+                        .is_none()
+                    {
+                        return Err("Export cancelled".to_string());
+                    }
 
-                let result: Result<(), String> = (|| {
-                    let (source_path, sidecar_path) = parse_virtual_path(image_path_str);
-                    let source_path_str = source_path.to_string_lossy().to_string();
+                    let current_progress = progress_counter.fetch_add(1, Ordering::SeqCst) + 1;
 
-                    let metadata: ImageMetadata = if sidecar_path.exists() {
-                        let file_content = fs::read_to_string(sidecar_path)
-                            .map_err(|e| format!("Failed to read sidecar: {}", e))?;
-                        serde_json::from_str(&file_content).unwrap_or_default()
-                    } else {
-                        ImageMetadata::default()
-                    };
-                    let js_adjustments = metadata.adjustments;
-                    let is_raw = is_raw_file(&source_path_str);
+                    let _ = app_handle.emit(
+                        "batch-export-progress",
+                        serde_json::json!({
+                            "current": current_progress,
+                            "total": total_paths,
+                            "path": image_path_str
+                        }),
+                    );
 
-                    let base_image = match read_file_mapped(Path::new(&source_path_str)) {
-                        Ok(mmap) => load_and_composite(
-                            &mmap,
-                            &source_path_str,
-                            &js_adjustments,
-                            false,
-                            highlight_compression,
-                        )
-                        .map_err(|e| format!("Failed to load image from mmap: {}", e))?,
-                        Err(e) => {
-                            log::warn!(
-                                "Failed to memory-map file '{}': {}. Falling back to standard read.",
-                                source_path_str,
-                                e
-                            );
-                            let bytes = fs::read(&source_path_str).map_err(|io_err| {
-                                format!("Fallback read failed for {}: {}", source_path_str, io_err)
-                            })?;
-                            load_and_composite(
-                                &bytes,
+                    let result: Result<(), String> = (|| {
+                        let (source_path, sidecar_path) = parse_virtual_path(image_path_str);
+                        let source_path_str = source_path.to_string_lossy().to_string();
+
+                        let metadata: ImageMetadata = if sidecar_path.exists() {
+                            let file_content = fs::read_to_string(sidecar_path)
+                                .map_err(|e| format!("Failed to read sidecar: {}", e))?;
+                            serde_json::from_str(&file_content).unwrap_or_default()
+                        } else {
+                            ImageMetadata::default()
+                        };
+                        let js_adjustments = metadata.adjustments;
+                        let is_raw = is_raw_file(&source_path_str);
+
+                        let base_image = match read_file_mapped(Path::new(&source_path_str)) {
+                            Ok(mmap) => load_and_composite(
+                                &mmap,
                                 &source_path_str,
                                 &js_adjustments,
                                 false,
                                 highlight_compression,
                             )
-                            .map_err(|e| format!("Failed to load image from bytes: {}", e))?
-                        }
-                    };
+                            .map_err(|e| format!("Failed to load image from mmap: {}", e))?,
+                            Err(e) => {
+                                log::warn!(
+                                    "Failed to memory-map file '{}': {}. Falling back to standard read.",
+                                    source_path_str,
+                                    e
+                                );
+                                let bytes = fs::read(&source_path_str).map_err(|io_err| {
+                                    format!("Fallback read failed for {}: {}", source_path_str, io_err)
+                                })?;
+                                load_and_composite(
+                                    &bytes,
+                                    &source_path_str,
+                                    &js_adjustments,
+                                    false,
+                                    highlight_compression,
+                                )
+                                .map_err(|e| format!("Failed to load image from bytes: {}", e))?
+                            }
+                        };
 
-                    let final_image = process_image_for_export(
-                        &source_path_str,
-                        &base_image,
-                        &js_adjustments,
-                        &export_settings,
-                        &context,
-                        &state,
-                        is_raw,
-                    )?;
+                        let final_image = process_image_for_export(
+                            &source_path_str,
+                            &base_image,
+                            &js_adjustments,
+                            &export_settings,
+                            &context,
+                            &state,
+                            is_raw,
+                        )?;
 
-                    let original_path = std::path::Path::new(&source_path_str);
+                        let original_path = std::path::Path::new(&source_path_str);
 
-                    let file_date: DateTime<Utc> = {
-                        let mut date = None;
-                        if let Ok(file) = std::fs::File::open(original_path) {
-                            let mut bufreader = std::io::BufReader::new(&file);
-                            let exifreader = exif::Reader::new();
-                            if let Ok(exif_obj) = exifreader.read_from_container(&mut bufreader) {
-                                if let Some(field) = exif_obj.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
-                                    let s = field.display_value().to_string().replace("\"", "");
-                                    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y:%m:%d %H:%M:%S") {
-                                        date = Some(DateTime::from_naive_utc_and_offset(dt, Utc));
+                        let file_date: DateTime<Utc> = {
+                            let mut date = None;
+                            if let Ok(file) = std::fs::File::open(original_path) {
+                                let mut bufreader = std::io::BufReader::new(&file);
+                                let exifreader = exif::Reader::new();
+                                if let Ok(exif_obj) = exifreader.read_from_container(&mut bufreader) {
+                                    if let Some(field) = exif_obj.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
+                                        let s = field.display_value().to_string().replace("\"", "");
+                                        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y:%m:%d %H:%M:%S") {
+                                            date = Some(DateTime::from_naive_utc_and_offset(dt, Utc));
+                                        }
                                     }
                                 }
                             }
-                        }
-                        
-                        date.unwrap_or_else(|| {
-                            fs::metadata(original_path)
-                                .ok()
-                                .and_then(|m| m.created().ok())
-                                .map(DateTime::<Utc>::from)
-                                .unwrap_or_else(Utc::now)
-                        })
-                    };
+                            
+                            date.unwrap_or_else(|| {
+                                fs::metadata(original_path)
+                                    .ok()
+                                    .and_then(|m| m.created().ok())
+                                    .map(DateTime::<Utc>::from)
+                                    .unwrap_or_else(Utc::now)
+                            })
+                        };
 
-                    let filename_template = export_settings
-                        .filename_template
-                        .as_deref()
-                        .unwrap_or("{original_filename}_edited");
-                    let new_stem = crate::file_management::generate_filename_from_template(
-                        filename_template,
-                        original_path,
-                        global_index + 1,
-                        total_paths,
-                        &file_date,
-                    );
-                    let new_filename = format!("{}.{}", new_stem, output_format);
-                    let output_path = output_folder_path.join(new_filename);
+                        let filename_template = export_settings
+                            .filename_template
+                            .as_deref()
+                            .unwrap_or("{original_filename}_edited");
+                        let new_stem = crate::file_management::generate_filename_from_template(
+                            filename_template,
+                            original_path,
+                            global_index + 1,
+                            total_paths,
+                            &file_date,
+                        );
+                        let new_filename = format!("{}.{}", new_stem, output_format);
+                        let output_path = output_folder_path.join(new_filename);
 
-                    let mut image_bytes = encode_image_to_bytes(
-                        &final_image,
-                        &output_format,
-                        export_settings.jpeg_quality,
-                    )?;
+                        let mut image_bytes = encode_image_to_bytes(
+                            &final_image,
+                            &output_format,
+                            export_settings.jpeg_quality,
+                        )?;
 
-                    write_image_with_metadata(
-                        &mut image_bytes,
-                        &source_path_str,
-                        &output_format,
-                        export_settings.keep_metadata,
-                        export_settings.strip_gps,
-                    )?;
+                        write_image_with_metadata(
+                            &mut image_bytes,
+                            &source_path_str,
+                            &output_format,
+                            export_settings.keep_metadata,
+                            export_settings.strip_gps,
+                        )?;
 
-                    fs::write(&output_path, image_bytes)
-                        .map_err(|e| format!("Failed to write output: {}", e))?;
+                        fs::write(&output_path, image_bytes)
+                            .map_err(|e| format!("Failed to write output: {}", e))?;
 
-                    Ok(())
-                })();
+                        Ok(())
+                    })();
 
-                result
-            })
-            .collect();
+                    result
+                })
+                .collect()
+        });
 
         let mut error_count = 0;
         for result in results {
             if let Err(e) = result {
                 error_count += 1;
-                eprintln!("Export error: {}", e);
+                log::error!("Batch export error: {}", e);
                 let _ = app_handle.emit("export-error", e);
             }
         }
