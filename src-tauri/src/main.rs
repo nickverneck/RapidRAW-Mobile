@@ -1168,32 +1168,29 @@ async fn batch_export_images(
 
                     let original_path = std::path::Path::new(&source_path_str);
 
-                    let file_date: DateTime<Utc> = Metadata::new_from_path(original_path)
-                        .ok()
-                        .and_then(|metadata| {
-                            metadata
-                                .get_tag(&ExifTag::DateTimeOriginal("".to_string()))
-                                .next()
-                                .and_then(|tag| {
-                                    if let &ExifTag::DateTimeOriginal(ref dt_str) = tag {
-                                        chrono::NaiveDateTime::parse_from_str(
-                                            dt_str,
-                                            "%Y:%m:%d %H:%M:%S",
-                                        )
-                                        .ok()
-                                        .map(|dt| DateTime::from_naive_utc_and_offset(dt, Utc))
-                                    } else {
-                                        None
+                    let file_date: DateTime<Utc> = {
+                        let mut date = None;
+                        if let Ok(file) = std::fs::File::open(original_path) {
+                            let mut bufreader = std::io::BufReader::new(&file);
+                            let exifreader = exif::Reader::new();
+                            if let Ok(exif_obj) = exifreader.read_from_container(&mut bufreader) {
+                                if let Some(field) = exif_obj.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
+                                    let s = field.display_value().to_string().replace("\"", "");
+                                    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s.trim(), "%Y:%m:%d %H:%M:%S") {
+                                        date = Some(DateTime::from_naive_utc_and_offset(dt, Utc));
                                     }
-                                })
-                        })
-                        .unwrap_or_else(|| {
+                                }
+                            }
+                        }
+                        
+                        date.unwrap_or_else(|| {
                             fs::metadata(original_path)
                                 .ok()
                                 .and_then(|m| m.created().ok())
                                 .map(DateTime::<Utc>::from)
                                 .unwrap_or_else(Utc::now)
-                        });
+                        })
+                    };
 
                     let filename_template = export_settings
                         .filename_template
@@ -1611,7 +1608,6 @@ fn write_image_with_metadata(
 
     let original_path = std::path::Path::new(original_path_str);
     if !original_path.exists() {
-        eprintln!("Original file not found for metadata copy: {}", original_path_str);
         return Ok(());
     }
 
@@ -1630,185 +1626,173 @@ fn write_image_with_metadata(
         _ => return Ok(()),
     };
 
-    use little_exif::rational::{uR64, iR64};
+    let mut metadata = Metadata::new();
 
-    let to_ur64 = |val: &exif::Rational| -> uR64 {
-        uR64 { nominator: val.num, denominator: val.denom }
-    };
+    if let Ok(file) = std::fs::File::open(original_path) {
+        let mut bufreader = std::io::BufReader::new(&file);
+        let exifreader = exif::Reader::new();
 
-    let to_ir64 = |val: &exif::SRational| -> iR64 {
-        iR64 { nominator: val.num, denominator: val.denom }
-    };
+        if let Ok(exif_obj) = exifreader.read_from_container(&mut bufreader) {
+            
+            use little_exif::rational::{uR64, iR64};
 
-    let get_string_val = |field: &exif::Field| -> String {
-        match &field.value {
-            exif::Value::Ascii(vec) => {
-                vec.iter()
-                    .map(|v| String::from_utf8_lossy(v).trim_matches(char::from(0)).to_string())
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            },
-            _ => field.display_value().to_string().replace("\"", "").trim().to_string()
-        }
-    };
+            let to_ur64 = |val: &exif::Rational| -> uR64 {
+                uR64 { nominator: val.num, denominator: val.denom }
+            };
 
-    let mut metadata = match Metadata::new_from_path(original_path) {
-        Ok(m) => m,
-        Err(_) => {
-            let file = std::fs::File::open(original_path).map_err(|e| e.to_string())?;
-            let mut bufreader = std::io::BufReader::new(&file);
-            let exifreader = exif::Reader::new();
-            let mut new_meta = Metadata::new();
+            let to_ir64 = |val: &exif::SRational| -> iR64 {
+                iR64 { nominator: val.num, denominator: val.denom }
+            };
 
-            if let Ok(exif_obj) = exifreader.read_from_container(&mut bufreader) {
-                if let Some(f) = exif_obj.get_field(exif::Tag::Make, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::Make(get_string_val(f)));
+            let get_string_val = |field: &exif::Field| -> String {
+                match &field.value {
+                    exif::Value::Ascii(vec) => {
+                        vec.iter()
+                            .map(|v| String::from_utf8_lossy(v).trim_matches(char::from(0)).to_string())
+                            .collect::<Vec<String>>()
+                            .join(" ")
+                    },
+                    _ => field.display_value().to_string().replace("\"", "").trim().to_string()
                 }
-                if let Some(f) = exif_obj.get_field(exif::Tag::Model, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::Model(get_string_val(f)));
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::LensMake, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::LensMake(get_string_val(f)));
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::LensModel, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::LensModel(get_string_val(f)));
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::Artist, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::Artist(get_string_val(f)));
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::Copyright, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::Copyright(get_string_val(f)));
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::DateTimeOriginal(get_string_val(f)));
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::DateTime, exif::In::PRIMARY) {
-                    new_meta.set_tag(ExifTag::CreateDate(get_string_val(f))); 
-                }
+            };
 
-                if let Some(f) = exif_obj.get_field(exif::Tag::FNumber, exif::In::PRIMARY) {
-                    if let exif::Value::Rational(v) = &f.value {
-                        if !v.is_empty() { new_meta.set_tag(ExifTag::FNumber(vec![to_ur64(&v[0])])); }
-                    }
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::ExposureTime, exif::In::PRIMARY) {
-                    if let exif::Value::Rational(v) = &f.value {
-                        if !v.is_empty() { new_meta.set_tag(ExifTag::ExposureTime(vec![to_ur64(&v[0])])); }
-                    }
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::FocalLength, exif::In::PRIMARY) {
-                    if let exif::Value::Rational(v) = &f.value {
-                        if !v.is_empty() { new_meta.set_tag(ExifTag::FocalLength(vec![to_ur64(&v[0])])); }
-                    }
-                }
-
-                if let Some(f) = exif_obj.get_field(exif::Tag::ExposureBiasValue, exif::In::PRIMARY) {
-                    match &f.value {
-                        exif::Value::SRational(v) if !v.is_empty() => {
-                             new_meta.set_tag(ExifTag::ExposureCompensation(vec![to_ir64(&v[0])]));
-                        },
-                        exif::Value::Rational(v) if !v.is_empty() => {
-                             new_meta.set_tag(ExifTag::ExposureCompensation(vec![iR64 { nominator: v[0].num as i32, denominator: v[0].denom as i32 }]));
-                        },
-                        _ => {}
-                    }
-                }
-
-                if let Some(f) = exif_obj.get_field(exif::Tag::PhotographicSensitivity, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::ISO(vec![val as u16]));
-                    }
-                } else if let Some(f) = exif_obj.get_field(exif::Tag::ISOSpeed, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::ISO(vec![val as u16]));
-                    }
-                }
-
-                if let Some(f) = exif_obj.get_field(exif::Tag::Flash, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::Flash(vec![val as u16]));
-                    }
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::MeteringMode, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::MeteringMode(vec![val as u16]));
-                    }
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::WhiteBalance, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::WhiteBalance(vec![val as u16]));
-                    }
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::ExposureProgram, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::ExposureProgram(vec![val as u16]));
-                    }
-                }
-                if let Some(f) = exif_obj.get_field(exif::Tag::FocalLengthIn35mmFilm, exif::In::PRIMARY) {
-                    if let Some(val) = f.value.get_uint(0) {
-                        new_meta.set_tag(ExifTag::FocalLengthIn35mmFormat(vec![val as u16]));
-                    }
-                }
-
-                if !strip_gps {
-                    if let Some(f) = exif_obj.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY) {
-                         if let exif::Value::Rational(v) = &f.value {
-                             if v.len() >= 3 {
-                                 new_meta.set_tag(ExifTag::GPSLatitude(vec![to_ur64(&v[0]), to_ur64(&v[1]), to_ur64(&v[2])]));
-                             }
-                         }
-                    }
-                    if let Some(f) = exif_obj.get_field(exif::Tag::GPSLatitudeRef, exif::In::PRIMARY) {
-                        new_meta.set_tag(ExifTag::GPSLatitudeRef(get_string_val(f)));
-                    }
-                    if let Some(f) = exif_obj.get_field(exif::Tag::GPSLongitude, exif::In::PRIMARY) {
-                         if let exif::Value::Rational(v) = &f.value {
-                             if v.len() >= 3 {
-                                 new_meta.set_tag(ExifTag::GPSLongitude(vec![to_ur64(&v[0]), to_ur64(&v[1]), to_ur64(&v[2])]));
-                             }
-                         }
-                    }
-                    if let Some(f) = exif_obj.get_field(exif::Tag::GPSLongitudeRef, exif::In::PRIMARY) {
-                        new_meta.set_tag(ExifTag::GPSLongitudeRef(get_string_val(f)));
-                    }
-                    if let Some(f) = exif_obj.get_field(exif::Tag::GPSAltitude, exif::In::PRIMARY) {
-                        if let exif::Value::Rational(v) = &f.value {
-                            if !v.is_empty() { new_meta.set_tag(ExifTag::GPSAltitude(vec![to_ur64(&v[0])])); }
-                        }
-                    }
-                    if let Some(f) = exif_obj.get_field(exif::Tag::GPSAltitudeRef, exif::In::PRIMARY) {
-                         if let Some(val) = f.value.get_uint(0) {
-                             new_meta.set_tag(ExifTag::GPSAltitudeRef(vec![val as u8]));
-                         }
-                    }
-                }
-
-                new_meta.set_tag(ExifTag::Software("RapidRAW".to_string()));
+            if let Some(f) = exif_obj.get_field(exif::Tag::Make, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::Make(get_string_val(f)));
             }
-            new_meta
+            if let Some(f) = exif_obj.get_field(exif::Tag::Model, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::Model(get_string_val(f)));
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::LensMake, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::LensMake(get_string_val(f)));
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::LensModel, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::LensModel(get_string_val(f)));
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::Artist, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::Artist(get_string_val(f)));
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::Copyright, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::Copyright(get_string_val(f)));
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::DateTimeOriginal(get_string_val(f)));
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::DateTime, exif::In::PRIMARY) {
+                metadata.set_tag(ExifTag::CreateDate(get_string_val(f))); 
+            }
+
+            if let Some(f) = exif_obj.get_field(exif::Tag::FNumber, exif::In::PRIMARY) {
+                if let exif::Value::Rational(v) = &f.value {
+                    if !v.is_empty() { metadata.set_tag(ExifTag::FNumber(vec![to_ur64(&v[0])])); }
+                }
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::ExposureTime, exif::In::PRIMARY) {
+                if let exif::Value::Rational(v) = &f.value {
+                    if !v.is_empty() { metadata.set_tag(ExifTag::ExposureTime(vec![to_ur64(&v[0])])); }
+                }
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::FocalLength, exif::In::PRIMARY) {
+                if let exif::Value::Rational(v) = &f.value {
+                    if !v.is_empty() { metadata.set_tag(ExifTag::FocalLength(vec![to_ur64(&v[0])])); }
+                }
+            }
+
+            if let Some(f) = exif_obj.get_field(exif::Tag::ExposureBiasValue, exif::In::PRIMARY) {
+                match &f.value {
+                    exif::Value::SRational(v) if !v.is_empty() => {
+                            metadata.set_tag(ExifTag::ExposureCompensation(vec![to_ir64(&v[0])]));
+                    },
+                    exif::Value::Rational(v) if !v.is_empty() => {
+                            metadata.set_tag(ExifTag::ExposureCompensation(vec![iR64 { nominator: v[0].num as i32, denominator: v[0].denom as i32 }]));
+                    },
+                    _ => {}
+                }
+            }
+
+            if let Some(f) = exif_obj.get_field(exif::Tag::PhotographicSensitivity, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::ISO(vec![val as u16]));
+                }
+            } else if let Some(f) = exif_obj.get_field(exif::Tag::ISOSpeed, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::ISO(vec![val as u16]));
+                }
+            }
+
+            if let Some(f) = exif_obj.get_field(exif::Tag::Flash, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::Flash(vec![val as u16]));
+                }
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::MeteringMode, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::MeteringMode(vec![val as u16]));
+                }
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::WhiteBalance, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::WhiteBalance(vec![val as u16]));
+                }
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::ExposureProgram, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::ExposureProgram(vec![val as u16]));
+                }
+            }
+            if let Some(f) = exif_obj.get_field(exif::Tag::FocalLengthIn35mmFilm, exif::In::PRIMARY) {
+                if let Some(val) = f.value.get_uint(0) {
+                    metadata.set_tag(ExifTag::FocalLengthIn35mmFormat(vec![val as u16]));
+                }
+            }
+
+            if !strip_gps {
+                if let Some(f) = exif_obj.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY) {
+                        if let exif::Value::Rational(v) = &f.value {
+                            if v.len() >= 3 {
+                                metadata.set_tag(ExifTag::GPSLatitude(vec![to_ur64(&v[0]), to_ur64(&v[1]), to_ur64(&v[2])]));
+                            }
+                        }
+                }
+                if let Some(f) = exif_obj.get_field(exif::Tag::GPSLatitudeRef, exif::In::PRIMARY) {
+                    metadata.set_tag(ExifTag::GPSLatitudeRef(get_string_val(f)));
+                }
+                if let Some(f) = exif_obj.get_field(exif::Tag::GPSLongitude, exif::In::PRIMARY) {
+                        if let exif::Value::Rational(v) = &f.value {
+                            if v.len() >= 3 {
+                                metadata.set_tag(ExifTag::GPSLongitude(vec![to_ur64(&v[0]), to_ur64(&v[1]), to_ur64(&v[2])]));
+                            }
+                        }
+                }
+                if let Some(f) = exif_obj.get_field(exif::Tag::GPSLongitudeRef, exif::In::PRIMARY) {
+                    metadata.set_tag(ExifTag::GPSLongitudeRef(get_string_val(f)));
+                }
+                if let Some(f) = exif_obj.get_field(exif::Tag::GPSAltitude, exif::In::PRIMARY) {
+                    if let exif::Value::Rational(v) = &f.value {
+                        if !v.is_empty() { metadata.set_tag(ExifTag::GPSAltitude(vec![to_ur64(&v[0])])); }
+                    }
+                }
+                if let Some(f) = exif_obj.get_field(exif::Tag::GPSAltitudeRef, exif::In::PRIMARY) {
+                        if let Some(val) = f.value.get_uint(0) {
+                            metadata.set_tag(ExifTag::GPSAltitudeRef(vec![val as u8]));
+                        }
+                }
+            }
         }
-    };
-
-    if strip_gps {
-        let dummy_rational = uR64 { nominator: 0, denominator: 1 };
-        let dummy_vec1 = vec![dummy_rational.clone()];
-        let dummy_vec3 = vec![dummy_rational.clone(), dummy_rational.clone(), dummy_rational.clone()];
-
-        metadata.remove_tag(ExifTag::GPSVersionID(vec![0,0,0,0]));
-        metadata.remove_tag(ExifTag::GPSLatitudeRef(String::new()));
-        metadata.remove_tag(ExifTag::GPSLatitude(dummy_vec3.clone()));
-        metadata.remove_tag(ExifTag::GPSLongitudeRef(String::new()));
-        metadata.remove_tag(ExifTag::GPSLongitude(dummy_vec3.clone()));
-        metadata.remove_tag(ExifTag::GPSAltitudeRef(vec![0]));
-        metadata.remove_tag(ExifTag::GPSAltitude(dummy_vec1.clone()));
-        metadata.remove_tag(ExifTag::GPSTimeStamp(dummy_vec3.clone()));
     }
 
+    metadata.set_tag(ExifTag::Software("RapidRAW".to_string()));
     metadata.set_tag(ExifTag::Orientation(vec![1u16]));
     metadata.set_tag(ExifTag::ColorSpace(vec![1u16]));
 
-    if let Err(e) = metadata.write_to_vec(image_bytes, file_type) {
-        eprintln!("Failed to write metadata to image vector: {}", e);
+    // little_exif has a bug where writing a Metadata object causes a panic, even if you do everything else right - see https://github.com/TechnikTobi/little_exif/issues/76
+    let write_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        metadata.write_to_vec(image_bytes, file_type)
+    }));
+
+    match write_result {
+        Ok(Ok(_)) => {},
+        Ok(Err(e)) => log::warn!("Failed to write metadata: {}", e),
+        Err(_) => log::error!("Recovered from little_exif library panic. Saving image without metadata."),
     }
 
     Ok(())
