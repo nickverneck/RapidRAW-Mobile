@@ -78,7 +78,7 @@ export default function DetailsPanel({
         </div>
       )}
 
-      {/* Hide Noise Reduction, to stop people from thinking it exists
+      {/* Hide noise reduction to stop people from thinking it exists
       {adjustmentVisibility.noiseReduction !== false && (
         <div className="p-2 bg-bg-tertiary rounded-md">
           <p className="text-md font-semibold mb-2 text-primary">Noise Reduction</p>

@@ -767,7 +767,6 @@ const ImageCanvas = memo(
       [isWbPickerActive, handleWbClick, isBrushActive, isAiSubjectActive, brushSettings, onSelectMask, onSelectAiSubMask, isMasking, isAiEditing],
     );
 
-    // Enhanced mouse move handler to allow drawing outside the image area
     const handleMouseMove = useCallback(
       (e: any) => {
         if (isWbPickerActive) {
@@ -779,7 +778,6 @@ const ImageCanvas = memo(
           const stage = e.target.getStage();
           pos = stage.getPointerPosition();
         } else if (e && e.clientX != null && e.clientY != null) {
-          // Calculate position relative to the stage
           const stageEl = document.querySelector('.konvajs-content');
           if (stageEl) {
             const rect = stageEl.getBoundingClientRect();
@@ -815,7 +813,6 @@ const ImageCanvas = memo(
       [isToolActive, isWbPickerActive],
     );
 
-    // Enhanced mouse up handler for window events
     const handleMouseUp = useCallback(() => {
       if (!isDrawing.current || !currentLine.current) {
         return;
@@ -897,12 +894,10 @@ const ImageCanvas = memo(
       }
     }, [isToolActive]);
 
-    // No longer end drawing on mouse leave, just hide cursor preview
     const handleMouseLeave = useCallback(() => {
       setCursorPreview((p: CursorPreview) => ({ ...p, visible: false }));
-      // Do not call handleMouseUp here, so drawing continues
     }, []);
-    // Attach window listeners for mousemove/mouseup during drawing
+
     useEffect(() => {
       if (!isToolActive) return;
       function onMove(e: MouseEvent) {
