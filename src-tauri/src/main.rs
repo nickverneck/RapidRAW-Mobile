@@ -7,6 +7,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 mod ai_processing;
 mod comfyui_connector;
 mod culling;
+mod denoising;
 mod file_management;
 mod formats;
 mod gpu_processing;
@@ -109,6 +110,7 @@ pub struct AppState {
     ai_init_lock: TokioMutex<()>,
     export_task_handle: Mutex<Option<JoinHandle<()>>>,
     panorama_result: Arc<Mutex<Option<DynamicImage>>>,
+    denoise_result: Arc<Mutex<Option<DynamicImage>>>,
     indexing_task_handle: Mutex<Option<JoinHandle<()>>>,
     pub lut_cache: Mutex<HashMap<String, Arc<Lut>>>,
     initial_file_path: Mutex<Option<String>>,
@@ -974,7 +976,13 @@ fn encode_image_to_bytes(
                 .map_err(|e| e.to_string())?;
         }
         "png" => {
-            image
+            let image_to_encode = if image.as_rgb32f().is_some() {
+                DynamicImage::ImageRgb16(image.to_rgb16())
+            } else {
+                image.clone()
+            };
+
+            image_to_encode
                 .write_to(&mut cursor, image::ImageFormat::Png)
                 .map_err(|e| e.to_string())?;
         }
@@ -2320,78 +2328,6 @@ fn get_supported_file_types() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn stitch_panorama(
-    paths: Vec<String>,
-    app_handle: tauri::AppHandle,
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
-    if paths.len() < 2 {
-        return Err("Please select at least two images to stitch.".to_string());
-    }
-
-    let source_paths: Vec<String> = paths
-        .iter()
-        .map(|p| parse_virtual_path(p).0.to_string_lossy().into_owned())
-        .collect();
-
-    let panorama_result_handle = state.panorama_result.clone();
-
-    let task = tokio::task::spawn_blocking(move || {
-        let panorama_result = panorama_stitching::stitch_images(source_paths, app_handle.clone());
-
-        match panorama_result {
-            Ok(panorama_image) => {
-                let _ = app_handle.emit("panorama-progress", "Creating preview...");
-
-                let (w, h) = panorama_image.dimensions();
-                let (new_w, new_h) = if w > h {
-                    (800, (800.0 * h as f32 / w as f32).round() as u32)
-                } else {
-                    ((800.0 * w as f32 / h as f32).round() as u32, 800)
-                };
-
-                let preview_f32 = crate::image_processing::downscale_f32_image(
-                    &panorama_image,
-                    new_w,
-                    new_h
-                );
-
-                let preview_u8 = preview_f32.to_rgb8();
-
-                let mut buf = Cursor::new(Vec::new());
-
-                if let Err(e) = preview_u8.write_to(&mut buf, ImageFormat::Png) {
-                    return Err(format!("Failed to encode panorama preview: {}", e));
-                }
-
-                let base64_str = general_purpose::STANDARD.encode(buf.get_ref());
-                let final_base64 = format!("data:image/png;base64,{}", base64_str);
-
-                *panorama_result_handle.lock().unwrap() = Some(panorama_image);
-
-                let _ = app_handle.emit(
-                    "panorama-complete",
-                    serde_json::json!({
-                        "base64": final_base64,
-                    }),
-                );
-                Ok(())
-            }
-            Err(e) => {
-                let _ = app_handle.emit("panorama-error", e.clone());
-                Err(e)
-            }
-        }
-    });
-
-    match task.await {
-        Ok(Ok(_)) => Ok(()),
-        Ok(Err(e)) => Err(e),
-        Err(join_err) => Err(format!("Panorama task failed: {}", join_err)),
-    }
-}
-
-#[tauri::command]
 async fn fetch_community_presets() -> Result<Vec<CommunityPreset>, String> {
     let client = reqwest::Client::new();
     let url = "https://raw.githubusercontent.com/CyberTimon/RapidRAW-Presets/main/manifest.json";
@@ -2555,6 +2491,78 @@ async fn save_temp_file(bytes: Vec<u8>) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn stitch_panorama(
+    paths: Vec<String>,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    if paths.len() < 2 {
+        return Err("Please select at least two images to stitch.".to_string());
+    }
+
+    let source_paths: Vec<String> = paths
+        .iter()
+        .map(|p| parse_virtual_path(p).0.to_string_lossy().into_owned())
+        .collect();
+
+    let panorama_result_handle = state.panorama_result.clone();
+
+    let task = tokio::task::spawn_blocking(move || {
+        let panorama_result = panorama_stitching::stitch_images(source_paths, app_handle.clone());
+
+        match panorama_result {
+            Ok(panorama_image) => {
+                let _ = app_handle.emit("panorama-progress", "Creating preview...");
+
+                let (w, h) = panorama_image.dimensions();
+                let (new_w, new_h) = if w > h {
+                    (800, (800.0 * h as f32 / w as f32).round() as u32)
+                } else {
+                    ((800.0 * w as f32 / h as f32).round() as u32, 800)
+                };
+
+                let preview_f32 = crate::image_processing::downscale_f32_image(
+                    &panorama_image,
+                    new_w,
+                    new_h
+                );
+
+                let preview_u8 = preview_f32.to_rgb8();
+
+                let mut buf = Cursor::new(Vec::new());
+
+                if let Err(e) = preview_u8.write_to(&mut buf, ImageFormat::Png) {
+                    return Err(format!("Failed to encode panorama preview: {}", e));
+                }
+
+                let base64_str = general_purpose::STANDARD.encode(buf.get_ref());
+                let final_base64 = format!("data:image/png;base64,{}", base64_str);
+
+                *panorama_result_handle.lock().unwrap() = Some(panorama_image);
+
+                let _ = app_handle.emit(
+                    "panorama-complete",
+                    serde_json::json!({
+                        "base64": final_base64,
+                    }),
+                );
+                Ok(())
+            }
+            Err(e) => {
+                let _ = app_handle.emit("panorama-error", e.clone());
+                Err(e)
+            }
+        }
+    });
+
+    match task.await {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(join_err) => Err(format!("Panorama task failed: {}", join_err)),
+    }
+}
+
+#[tauri::command]
 async fn save_panorama(
     first_path_str: String,
     state: tauri::State<'_, AppState>,
@@ -2578,10 +2586,15 @@ async fn save_panorama(
         .and_then(|s| s.to_str())
         .unwrap_or("panorama");
 
-    let output_filename = format!("{}_Pano.png", stem);
-    let output_path = parent_dir.join(output_filename);
+    let (output_filename, image_to_save): (String, DynamicImage) = if panorama_image.color().has_alpha() {
+        (format!("{}_Pano.png", stem), DynamicImage::ImageRgba8(panorama_image.to_rgba8()))
+    } else if panorama_image.as_rgb32f().is_some() {
+        (format!("{}_Pano.tiff", stem), panorama_image)
+    } else {
+        (format!("{}_Pano.png", stem), DynamicImage::ImageRgb8(panorama_image.to_rgb8()))
+    };
 
-    let image_to_save = panorama_image.to_rgb8();
+    let output_path = parent_dir.join(output_filename);
 
     image_to_save
         .save(&output_path)
@@ -2589,6 +2602,75 @@ async fn save_panorama(
 
     Ok(output_path.to_string_lossy().to_string())
 }
+
+#[tauri::command]
+async fn apply_denoising(
+    path: String,
+    intensity: f32,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let (source_path, _) = parse_virtual_path(&path);
+    let path_str = source_path.to_string_lossy().to_string();
+
+    let denoise_result_handle = state.denoise_result.clone();
+
+    tokio::task::spawn_blocking(move || {
+        match denoising::denoise_image(path_str, intensity, app_handle.clone()) {
+            Ok((image, _base64_ignored_in_this_handler_logic)) => {
+                *denoise_result_handle.lock().unwrap() = Some(image);
+            }
+            Err(e) => {
+                let _ = app_handle.emit("denoise-error", e);
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("Denoising task failed: {}", e))
+}
+
+#[tauri::command]
+async fn save_denoised_image(
+    original_path_str: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
+    let denoised_image = state
+        .denoise_result
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or_else(|| {
+            "No denoised image found in memory. It might have already been saved or cleared."
+                .to_string()
+        })?;
+
+    let is_raw = crate::formats::is_raw_file(&original_path_str);
+
+    let (first_path, _) = parse_virtual_path(&original_path_str);
+    let parent_dir = first_path
+        .parent()
+        .ok_or_else(|| "Could not determine parent directory.".to_string())?;
+    let stem = first_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("denoised");
+
+    let (output_filename, image_to_save): (String, DynamicImage) = if is_raw {
+        let filename = format!("{}_Denoised.tiff", stem);
+        (filename, denoised_image)
+    } else {
+        let filename = format!("{}_Denoised.png", stem);
+        (filename, DynamicImage::ImageRgb8(denoised_image.to_rgb8()))
+    };
+
+    let output_path = parent_dir.join(output_filename);
+
+    image_to_save
+        .save(&output_path)
+        .map_err(|e| format!("Failed to save image: {}", e))?;
+
+    Ok(output_path.to_string_lossy().to_string())
+} // TODO: ACCURATELY PRE PROCESS RAW IMAGES
 
 #[tauri::command]
 async fn save_collage(base64_data: String, first_path_str: String) -> Result<String, String> {
@@ -2962,6 +3044,7 @@ fn main() {
             ai_init_lock: TokioMutex::new(()),
             export_task_handle: Mutex::new(None),
             panorama_result: Arc::new(Mutex::new(None)),
+            denoise_result: Arc::new(Mutex::new(None)),
             indexing_task_handle: Mutex::new(None),
             lut_cache: Mutex::new(HashMap::new()),
             initial_file_path: Mutex::new(None),
@@ -2993,6 +3076,8 @@ fn main() {
             save_collage,
             stitch_panorama,
             save_panorama,
+            apply_denoising,
+            save_denoised_image,
             load_and_parse_lut,
             fetch_community_presets,
             generate_all_community_previews,

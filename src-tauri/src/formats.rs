@@ -68,7 +68,7 @@ pub const RAW_EXTENSIONS: &[(&str, &str)] = &[
 ]; // Tell me if your's is missing.
 
 pub const NON_RAW_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "exr", "qoi",
+    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "exr", "qoi", // TODO: IDENTIFY IF THERE IS RAW DATA IN TIFF. IF YES -> CORRECTLY GAMMA CORRECT IT
 ];
 
 pub fn is_raw_file(path: &str) -> bool {

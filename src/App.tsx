@@ -33,6 +33,7 @@ import {
   PinOff,
   Users,
   Gauge,
+  Wand2,
 } from 'lucide-react';
 import TitleBar from './window/TitleBar';
 import CommunityPage from './components/panel/CommunityPage';
@@ -59,6 +60,7 @@ import ConfirmModal from './components/modals/ConfirmModal';
 import ImportSettingsModal from './components/modals/ImportSettingsModal';
 import RenameFileModal from './components/modals/RenameFileModal';
 import PanoramaModal from './components/modals/PanoramaModal';
+import DenoiseModal from './components/modals/DenoiseModal';
 import CollageModal from './components/modals/CollageModal';
 import CopyPasteSettingsModal from './components/modals/CopyPasteSettingsModal';
 import CullingModal from './components/modals/CullingModal';
@@ -158,6 +160,15 @@ interface PanoramaModalState {
   isOpen: boolean;
   progressMessage: string | null;
   stitchingSourcePaths: Array<string>;
+}
+
+interface DenoiseModalState {
+  isOpen: boolean;
+  isProcessing: boolean;
+  previewBase64: string | null;
+  error: string | null;
+  targetPath: string | null;
+  progressMessage: string | null;
 }
 
 interface CullingModalState {
@@ -357,6 +368,14 @@ function App() {
     isOpen: false,
     progressMessage: '',
     stitchingSourcePaths: [],
+  });
+  const [denoiseModalState, setDenoiseModalState] = useState<DenoiseModalState>({
+    isOpen: false,
+    isProcessing: false,
+    previewBase64: null,
+    error: null,
+    targetPath: null,
+    progressMessage: null,
   });
   const [cullingModalState, setCullingModalState] = useState<CullingModalState>({
     isOpen: false,
@@ -2428,6 +2447,31 @@ function App() {
           }));
         }
       }),
+      listen('denoise-progress', (event: any) => {
+        if (isEffectActive) {
+          setDenoiseModalState((prev) => ({ ...prev, progressMessage: event.payload as string }));
+        }
+      }),
+      listen('denoise-complete', (event: any) => {
+        if (isEffectActive) {
+          setDenoiseModalState((prev) => ({
+            ...prev,
+            isProcessing: false,
+            previewBase64: event.payload,
+            progressMessage: null
+          }));
+        }
+      }),
+      listen('denoise-error', (event: any) => {
+        if (isEffectActive) {
+          setDenoiseModalState((prev) => ({
+            ...prev,
+            isProcessing: false,
+            error: String(event.payload),
+            progressMessage: null
+          }));
+        }
+      }),
     ];
     return () => {
       isEffectActive = false;
@@ -2581,6 +2625,39 @@ function App() {
       setPanoramaModalState((prev: PanoramaModalState) => ({ ...prev, error: String(err) }));
       throw err;
     }
+  };
+
+  const handleApplyDenoise = useCallback(async (intensity: number) => {
+    if (!denoiseModalState.targetPath) return;
+    
+    setDenoiseModalState(prev => ({ 
+      ...prev, 
+      isProcessing: true, 
+      error: null, 
+      progressMessage: "Starting engine..." 
+    }));
+    
+    try {
+        await invoke(Invokes.ApplyDenoising, { 
+            path: denoiseModalState.targetPath,
+            intensity: intensity 
+        });
+    } catch (err) {
+        setDenoiseModalState(prev => ({ 
+            ...prev, 
+            isProcessing: false, 
+            error: String(err) 
+        }));
+    }
+  }, [denoiseModalState.targetPath]);
+
+  const handleSaveDenoisedImage = async (): Promise<string> => {
+    if (!denoiseModalState.targetPath) throw new Error("No target path");
+    const savedPath = await invoke<string>(Invokes.SaveDenoisedImage, {
+        originalPathStr: denoiseModalState.targetPath
+    });
+    await refreshImageList();
+    return savedPath;
   };
 
   const handleSaveCollage = async (base64Data: string, firstPath: string): Promise<string> => {
@@ -3273,6 +3350,21 @@ function App() {
             icon: CopyPlus,
             label: 'Create Virtual Copy',
             onClick: () => handleCreateVirtualCopy(finalSelection[0]),
+          },
+          {
+            label: 'Denoise',
+            icon: Wand2,
+            disabled: !isSingleSelection,
+            onClick: () => {
+                setDenoiseModalState({
+                    isOpen: true,
+                    isProcessing: false,
+                    previewBase64: null,
+                    error: null,
+                    targetPath: finalSelection[0],
+                    progressMessage: null
+                });
+            }
           },
           {
             disabled: selectionCount < 2  || selectionCount > 30,
@@ -4038,6 +4130,17 @@ function App() {
         }}
         onSave={handleSavePanorama}
         progressMessage={panoramaModalState.progressMessage}
+      />
+      <DenoiseModal 
+        isOpen={denoiseModalState.isOpen}
+        onClose={() => setDenoiseModalState(prev => ({ ...prev, isOpen: false }))}
+        onDenoise={handleApplyDenoise}
+        onSave={handleSaveDenoisedImage}
+        onOpenFile={handleImageSelect}
+        previewBase64={denoiseModalState.previewBase64}
+        isProcessing={denoiseModalState.isProcessing}
+        error={denoiseModalState.error}
+        progressMessage={denoiseModalState.progressMessage}
       />
       <CreateFolderModal
         isOpen={isCreateFolderModalOpen}
