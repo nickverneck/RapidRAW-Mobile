@@ -767,15 +767,27 @@ const ImageCanvas = memo(
       [isWbPickerActive, handleWbClick, isBrushActive, isAiSubjectActive, brushSettings, onSelectMask, onSelectAiSubMask, isMasking, isAiEditing],
     );
 
+    // Enhanced mouse move handler to allow drawing outside the image area
     const handleMouseMove = useCallback(
       (e: any) => {
         if (isWbPickerActive) {
           return;
         }
 
-        if (isToolActive) {
+        let pos;
+        if (e && typeof e.target?.getStage === 'function') {
           const stage = e.target.getStage();
-          const pos = stage.getPointerPosition();
+          pos = stage.getPointerPosition();
+        } else if (e && e.clientX != null && e.clientY != null) {
+          // Calculate position relative to the stage
+          const stageEl = document.querySelector('.konvajs-content');
+          if (stageEl) {
+            const rect = stageEl.getBoundingClientRect();
+            pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+          }
+        }
+
+        if (isToolActive) {
           if (pos) {
             setCursorPreview({ x: pos.x, y: pos.y, visible: true });
           } else {
@@ -787,8 +799,6 @@ const ImageCanvas = memo(
           return;
         }
 
-        const stage = e.target.getStage();
-        const pos = stage.getPointerPosition();
         if (!pos) {
           return;
         }
@@ -805,6 +815,7 @@ const ImageCanvas = memo(
       [isToolActive, isWbPickerActive],
     );
 
+    // Enhanced mouse up handler for window events
     const handleMouseUp = useCallback(() => {
       if (!isDrawing.current || !currentLine.current) {
         return;
@@ -886,12 +897,29 @@ const ImageCanvas = memo(
       }
     }, [isToolActive]);
 
+    // No longer end drawing on mouse leave, just hide cursor preview
     const handleMouseLeave = useCallback(() => {
       setCursorPreview((p: CursorPreview) => ({ ...p, visible: false }));
-      if (isDrawing.current) {
+      // Do not call handleMouseUp here, so drawing continues
+    }, []);
+    // Attach window listeners for mousemove/mouseup during drawing
+    useEffect(() => {
+      if (!isToolActive) return;
+      function onMove(e: MouseEvent) {
+        handleMouseMove(e);
+      }
+      function onUp(e: MouseEvent) {
         handleMouseUp();
       }
-    }, [handleMouseUp]);
+      if (isDrawing.current) {
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+      }
+    }, [isToolActive, handleMouseMove, handleMouseUp]);
 
     const handleStraightenMouseDown = (e: any) => {
       if (e.evt.button !== 0) {
