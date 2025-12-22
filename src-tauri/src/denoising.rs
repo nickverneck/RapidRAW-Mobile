@@ -1,5 +1,6 @@
 use crate::formats::is_raw_file;
 use crate::image_loader::load_base_image_from_bytes;
+use crate::image_processing::apply_cpu_default_raw_processing;
 use base64::{engine::general_purpose, Engine as _};
 use image::{DynamicImage, GenericImageView, ImageFormat, Rgb, Rgb32FImage};
 use rayon::prelude::*;
@@ -40,28 +41,6 @@ impl Bm3dParams {
     }
 }
 
-fn apply_gamma(img: &Rgb32FImage) -> Rgb32FImage {
-    let mut gamma_corrected = img.clone();
-    let inv_gamma = 1.0 / 2.2;
-    gamma_corrected.pixels_mut().par_bridge().for_each(|p| {
-        p[0] = p[0].powf(inv_gamma);
-        p[1] = p[1].powf(inv_gamma);
-        p[2] = p[2].powf(inv_gamma);
-    });
-    gamma_corrected
-}
-
-fn apply_inverse_gamma(img: &Rgb32FImage) -> Rgb32FImage {
-    let mut linear = img.clone();
-    let gamma = 2.2;
-    linear.pixels_mut().par_bridge().for_each(|p| {
-        p[0] = p[0].powf(gamma);
-        p[1] = p[1].powf(gamma);
-        p[2] = p[2].powf(gamma);
-    });
-    linear
-}
-
 pub fn denoise_image(
     path_str: String,
     intensity: f32,
@@ -78,17 +57,15 @@ pub fn denoise_image(
 
     let file_bytes = fs::read(path).map_err(|e| e.to_string())?;
 
-    let dynamic_img = load_base_image_from_bytes(&file_bytes, &path_str, false, 2.5)
+    let mut dynamic_img = load_base_image_from_bytes(&file_bytes, &path_str, false, 2.5)
         .map_err(|e| e.to_string())?;
 
-    let rgb_img_f32_original = dynamic_img.to_rgb32f();
-
-    let rgb_img_for_denoiser = if is_raw {
+    if is_raw {
         let _ = app_handle.emit("denoise-progress", "Preparing RAW data...");
-        apply_gamma(&rgb_img_f32_original)
-    } else {
-        rgb_img_f32_original
-    };
+        apply_cpu_default_raw_processing(&mut dynamic_img);
+    }
+
+    let rgb_img_for_denoiser = dynamic_img.to_rgb32f();
 
     let (width, height) = rgb_img_for_denoiser.dimensions();
 
@@ -116,15 +93,8 @@ pub fn denoise_image(
     );
 
     let _ = app_handle.emit("denoise-progress", "Finalizing data...");
-    let out_img_buffer_gamma = merge_channels(&denoised_channels, width, height);
-
-    let out_img_buffer_final = if is_raw {
-        apply_inverse_gamma(&out_img_buffer_gamma)
-    } else {
-        out_img_buffer_gamma
-    };
-
-    let out_dynamic = DynamicImage::ImageRgb32F(out_img_buffer_final);
+    let out_img_buffer = merge_channels(&denoised_channels, width, height);
+    let out_dynamic = DynamicImage::ImageRgb32F(out_img_buffer);
 
     let _ = app_handle.emit("denoise-progress", "Generating previews...");
 
@@ -143,43 +113,30 @@ pub fn denoise_image(
         }
     };
 
-    let preview_base_for_resize = if new_w != w {
+    let denoised_preview = if new_w != w {
         out_dynamic.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)
     } else {
         out_dynamic.clone()
     };
 
-    let preview_base_gamma_for_display = if is_raw {
-        apply_gamma(&preview_base_for_resize.to_rgb32f())
-    } else {
-        preview_base_for_resize.to_rgb32f()
-    };
-    
-    let preview_u8 = DynamicImage::ImageRgb32F(preview_base_gamma_for_display).to_rgb8();
-
-    let mut buf = Cursor::new(Vec::new());
-    preview_u8
-        .write_to(&mut buf, ImageFormat::Png)
+    let mut buf_denoised = Cursor::new(Vec::new());
+    denoised_preview
+        .to_rgb8()
+        .write_to(&mut buf_denoised, ImageFormat::Png)
         .map_err(|e| format!("Failed to encode preview: {}", e))?;
-    let base64_str_denoised = general_purpose::STANDARD.encode(buf.get_ref());
+    let base64_str_denoised = general_purpose::STANDARD.encode(buf_denoised.get_ref());
     let data_url_denoised = format!("data:image/png;base64,{}", base64_str_denoised);
 
-    let original_dynamic_for_resize = DynamicImage::ImageRgb32F(rgb_img_for_denoiser);
-    
-    let original_resized = if new_w != w {
-        original_dynamic_for_resize.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)
+    let original_dynamic = DynamicImage::ImageRgb32F(rgb_img_for_denoiser);
+    let original_preview = if new_w != w {
+        original_dynamic.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)
     } else {
-        original_dynamic_for_resize
-    };
-
-    let original_u8 = if is_raw {
-         DynamicImage::ImageRgb32F(original_resized.to_rgb32f()).to_rgb8()
-    } else {
-        DynamicImage::ImageRgb32F(original_resized.to_rgb32f()).to_rgb8()
+        original_dynamic
     };
 
     let mut buf_orig = Cursor::new(Vec::new());
-    original_u8
+    original_preview
+        .to_rgb8()
         .write_to(&mut buf_orig, ImageFormat::Png)
         .map_err(|e| format!("Failed to encode original preview: {}", e))?;
     let base64_str_orig = general_purpose::STANDARD.encode(buf_orig.get_ref());

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { CheckCircle, XCircle, Loader2, Save, Wand2, RefreshCw, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Save, Grip, RefreshCw, ZoomIn, ZoomOut, Move } from 'lucide-react';
 import Button from '../ui/Button';
+import Slider from '../ui/Slider';
 
 interface DenoiseModalProps {
   isOpen: boolean;
@@ -180,7 +181,8 @@ export default function DenoiseModal({
 }: DenoiseModalProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
-  const [intensity, setIntensity] = useState<number>(0.5);
+  // Initializing at 50 (0-100 range) instead of 0.5 so the Slider displays integer percentages
+  const [intensity, setIntensity] = useState<number>(50);
   const [isSaving, setIsSaving] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   
@@ -220,7 +222,8 @@ export default function DenoiseModal({
 
   const handleRunDenoise = () => {
     setSavedPath(null);
-    onDenoise(intensity);
+    // Convert 0-100 back to 0-1 for the processing function
+    onDenoise(intensity / 100);
   };
 
   const handleSave = async () => {
@@ -283,7 +286,7 @@ export default function DenoiseModal({
 
     return (
       <div className="flex flex-col items-center justify-center h-[400px] text-text-secondary">
-        <Wand2 className="w-16 h-16 mb-4 opacity-20" />
+        <Grip className="w-16 h-16 mb-4" />
         <h3 className="text-lg font-semibold text-text-primary mb-2 text-center">Denoise Image</h3>
         <p className="text-sm text-center max-w-sm">
           Adjust the intensity slider below and click Start to preview the results.
@@ -311,22 +314,20 @@ export default function DenoiseModal({
       );
     }
 
+    const disabled = isProcessing || isSaving;
+
     return (
       <div className="w-full flex items-center gap-4">
-        <div className="flex-1 flex flex-col gap-1">
-            <div className="flex justify-between text-xs text-text-secondary uppercase font-semibold tracking-wider">
-                <span>Strength</span>
-                <span>{(intensity * 100).toFixed(0)}%</span>
-            </div>
-            <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                disabled={isProcessing || isSaving}
+        <div className={`flex-1 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <Slider
+                label="Strength"
                 value={intensity}
-                onChange={(e) => setIntensity(parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-bg-secondary rounded-lg appearance-none cursor-pointer accent-accent"
+                min={0}
+                max={100}
+                step={1}
+                defaultValue={50}
+                onChange={(e) => setIntensity(Number(e.target.value))}
+                trackClassName="bg-bg-secondary"
             />
         </div>
         
@@ -345,7 +346,7 @@ export default function DenoiseModal({
                 disabled={isProcessing} 
                 variant={previewBase64 ? 'secondary' : 'primary'}
             >
-                {isProcessing ? <Loader2 className="animate-spin mr-2" size={16} /> : previewBase64 ? <RefreshCw className="mr-2" size={16} /> : <Wand2 className="mr-2" size={16} />}
+                {isProcessing ? <Loader2 className="animate-spin mr-2" size={16} /> : previewBase64 ? <RefreshCw className="mr-2" size={16} /> : <Grip className="mr-2" size={16} />}
                 {previewBase64 ? 'Retry' : 'Start'}
             </Button>
 

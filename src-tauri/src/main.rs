@@ -2657,7 +2657,7 @@ async fn save_denoised_image(
 
     let (output_filename, image_to_save): (String, DynamicImage) = if is_raw {
         let filename = format!("{}_Denoised.tiff", stem);
-        (filename, denoised_image)
+        (filename, denoised_image) 
     } else {
         let filename = format!("{}_Denoised.png", stem);
         (filename, DynamicImage::ImageRgb8(denoised_image.to_rgb8()))
@@ -2670,7 +2670,7 @@ async fn save_denoised_image(
         .map_err(|e| format!("Failed to save image: {}", e))?;
 
     Ok(output_path.to_string_lossy().to_string())
-} // TODO: ACCURATELY PRE PROCESS RAW IMAGES
+}
 
 #[tauri::command]
 async fn save_collage(base64_data: String, first_path_str: String) -> Result<String, String> {

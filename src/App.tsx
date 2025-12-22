@@ -33,7 +33,7 @@ import {
   PinOff,
   Users,
   Gauge,
-  Wand2,
+  Grip,
 } from 'lucide-react';
 import TitleBar from './window/TitleBar';
 import CommunityPage from './components/panel/CommunityPage';
@@ -3358,7 +3358,7 @@ function App() {
           },
           {
             label: 'Denoise',
-            icon: Wand2,
+            icon: Grip,
             disabled: !isSingleSelection,
             onClick: () => {
                 setDenoiseModalState({
