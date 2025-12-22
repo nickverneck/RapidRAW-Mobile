@@ -166,6 +166,7 @@ interface DenoiseModalState {
   isOpen: boolean;
   isProcessing: boolean;
   previewBase64: string | null;
+  originalBase64?: string | null;
   error: string | null;
   targetPath: string | null;
   progressMessage: string | null;
@@ -2454,10 +2455,14 @@ function App() {
       }),
       listen('denoise-complete', (event: any) => {
         if (isEffectActive) {
+          const payload = event.payload;
+          const isObject = typeof payload === 'object' && payload !== null;
+          
           setDenoiseModalState((prev) => ({
             ...prev,
             isProcessing: false,
-            previewBase64: event.payload,
+            previewBase64: isObject ? payload.denoised : payload,
+            originalBase64: isObject ? payload.original : null,
             progressMessage: null
           }));
         }
@@ -4138,6 +4143,7 @@ function App() {
         onSave={handleSaveDenoisedImage}
         onOpenFile={handleImageSelect}
         previewBase64={denoiseModalState.previewBase64}
+        originalBase64={denoiseModalState.originalBase64 || null}
         isProcessing={denoiseModalState.isProcessing}
         error={denoiseModalState.error}
         progressMessage={denoiseModalState.progressMessage}

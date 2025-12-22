@@ -126,18 +126,18 @@ pub fn denoise_image(
 
     let out_dynamic = DynamicImage::ImageRgb32F(out_img_buffer_final);
 
-    let _ = app_handle.emit("denoise-progress", "Finalizing preview...");
+    let _ = app_handle.emit("denoise-progress", "Generating previews...");
 
     let (w, h) = out_dynamic.dimensions();
     let (new_w, new_h) = if w > h {
-        if w > 1500 {
-            (1500, (1500.0 * h as f32 / w as f32).round() as u32)
+        if w > 4000 {
+            (4000, (4000.0 * h as f32 / w as f32).round() as u32)
         } else {
             (w, h)
         }
     } else {
-        if h > 1500 {
-            ((1500.0 * w as f32 / h as f32).round() as u32, 1500)
+        if h > 4000 {
+            ((4000.0 * w as f32 / h as f32).round() as u32, 4000)
         } else {
             (w, h)
         }
@@ -154,20 +154,45 @@ pub fn denoise_image(
     } else {
         preview_base_for_resize.to_rgb32f()
     };
-
+    
     let preview_u8 = DynamicImage::ImageRgb32F(preview_base_gamma_for_display).to_rgb8();
 
     let mut buf = Cursor::new(Vec::new());
     preview_u8
         .write_to(&mut buf, ImageFormat::Png)
         .map_err(|e| format!("Failed to encode preview: {}", e))?;
+    let base64_str_denoised = general_purpose::STANDARD.encode(buf.get_ref());
+    let data_url_denoised = format!("data:image/png;base64,{}", base64_str_denoised);
 
-    let base64_str = general_purpose::STANDARD.encode(buf.get_ref());
-    let data_url = format!("data:image/png;base64,{}", base64_str);
+    let original_dynamic_for_resize = DynamicImage::ImageRgb32F(rgb_img_for_denoiser);
+    
+    let original_resized = if new_w != w {
+        original_dynamic_for_resize.resize(new_w, new_h, image::imageops::FilterType::Lanczos3)
+    } else {
+        original_dynamic_for_resize
+    };
 
-    let _ = app_handle.emit("denoise-complete", &data_url);
+    let original_u8 = if is_raw {
+         DynamicImage::ImageRgb32F(original_resized.to_rgb32f()).to_rgb8()
+    } else {
+        DynamicImage::ImageRgb32F(original_resized.to_rgb32f()).to_rgb8()
+    };
 
-    Ok((out_dynamic, data_url))
+    let mut buf_orig = Cursor::new(Vec::new());
+    original_u8
+        .write_to(&mut buf_orig, ImageFormat::Png)
+        .map_err(|e| format!("Failed to encode original preview: {}", e))?;
+    let base64_str_orig = general_purpose::STANDARD.encode(buf_orig.get_ref());
+    let data_url_orig = format!("data:image/png;base64,{}", base64_str_orig);
+
+    let payload = serde_json::json!({
+        "denoised": data_url_denoised,
+        "original": data_url_orig
+    });
+
+    let _ = app_handle.emit("denoise-complete", &payload);
+
+    Ok((out_dynamic, data_url_denoised))
 }
 
 fn bm3d_process_joint(
