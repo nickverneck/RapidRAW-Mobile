@@ -260,7 +260,7 @@ export default function DenoiseModal({
 
     if (previewBase64 && originalBase64 && !isProcessing) {
       return (
-        <div className="w-full h-[500px] mb-4">
+        <div className="w-full h-[500px]">
           <ImageCompare original={originalBase64} denoised={previewBase64} />
           {savedPath && (
             <div className="flex items-center justify-center gap-2 mt-4 text-green-500 animate-in fade-in slide-in-from-bottom-2">
