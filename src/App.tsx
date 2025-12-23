@@ -24,6 +24,7 @@ import {
   Redo,
   RotateCcw,
   Star,
+  Save,
   Palette,
   Tag,
   Trash2,
@@ -3105,6 +3106,15 @@ function App() {
     const commonTags = getCommonTags([selectedImage.path]);
 
     const options: Array<Option> = [
+      {
+        label: 'Export Image',
+        icon: Save,
+        onClick: () => {
+          setRenderedRightPanel(Panel.Export);
+          setActiveRightPanel(Panel.Export);
+        },
+      },
+      { type: OPTION_SEPARATOR },
       { label: 'Undo', icon: Undo, onClick: undo, disabled: !canUndo },
       { label: 'Redo', icon: Redo, onClick: redo, disabled: !canRedo },
       { type: OPTION_SEPARATOR },
@@ -3116,7 +3126,7 @@ function App() {
         disabled: copiedAdjustments === null,
       },
       { type: OPTION_SEPARATOR },
-      { label: 'Auto Adjust', icon: Aperture, onClick: handleAutoAdjustments },
+      { label: 'Auto Adjust Image', icon: Aperture, onClick: handleAutoAdjustments },
       {
         label: 'Rating',
         icon: Star,
@@ -3189,6 +3199,7 @@ function App() {
     const isSingleSelection = selectionCount === 1;
     const isEditingThisImage = selectedImage?.path === path;
     const deleteLabel = isSingleSelection ? 'Delete Image' : `Delete ${selectionCount} Images`;
+    const exportLabel = isSingleSelection ? 'Export Image' : `Export ${selectionCount} Images`;
 
     const selectionHasVirtualCopies =
       isSingleSelection &&
@@ -3253,9 +3264,9 @@ function App() {
     const pasteLabel = isSingleSelection ? 'Paste Adjustments' : `Paste Adjustments to ${selectionCount} Images`;
     const resetLabel = isSingleSelection ? 'Reset Adjustments' : `Reset Adjustments on ${selectionCount} Images`;
     const copyLabel = isSingleSelection ? 'Copy Image' : `Copy ${selectionCount} Images`;
-    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust Images`;
+    const autoAdjustLabel = isSingleSelection ? 'Auto Adjust Image' : `Auto Adjust ${selectionCount} Images`;
     const renameLabel = isSingleSelection ? 'Rename Image' : `Rename ${selectionCount} Images`;
-    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull Images`;
+    const cullLabel = isSingleSelection ? 'Cull Image' : `Cull ${selectionCount} Images`;
     const collageLabel = isSingleSelection ? 'Create Collage' : `Create Collage`;
     const stitchLabel = `Stitch Panorama`;
 
@@ -3270,15 +3281,12 @@ function App() {
     };
 
     const handleApplyAutoAdjustmentsToSelection = () => {
-      if (finalSelection.length === 0) {
-        return;
-      }
+      if (finalSelection.length === 0) return;
 
       invoke(Invokes.ApplyAutoAdjustmentsToPaths, { paths: finalSelection })
         .then(async () => {
           if (selectedImage && finalSelection.includes(selectedImage.path)) {
             const metadata: Metadata = await invoke(Invokes.LoadMetadata, { path: selectedImage.path });
-
             if (metadata.adjustments && !metadata.adjustments.is_null) {
               const normalized = normalizeLoadedAdjustments(metadata.adjustments);
               setLiveAdjustments(normalized);
@@ -3287,7 +3295,6 @@ function App() {
           }
           if (libraryActivePath && finalSelection.includes(libraryActivePath)) {
             const metadata: Metadata = await invoke(Invokes.LoadMetadata, { path: libraryActivePath });
-
             if (metadata.adjustments && !metadata.adjustments.is_null) {
               const normalized = normalizeLoadedAdjustments(metadata.adjustments);
               setLibraryActiveAdjustments(normalized);
@@ -3300,18 +3307,42 @@ function App() {
         });
     };
 
+    const onExportClick = () => {
+      if (selectedImage) {
+        if (selectedImage.path !== path) {
+            handleImageSelect(path);
+        }
+        setRenderedRightPanel(Panel.Export);
+        setActiveRightPanel(Panel.Export);
+      } else {
+        setIsLibraryExportPanelVisible(true);
+      }
+    };
+
     const options = [
       ...(!isEditingThisImage
         ? [
             {
               disabled: !isSingleSelection,
               icon: Edit,
-              label: 'Edit Photo',
+              label: 'Edit Image',
               onClick: () => handleImageSelect(finalSelection[0]),
+            },
+            {
+              icon: Save,
+              label: exportLabel,
+              onClick: onExportClick,
             },
             { type: OPTION_SEPARATOR },
           ]
-        : []),
+        : [
+            {
+              icon: Save,
+              label: exportLabel,
+              onClick: onExportClick,
+            },
+            { type: OPTION_SEPARATOR },
+          ]),
       {
         disabled: !isSingleSelection,
         icon: Copy,
