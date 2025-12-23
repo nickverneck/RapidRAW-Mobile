@@ -17,7 +17,7 @@ base64 = "0.22"
 tauri-plugin-fs = "2.4.4"
 rayon = "1.11.0"
 blake3 = "1.8.2"
-wgpu = "27.0"
+wgpu = "28.0"
 pollster = "0.4"
 bytemuck = { version = "1.24", features = ["derive"] }
 window-vibrancy = "0.7.1"
