@@ -381,7 +381,7 @@ export default function DenoiseModal({
         <div className="flex flex-col">
           {renderContent()}
           
-          {!savedPath && <div className="mt-4 pt-4 border-t border-bg-secondary flex justify-end gap-3">{renderButtons()}</div>}
+          {!savedPath && <div className="mt-4 pt-4 flex justify-end gap-3">{renderButtons()}</div>}
           {savedPath && <div className="mt-4 flex justify-end gap-3">{renderButtons()}</div>}
         </div>
       </div>

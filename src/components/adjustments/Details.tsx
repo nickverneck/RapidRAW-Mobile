@@ -39,7 +39,7 @@ export default function DetailsPanel({
       )}
 
       {adjustmentVisibility.presence !== false && (
-        <div className="mb-4 p-2 bg-bg-tertiary rounded-md">
+        <div className="p-2 bg-bg-tertiary rounded-md">
           <p className="text-md font-semibold mb-2 text-primary">Presence</p>
           <Slider
             label="Clarity"
@@ -103,7 +103,7 @@ export default function DetailsPanel({
       */}
 
       {adjustmentVisibility.chromaticAberration !== false && (
-        <div className="p-2 bg-bg-tertiary rounded-md">
+        <div className="mt-4 p-2 bg-bg-tertiary rounded-md">
           <p className="text-md font-semibold mb-2 text-primary">Chromatic Aberration</p>
           <Slider
             label="Red/Cyan"
