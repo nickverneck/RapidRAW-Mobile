@@ -1003,6 +1003,76 @@ fn get_mask_influence(mask_index: u32, coords: vec2<u32>) -> f32 {
     }
 }
 
+fn sample_lut_tetrahedral(uv: vec3<f32>) -> vec3<f32> {
+    let dims = vec3<f32>(textureDimensions(lut_texture));
+    let size = dims - vec3<f32>(1.0);
+    let scaled = clamp(uv, vec3<f32>(0.0), vec3<f32>(1.0)) * size;
+    let i_base = floor(scaled);
+    let f = scaled - i_base;
+    let coord0 = vec3<i32>(i_base);
+    let coord1 = min(coord0 + vec3<i32>(1), vec3<i32>(dims) - vec3<i32>(1));
+    let c000 = textureLoad(lut_texture, coord0, 0).rgb;
+    let c111 = textureLoad(lut_texture, coord1, 0).rgb;
+    
+    var res = vec3<f32>(0.0);
+
+    if (f.r > f.g) {
+        if (f.g > f.b) {
+            let c100 = textureLoad(lut_texture, vec3<i32>(coord1.x, coord0.y, coord0.z), 0).rgb;
+            let c110 = textureLoad(lut_texture, vec3<i32>(coord1.x, coord1.y, coord0.z), 0).rgb;
+            
+            res = c000 * (1.0 - f.r) +
+                  c100 * (f.r - f.g) +
+                  c110 * (f.g - f.b) +
+                  c111 * (f.b);
+        } else if (f.r > f.b) {
+            let c100 = textureLoad(lut_texture, vec3<i32>(coord1.x, coord0.y, coord0.z), 0).rgb;
+            let c101 = textureLoad(lut_texture, vec3<i32>(coord1.x, coord0.y, coord1.z), 0).rgb;
+            
+            res = c000 * (1.0 - f.r) +
+                  c100 * (f.r - f.b) +
+                  c101 * (f.b - f.g) +
+                  c111 * (f.g);
+        } else {
+            let c001 = textureLoad(lut_texture, vec3<i32>(coord0.x, coord0.y, coord1.z), 0).rgb;
+            let c101 = textureLoad(lut_texture, vec3<i32>(coord1.x, coord0.y, coord1.z), 0).rgb;
+            
+            res = c000 * (1.0 - f.b) +
+                  c001 * (f.b - f.r) +
+                  c101 * (f.r - f.g) +
+                  c111 * (f.g);
+        }
+    } else {
+        if (f.b > f.g) {
+            let c001 = textureLoad(lut_texture, vec3<i32>(coord0.x, coord0.y, coord1.z), 0).rgb;
+            let c011 = textureLoad(lut_texture, vec3<i32>(coord0.x, coord1.y, coord1.z), 0).rgb;
+            
+            res = c000 * (1.0 - f.b) +
+                  c001 * (f.b - f.g) +
+                  c011 * (f.g - f.r) +
+                  c111 * (f.r);
+        } else if (f.b > f.r) {
+            let c010 = textureLoad(lut_texture, vec3<i32>(coord0.x, coord1.y, coord0.z), 0).rgb;
+            let c011 = textureLoad(lut_texture, vec3<i32>(coord0.x, coord1.y, coord1.z), 0).rgb;
+            
+            res = c000 * (1.0 - f.g) +
+                  c010 * (f.g - f.b) +
+                  c011 * (f.b - f.r) +
+                  c111 * (f.r);
+        } else {
+            let c010 = textureLoad(lut_texture, vec3<i32>(coord0.x, coord1.y, coord0.z), 0).rgb;
+            let c110 = textureLoad(lut_texture, vec3<i32>(coord1.x, coord1.y, coord0.z), 0).rgb;
+            
+            res = c000 * (1.0 - f.g) +
+                  c010 * (f.g - f.r) +
+                  c110 * (f.r - f.b) +
+                  c111 * (f.b);
+        }
+    }
+    
+    return res;
+}
+
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let out_dims = vec2<u32>(textureDimensions(output_texture));
@@ -1107,7 +1177,8 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     if (adjustments.global.has_lut == 1u) {
-        let lut_color = textureSampleLevel(lut_texture, lut_sampler, final_rgb, 0.0).rgb;
+        let lut_color = sample_lut_tetrahedral(final_rgb);
+        
         final_rgb = mix(final_rgb, lut_color, adjustments.global.lut_intensity);
     }
 
