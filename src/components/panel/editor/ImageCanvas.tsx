@@ -503,6 +503,7 @@ const ImageCanvas = memo(
     const latestEditedUrlRef = useRef<string | null>(null);
 
     const isDrawing = useRef(false);
+    const drawingStageRef = useRef<any>(null);
     const currentLine = useRef<DrawnLine | null>(null);
     const [previewLine, setPreviewLine] = useState<DrawnLine | null>(null);
     const [cursorPreview, setCursorPreview] = useState<CursorPreview>({ x: 0, y: 0, visible: false });
@@ -544,6 +545,16 @@ const ImageCanvas = memo(
       (isMasking || isAiEditing) &&
       (activeSubMask?.type === Mask.AiSubject || activeSubMask?.type === Mask.QuickEraser);
     const isToolActive = isBrushActive || isAiSubjectActive;
+
+    useEffect(() => {
+      if (isToolActive) {
+        return;
+      }
+      isDrawing.current = false;
+      drawingStageRef.current = null;
+      currentLine.current = null;
+      setPreviewLine(null);
+    }, [isToolActive]);
 
     const sortedSubMasks = useMemo(() => {
       if (!activeContainer) {
@@ -741,13 +752,17 @@ const ImageCanvas = memo(
 
         if (isToolActive) {
           e.evt.preventDefault();
-          isDrawing.current = true;
           const stage = e.target.getStage();
           const pos = stage.getPointerPosition();
           if (!pos) {
+            isDrawing.current = false;
+            currentLine.current = null;
+            setPreviewLine(null);
             return;
           }
 
+          isDrawing.current = true;
+          drawingStageRef.current = stage;
           const toolType = isAiSubjectActive ? ToolType.AiSeletor : ToolType.Brush;
 
           const newLine: DrawnLine = {
@@ -782,10 +797,10 @@ const ImageCanvas = memo(
           const stage = e.target.getStage();
           pos = stage.getPointerPosition();
         } else if (e && e.clientX != null && e.clientY != null) {
-          const stageEl = document.querySelector('.konvajs-content');
-          if (stageEl) {
-            const rect = stageEl.getBoundingClientRect();
-            pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+          const stage = drawingStageRef.current;
+          if (stage) {
+            stage.setPointersPositions(e);
+            pos = stage.getPointerPosition();
           }
         }
 
@@ -827,6 +842,7 @@ const ImageCanvas = memo(
       const line = currentLine.current;
       currentLine.current = null;
       setPreviewLine(null);
+      drawingStageRef.current = null;
 
       if (!wasDrawing || !line) {
         return;
@@ -905,19 +921,23 @@ const ImageCanvas = memo(
     useEffect(() => {
       if (!isToolActive) return;
       function onMove(e: MouseEvent) {
+        if (!isDrawing.current) {
+          return;
+        }
         handleMouseMove(e);
       }
-      function onUp(e: MouseEvent) {
+      function onUp() {
+        if (!isDrawing.current) {
+          return;
+        }
         handleMouseUp();
       }
-      if (isDrawing.current) {
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        return () => {
-          window.removeEventListener('mousemove', onMove);
-          window.removeEventListener('mouseup', onUp);
-        };
-      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      return () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
     }, [isToolActive, handleMouseMove, handleMouseUp]);
 
     const handleStraightenMouseDown = (e: any) => {
