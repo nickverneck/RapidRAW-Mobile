@@ -3061,7 +3061,14 @@ function App() {
       try {
         const nonRaw = supportedTypes?.nonRaw || [];
         const raw = supportedTypes?.raw || [];
-        const allImageExtensions = [...nonRaw, ...raw];
+
+        const expandExtensions = (exts: string[]) => {
+           return Array.from(new Set(exts.flatMap(ext => [ext.toLowerCase(), ext.toUpperCase()])));
+        };
+
+        const processedNonRaw = expandExtensions(nonRaw);
+        const processedRaw = expandExtensions(raw);
+        const allImageExtensions = [...processedNonRaw, ...processedRaw];
 
         const selected = await open({
           filters: [
@@ -3071,11 +3078,11 @@ function App() {
             },
             {
               name: 'RAW Images',
-              extensions: raw,
+              extensions: processedRaw,
             },
             {
               name: 'Standard Images (JPEG, PNG, etc.)',
-              extensions: nonRaw,
+              extensions: processedNonRaw,
             },
             {
               name: 'All Files',
