@@ -1453,6 +1453,7 @@ const sortedImageList = useMemo(() => {
       setIsViewLoading(true);
       setSearchCriteria({ tags: [], text: '', mode: 'OR' });
       setLibraryScrollTop(0);
+      setThumbnails({});
       try {
         setCurrentFolderPath(path);
         setActiveView('library');
@@ -3109,7 +3110,14 @@ const sortedImageList = useMemo(() => {
       try {
         const nonRaw = supportedTypes?.nonRaw || [];
         const raw = supportedTypes?.raw || [];
-        const allImageExtensions = [...nonRaw, ...raw];
+
+        const expandExtensions = (exts: string[]) => {
+           return Array.from(new Set(exts.flatMap(ext => [ext.toLowerCase(), ext.toUpperCase()])));
+        };
+
+        const processedNonRaw = expandExtensions(nonRaw);
+        const processedRaw = expandExtensions(raw);
+        const allImageExtensions = [...processedNonRaw, ...processedRaw];
 
         const selected = await open({
           filters: [
@@ -3119,11 +3127,11 @@ const sortedImageList = useMemo(() => {
             },
             {
               name: 'RAW Images',
-              extensions: raw,
+              extensions: processedRaw,
             },
             {
               name: 'Standard Images (JPEG, PNG, etc.)',
-              extensions: nonRaw,
+              extensions: processedNonRaw,
             },
             {
               name: 'All Files',
