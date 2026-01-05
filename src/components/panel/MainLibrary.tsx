@@ -191,6 +191,7 @@ const rawStatusOptions: Array<KeyValueLabel> = [
   { key: RawStatus.All, label: 'All Types' },
   { key: RawStatus.RawOnly, label: 'RAW Only' },
   { key: RawStatus.NonRawOnly, label: 'Non-RAW Only' },
+  { key: RawStatus.RawOverNonRaw, label: 'Prefer RAW' },
 ];
 
 const thumbnailSizeOptions: Array<ThumbnailSizeOption> = [

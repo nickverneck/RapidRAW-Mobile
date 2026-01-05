@@ -93,6 +93,7 @@ export enum RawStatus {
   All = 'all',
   NonRawOnly = 'nonRawOnly',
   RawOnly = 'rawOnly',
+  RawOverNonRaw = 'rawOverNonRaw',
 }
 
 export enum SortDirection {

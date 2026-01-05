@@ -876,8 +876,51 @@ function App() {
     }
   };
 
-  const sortedImageList = useMemo(() => {
-    const filteredList = imageList.filter((image) => {
+const sortedImageList = useMemo(() => {
+    let processedList = imageList;
+
+    if (filterCriteria.rawStatus === RawStatus.RawOverNonRaw && supportedTypes) {
+      const rawBaseNames = new Set<string>();
+
+      for (const image of imageList) {
+        const pathWithoutVC = image.path.split('?vc=')[0];
+        const filename = pathWithoutVC.split(/[\\/]/).pop() || '';
+        const lastDotIndex = filename.lastIndexOf('.');
+        const extension = lastDotIndex !== -1 ? filename.substring(lastDotIndex + 1).toLowerCase() : '';
+
+        if (extension && supportedTypes.raw.includes(extension)) {
+          const baseName = lastDotIndex !== -1 ? filename.substring(0, lastDotIndex) : filename;
+          const parentDir = getParentDir(pathWithoutVC);
+          const uniqueKey = `${parentDir}/${baseName}`;
+          rawBaseNames.add(uniqueKey);
+        }
+      }
+
+      if (rawBaseNames.size > 0) {
+        processedList = imageList.filter((image) => {
+          const pathWithoutVC = image.path.split('?vc=')[0];
+          const filename = pathWithoutVC.split(/[\\/]/).pop() || '';
+          const lastDotIndex = filename.lastIndexOf('.');
+          const extension = lastDotIndex !== -1 ? filename.substring(lastDotIndex + 1).toLowerCase() : '';
+
+          const isNonRaw = extension && supportedTypes.nonRaw.includes(extension);
+
+          if (isNonRaw) {
+            const baseName = lastDotIndex !== -1 ? filename.substring(0, lastDotIndex) : filename;
+            const parentDir = getParentDir(pathWithoutVC);
+            const uniqueKey = `${parentDir}/${baseName}`;
+
+            if (rawBaseNames.has(uniqueKey)) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+      }
+    }
+
+    const filteredList = processedList.filter((image) => {
       if (filterCriteria.rating > 0) {
         const rating = imageRatings[image.path] || 0;
         if (filterCriteria.rating === 5) {
@@ -887,7 +930,12 @@ function App() {
         }
       }
 
-      if (filterCriteria.rawStatus && filterCriteria.rawStatus !== RawStatus.All && supportedTypes) {
+      if (
+        filterCriteria.rawStatus &&
+        filterCriteria.rawStatus !== RawStatus.All &&
+        filterCriteria.rawStatus !== RawStatus.RawOverNonRaw &&
+        supportedTypes
+      ) {
         const extension = image.path.split('.').pop()?.toLowerCase() || '';
         const isRaw = supportedTypes.raw?.includes(extension);
 
