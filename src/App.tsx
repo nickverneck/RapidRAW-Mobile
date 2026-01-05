@@ -876,7 +876,7 @@ function App() {
     }
   };
 
-const sortedImageList = useMemo(() => {
+  const sortedImageList = useMemo(() => {
     let processedList = imageList;
 
     if (filterCriteria.rawStatus === RawStatus.RawOverNonRaw && supportedTypes) {
