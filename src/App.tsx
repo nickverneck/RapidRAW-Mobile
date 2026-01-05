@@ -1405,6 +1405,7 @@ function App() {
       setIsViewLoading(true);
       setSearchCriteria({ tags: [], text: '', mode: 'OR' });
       setLibraryScrollTop(0);
+      setThumbnails({});
       try {
         setCurrentFolderPath(path);
         setActiveView('library');
