@@ -570,8 +570,10 @@ fn apply_adjustments(
                 let (base, scale, offset) =
                     generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
 
+                let settings = load_settings(app_handle.clone()).unwrap_or_default();
+                let target_size = settings.editor_preview_resolution.unwrap_or(1920) / 2;
+
                 let (w, h) = base.dimensions();
-                let target_size = 720;
                 let (small_w, small_h) = if w > h {
                     let ratio = h as f32 / w as f32;
                     (target_size, (target_size as f32 * ratio) as u32)
@@ -595,8 +597,10 @@ fn apply_adjustments(
             let (base, scale, offset) =
                 generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
 
+            let settings = load_settings(app_handle.clone()).unwrap_or_default();
+            let target_size = settings.editor_preview_resolution.unwrap_or(1920) / 2;
+
             let (w, h) = base.dimensions();
-            let target_size = 720;
             let (small_w, small_h) = if w > h {
                 let ratio = h as f32 / w as f32;
                 (target_size, (target_size as f32 * ratio) as u32)
