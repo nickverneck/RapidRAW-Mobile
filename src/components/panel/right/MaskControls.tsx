@@ -65,6 +65,7 @@ interface MaskControlsProps {
   setIsMaskControlHovered(hovered: boolean): void;
   updateMask(id: string, adjustments: any): void;
   updateSubMask(id: string, parameters: any): void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 function formatMaskTypeName(type: string) {
@@ -176,6 +177,7 @@ export default function MaskControls({
   setIsMaskControlHovered,
   updateMask,
   updateSubMask,
+  onDragStateChange,
 }: MaskControlsProps) {
   const { showContextMenu } = useContextMenu();
   const { presets } = usePresets(editingMask.adjustments);
@@ -681,6 +683,7 @@ export default function MaskControls({
                   histogram={histogram}
                   isForMask={true}
                   appSettings={appSettings}
+                  onDragStateChange={onDragStateChange}
                 />
               </CollapsibleSection>
             );

@@ -24,6 +24,7 @@ interface CurveGraphProps {
   isMasksView?: boolean;
   setAdjustments(updater: (prev: any) => any): void;
   theme: string;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 function getCurvePath(points: Array<Coord>) {
@@ -127,7 +128,14 @@ function getZeroHistogramPath(data: Array<any>) {
   return `M0,255 L${pathData} L255,255 Z`;
 }
 
-export default function CurveGraph({ adjustments, setAdjustments, histogram, theme, isMasksView }: CurveGraphProps) {
+export default function CurveGraph({
+  adjustments,
+  setAdjustments,
+  histogram,
+  theme,
+  isMasksView,
+  onDragStateChange,
+}: CurveGraphProps) {
   const [activeChannel, setActiveChannel] = useState<ActiveChannel>(ActiveChannel.Luma);
   const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
   const [localPoints, setLocalPoints] = useState<Array<Coord> | null>(null);
@@ -201,6 +209,7 @@ export default function CurveGraph({ adjustments, setAdjustments, histogram, the
 
   const handlePointMouseDown = (e: any, index: number) => {
     e.preventDefault();
+    onDragStateChange?.(true);
     setLocalPoints(points);
     setDraggingPointIndex(index);
   };
@@ -234,6 +243,7 @@ export default function CurveGraph({ adjustments, setAdjustments, histogram, the
   };
 
   const handleMouseUp = () => {
+    onDragStateChange?.(false);
     setDraggingPointIndex(null);
   };
 
@@ -242,6 +252,7 @@ export default function CurveGraph({ adjustments, setAdjustments, histogram, the
       return;
     }
 
+    onDragStateChange?.(true);
     const { x, y } = getMousePos(e);
     const newPoints = [...points, { x, y }].sort((a: Coord, b: Coord) => a.x - b.x);
     const newPointIndex = newPoints.findIndex((p: Coord) => p.x === x && p.y === y);

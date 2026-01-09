@@ -4018,6 +4018,7 @@ function App() {
                           setBrushSettings={setBrushSettings}
                           setCopiedMask={setCopiedMask}
                           setCustomEscapeHandler={setCustomEscapeHandler}
+                          onDragStateChange={setIsSliderDragging}
                           setIsMaskControlHovered={setIsMaskControlHovered}
                         />
                       )}

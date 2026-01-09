@@ -10,6 +10,7 @@ interface EffectsPanelProps {
   setAdjustments(adjustments: Partial<Adjustments>): any;
   handleLutSelect(path: string): void;
   appSettings: AppSettings | null;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 export default function EffectsPanel({
@@ -18,6 +19,7 @@ export default function EffectsPanel({
   isForMask = false,
   handleLutSelect,
   appSettings,
+  onDragStateChange,
 }: EffectsPanelProps) {
   const handleAdjustmentChange = (key: Effect, value: string) => {
     const numericValue = parseInt(value, 10);
@@ -61,6 +63,7 @@ export default function EffectsPanel({
               onLutSelect={handleLutSelect}
               onIntensityChange={handleLutIntensityChange}
               onClear={handleLutClear}
+              onDragStateChange={onDragStateChange}
             />
           </div>
 
@@ -95,6 +98,7 @@ export default function EffectsPanel({
                     onChange={(e: any) => handleAdjustmentChange(Effect.NegativeRedBalance, e.target.value)}
                     step={1}
                     value={adjustments.negativeRedBalance || 0}
+                    onDragStateChange={onDragStateChange}
                   />
                   <Slider
                     label="Green Balance"
@@ -103,6 +107,7 @@ export default function EffectsPanel({
                     onChange={(e: any) => handleAdjustmentChange(Effect.NegativeGreenBalance, e.target.value)}
                     step={1}
                     value={adjustments.negativeGreenBalance || 0}
+                    onDragStateChange={onDragStateChange}
                   />
                   <Slider
                     label="Blue Balance"
@@ -111,6 +116,7 @@ export default function EffectsPanel({
                     onChange={(e: any) => handleAdjustmentChange(Effect.NegativeBlueBalance, e.target.value)}
                     step={1}
                     value={adjustments.negativeBlueBalance || 0}
+                    onDragStateChange={onDragStateChange}
                   />
                 </div>
               )}
@@ -127,6 +133,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
                 step={1}
                 value={adjustments.vignetteAmount}
+                onDragStateChange={onDragStateChange}
               />
               <Slider
                 defaultValue={50}
@@ -136,6 +143,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteMidpoint, e.target.value)}
                 step={1}
                 value={adjustments.vignetteMidpoint}
+                onDragStateChange={onDragStateChange}
               />
               <Slider
                 label="Roundness"
@@ -144,6 +152,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteRoundness, e.target.value)}
                 step={1}
                 value={adjustments.vignetteRoundness}
+                onDragStateChange={onDragStateChange}
               />
               <Slider
                 defaultValue={50}
@@ -153,6 +162,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteFeather, e.target.value)}
                 step={1}
                 value={adjustments.vignetteFeather}
+                onDragStateChange={onDragStateChange}
               />
             </div>
           )}
@@ -167,6 +177,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.GrainAmount, e.target.value)}
                 step={1}
                 value={adjustments.grainAmount}
+                onDragStateChange={onDragStateChange}
               />
               <Slider
                 defaultValue={25}
@@ -176,6 +187,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.GrainSize, e.target.value)}
                 step={1}
                 value={adjustments.grainSize}
+                onDragStateChange={onDragStateChange}
               />
               <Slider
                 defaultValue={50}
@@ -185,6 +197,7 @@ export default function EffectsPanel({
                 onChange={(e: any) => handleAdjustmentChange(Effect.GrainRoughness, e.target.value)}
                 step={1}
                 value={adjustments.grainRoughness}
+                onDragStateChange={onDragStateChange}
               />
             </div>
           )}

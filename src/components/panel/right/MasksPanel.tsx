@@ -49,6 +49,7 @@ interface MasksPanelProps {
   setCopiedMask(mask: MaskContainer): void;
   setCustomEscapeHandler(handler: any): void;
   setIsMaskControlHovered(hovered: boolean): void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 const itemVariants = {
@@ -81,6 +82,7 @@ export default function MasksPanel({
   setCopiedMask,
   setCustomEscapeHandler,
   setIsMaskControlHovered,
+  onDragStateChange,
 }: MasksPanelProps) {
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [renamingContainerId, setRenamingContainerId] = useState(null);
@@ -430,6 +432,7 @@ export default function MasksPanel({
             setIsMaskControlHovered={setIsMaskControlHovered}
             updateMask={updateContainer}
             updateSubMask={updateSubMask}
+            onDragStateChange={onDragStateChange}
           />
         </div>
       </div>

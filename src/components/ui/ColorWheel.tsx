@@ -10,6 +10,7 @@ interface ColorWheelProps {
   label: string;
   onChange(hsl: HueSatLum): void;
   value: HueSatLum;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 const ResetIcon = () => (
@@ -36,6 +37,7 @@ const ColorWheel = ({
   label,
   onChange,
   value,
+  onDragStateChange,
 }: ColorWheelProps) => {
   const effectiveValue = value || defaultValue;
   const { hue, saturation, luminance } = effectiveValue;
@@ -86,6 +88,10 @@ const ColorWheel = ({
       window.removeEventListener('touchend', handleInteractionEnd);
     };
   }, [isWheelDragging]);
+
+  useEffect(() => {
+    onDragStateChange?.(isDragging);
+  }, [isDragging, onDragStateChange]);
 
   const handleWheelChange = (color: ColorResult) => {
     onChange({ ...effectiveValue, hue: color.hsva.h, saturation: color.hsva.s });

@@ -8,6 +8,7 @@ interface LUTControlProps {
   onLutSelect: (path: string) => void;
   onIntensityChange: (intensity: number) => void;
   onClear: () => void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 export default function LUTControl({
@@ -16,6 +17,7 @@ export default function LUTControl({
   onLutSelect,
   onIntensityChange,
   onClear,
+  onDragStateChange,
 }: LUTControlProps) {
   const handleSelectFile = async () => {
     try {
@@ -72,6 +74,7 @@ export default function LUTControl({
           value={lutIntensity}
           defaultValue={100}
           onChange={(e) => onIntensityChange(parseInt(e.target.value, 10))}
+          onDragStateChange={onDragStateChange}
         />
       )}
     </div>
