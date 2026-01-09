@@ -63,9 +63,20 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
+*   **2026-01-05:** Collage maker upgrade (drag & drop, zoom, ratio options)
+*   **2026-01-05:** 'Prefer RAW' filter option added to library
+*   **2026-01-05:** Support for uppercase file extensions
+*   **2026-01-05:** Flush thumbnail cache on folder switch
+*   **2025-12-27:** Fix LUT banding issues with improved sampling
+*   **2025-12-26:** AI masking stability improvements under load
 *   **2025-12-23:** Metadata card in toolbar & context menu export
 *   **2025-12-23:** Monochromatic grain & white balance picker improvements
 *   **2025-12-22:** BM3D Denoising with comparison slider
+
+<details>
+<summary><strong>Expand further</strong></summary>
+
 *   **2025-12-20:** Batch export stability improvements & RAM optimization
 *   **2025-12-14:** Exposure slider added to masking tools
 *   **2025-12-14:** Improved delete workflow
@@ -74,10 +85,6 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2025-12-07:** Color picker for white balance
 *   **2025-11-30:** HSL luminance artifacts fix
 *   **2025-11-29:** Improved mask stacking & many bug fixes
-
-<details>
-<summary><strong>Expand further</strong></summary>
-
 *   **2025-11-28:** QOI support
 *   **2025-11-25:** Update rawler
 *   **2025-11-23:** Recursive library view to display images from all subfolders
