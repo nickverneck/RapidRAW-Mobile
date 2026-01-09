@@ -228,6 +228,49 @@ const getParentDir = (filePath: string): string => {
   return filePath.substring(0, lastSeparatorIndex);
 };
 
+const useAsyncThrottle = <T extends unknown[]>(
+  fn: (...args: T) => Promise<void>,
+  deps: any[] = []
+) => {
+  const isProcessing = useRef(false);
+  const nextArgs = useRef<T | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      nextArgs.current = null;
+    };
+  }, []);
+
+  const trigger = useCallback((...args: T) => {
+    if (isProcessing.current) {
+      nextArgs.current = args;
+      return;
+    }
+
+    isProcessing.current = true;
+    fn(...args).finally(() => {
+      if (!mounted.current) return;
+      isProcessing.current = false;
+      if (nextArgs.current) {
+        const argsToProcess = nextArgs.current;
+        nextArgs.current = null;
+        trigger(...argsToProcess);
+      }
+    });
+  }, deps);
+
+  return useMemo(() => {
+    const func: any = trigger;
+    func.cancel = () => {
+      nextArgs.current = null;
+    };
+    return func as ((...args: T) => void) & { cancel: () => void };
+  }, [trigger]);
+};
+
 function App() {
   const [rootPath, setRootPath] = useState<string | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -274,7 +317,7 @@ function App() {
     folderTree: true,
     filmstrip: true,
   });
-  const [isAdjusting, setIsAdjusting] = useState(false);
+  const [isSliderDragging, setIsSliderDragging] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isFullScreenLoading, setIsFullScreenLoading] = useState(false);
   const [fullScreenUrl, setFullScreenUrl] = useState<string | null>(null);
@@ -1095,19 +1138,19 @@ function App() {
     return list;
   }, [imageList, sortCriteria, imageRatings, filterCriteria, supportedTypes, searchCriteria, appSettings]);
 
-  const applyAdjustments = useCallback(
-    debounce((currentAdjustments) => {
-      if (!selectedImage?.isReady) {
-        return;
-      }
-      setIsAdjusting(true);
-      invoke(Invokes.ApplyAdjustments, { jsAdjustments: currentAdjustments }).catch((err) => {
+  const applyAdjustments = useAsyncThrottle(
+    async (currentAdjustments: Adjustments, dragging: boolean = false) => {
+      if (!selectedImage?.isReady) return;
+      try {
+        await invoke(Invokes.ApplyAdjustments, { 
+          jsAdjustments: currentAdjustments,
+          isInteractive: dragging 
+        });
+      } catch (err) {
         console.error('Failed to invoke apply_adjustments:', err);
-        setError(`Processing failed: ${err}`);
-        setIsAdjusting(false);
-      });
-    }, 50),
-    [selectedImage?.isReady],
+      }
+    },
+    [selectedImage?.isReady]
   );
 
   const debouncedGenerateUncroppedPreview = useCallback(
@@ -2360,7 +2403,6 @@ function App() {
           const blob = new Blob([imageData], { type: 'image/jpeg' });
           const url = URL.createObjectURL(blob);
           setFinalPreviewUrl(url);
-          setIsAdjusting(false);
         }
       }),
       listen('preview-update-uncropped', (event: any) => {
@@ -2732,14 +2774,12 @@ function App() {
 
   useEffect(() => {
     if (selectedImage?.isReady) {
-      applyAdjustments(adjustments);
-      debouncedSave(selectedImage.path, adjustments);
+      applyAdjustments(adjustments, isSliderDragging);
+      if (!isSliderDragging) {
+        debouncedSave(selectedImage.path, adjustments);
+      }
     }
-    return () => {
-      applyAdjustments.cancel();
-      debouncedSave.cancel();
-    };
-  }, [adjustments, selectedImage?.path, selectedImage?.isReady, applyAdjustments, debouncedSave]);
+  }, [adjustments, selectedImage?.path, selectedImage?.isReady, isSliderDragging, applyAdjustments, debouncedSave]);
 
   useEffect(() => {
     if (activeRightPanel === Panel.Crop && selectedImage?.isReady) {
@@ -3828,7 +3868,6 @@ function App() {
               canUndo={canUndo}
               finalPreviewUrl={finalPreviewUrl}
               fullScreenUrl={fullScreenUrl}
-              isAdjusting={isAdjusting}
               isFullScreen={isFullScreen}
               isFullScreenLoading={isFullScreenLoading}
               isLoading={isViewLoading}
@@ -3946,6 +3985,7 @@ function App() {
                           appSettings={appSettings}
                           isWbPickerActive={isWbPickerActive}
                           toggleWbPicker={toggleWbPicker}
+                          onDragStateChange={setIsSliderDragging}
                         />
                       )}
                       {renderedRightPanel === Panel.Metadata && <MetadataPanel selectedImage={selectedImage} />}

@@ -88,6 +88,7 @@ pub struct LoadedImage {
 #[derive(Clone)]
 pub struct CachedPreview {
     image: DynamicImage,
+    small_image: DynamicImage,
     transform_hash: u64,
     scale: f32,
     unscaled_crop_offset: (f32, f32),
@@ -101,11 +102,18 @@ pub struct GpuImageCache {
     pub transform_hash: u64,
 }
 
+pub struct GpuProcessorState {
+    pub processor: crate::gpu_processing::GpuProcessor,
+    pub width: u32,
+    pub height: u32,
+}
+
 pub struct AppState {
     original_image: Mutex<Option<LoadedImage>>,
     cached_preview: Mutex<Option<CachedPreview>>,
     gpu_context: Mutex<Option<GpuContext>>,
     gpu_image_cache: Mutex<Option<GpuImageCache>>,
+    gpu_processor: Mutex<Option<GpuProcessorState>>,
     ai_state: Mutex<Option<AiState>>,
     ai_init_lock: TokioMutex<()>,
     export_task_handle: Mutex<Option<JoinHandle<()>>>,
@@ -530,26 +538,30 @@ fn apply_watermark(
 #[tauri::command]
 fn apply_adjustments(
     js_adjustments: serde_json::Value,
+    is_interactive: bool,
     state: tauri::State<AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let context = get_or_init_gpu_context(&state)?;
     let adjustments_clone = js_adjustments.clone();
+
     let loaded_image = state
         .original_image
         .lock()
         .unwrap()
         .clone()
         .ok_or("No original image loaded")?;
+
     let new_transform_hash = calculate_transform_hash(&adjustments_clone);
 
     let mut cached_preview_lock = state.cached_preview.lock().unwrap();
 
-    let (final_preview_base, scale_for_gpu, unscaled_crop_offset) =
+    let (final_preview_base, small_preview_base, scale_for_gpu, unscaled_crop_offset) =
         if let Some(cached) = &*cached_preview_lock {
             if cached.transform_hash == new_transform_hash {
                 (
                     cached.image.clone(),
+                    cached.small_image.clone(),
                     cached.scale,
                     cached.unscaled_crop_offset,
                 )
@@ -557,93 +569,129 @@ fn apply_adjustments(
                 *state.gpu_image_cache.lock().unwrap() = None;
                 let (base, scale, offset) =
                     generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
+
+                let (w, h) = base.dimensions();
+                let target_size = 640;
+                let (small_w, small_h) = if w > h {
+                    let ratio = h as f32 / w as f32;
+                    (target_size, (target_size as f32 * ratio) as u32)
+                } else {
+                    let ratio = w as f32 / h as f32;
+                    ((target_size as f32 * ratio) as u32, target_size)
+                };
+                let small_base = image_processing::downscale_f32_image(&base, small_w, small_h);
+
                 *cached_preview_lock = Some(CachedPreview {
                     image: base.clone(),
+                    small_image: small_base.clone(),
                     transform_hash: new_transform_hash,
                     scale,
                     unscaled_crop_offset: offset,
                 });
-                (base, scale, offset)
+                (base, small_base, scale, offset)
             }
         } else {
             *state.gpu_image_cache.lock().unwrap() = None;
             let (base, scale, offset) =
                 generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
+
+            let (w, h) = base.dimensions();
+            let target_size = 640;
+            let (small_w, small_h) = if w > h {
+                let ratio = h as f32 / w as f32;
+                (target_size, (target_size as f32 * ratio) as u32)
+            } else {
+                let ratio = w as f32 / h as f32;
+                ((target_size as f32 * ratio) as u32, target_size)
+            };
+            let small_base = image_processing::downscale_f32_image(&base, small_w, small_h);
+
             *cached_preview_lock = Some(CachedPreview {
                 image: base.clone(),
+                small_image: small_base.clone(),
                 transform_hash: new_transform_hash,
                 scale,
                 unscaled_crop_offset: offset,
             });
-            (base, scale, offset)
+            (base, small_base, scale, offset)
         };
 
     drop(cached_preview_lock);
 
-    thread::spawn(move || {
-        let state = app_handle.state::<AppState>();
-        let (preview_width, preview_height) = final_preview_base.dimensions();
-        let is_raw = loaded_image.is_raw;
+    let (processing_image, effective_scale, jpeg_quality) = if is_interactive {
+        let orig_w = final_preview_base.width() as f32;
+        let small_w = small_preview_base.width() as f32;
+        let scale_factor = if orig_w > 0.0 { small_w / orig_w } else { 1.0 };
+        let new_scale = scale_for_gpu * scale_factor;
+        (small_preview_base, new_scale, 50)
+    } else {
+        (final_preview_base, scale_for_gpu, 85)
+    };
 
-        let mask_definitions: Vec<MaskDefinition> = js_adjustments
-            .get("masks")
-            .and_then(|m| serde_json::from_value(m.clone()).ok())
-            .unwrap_or_else(Vec::new);
+    let (preview_width, preview_height) = processing_image.dimensions();
 
-        let scaled_crop_offset = (
-            unscaled_crop_offset.0 * scale_for_gpu,
-            unscaled_crop_offset.1 * scale_for_gpu,
-        );
+    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+        .get("masks")
+        .and_then(|m| serde_json::from_value(m.clone()).ok())
+        .unwrap_or_else(Vec::new);
 
-        let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
-            .iter()
-            .filter_map(|def| {
-                generate_mask_bitmap(
-                    def,
-                    preview_width,
-                    preview_height,
-                    scale_for_gpu,
-                    scaled_crop_offset,
-                )
-            })
-            .collect();
+    let scaled_crop_offset = (
+        unscaled_crop_offset.0 * effective_scale,
+        unscaled_crop_offset.1 * effective_scale,
+    );
 
-        let final_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw);
-        let lut_path = adjustments_clone["lutPath"].as_str();
-        let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
+    let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
+        .iter()
+        .filter_map(|def| {
+            generate_mask_bitmap(
+                def,
+                preview_width,
+                preview_height,
+                effective_scale,
+                scaled_crop_offset,
+            )
+        })
+        .collect();
 
-        if let Ok(final_processed_image) = process_and_get_dynamic_image(
-            &context,
-            &state,
-            &final_preview_base,
-            new_transform_hash,
-            final_adjustments,
-            &mask_bitmaps,
-            lut,
-            "apply_adjustments",
-        ) {
+    let is_raw = loaded_image.is_raw;
+    let final_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw);
+    let lut_path = adjustments_clone["lutPath"].as_str();
+    let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
+
+    let final_processed_image_result = process_and_get_dynamic_image(
+        &context,
+        &state,
+        &processing_image,
+        new_transform_hash,
+        final_adjustments,
+        &mask_bitmaps,
+        lut,
+        "apply_adjustments",
+    );
+
+    if let Ok(final_processed_image) = final_processed_image_result {
+        if !is_interactive {
             if let Ok(histogram_data) =
                 image_processing::calculate_histogram_from_image(&final_processed_image)
             {
                 let _ = app_handle.emit("histogram-update", histogram_data);
             }
-
             if let Ok(waveform_data) =
                 image_processing::calculate_waveform_from_image(&final_processed_image)
             {
                 let _ = app_handle.emit("waveform-update", waveform_data);
             }
-
-            let mut buf = Cursor::new(Vec::new());
-            if final_processed_image
-                .to_rgb8()
-                .write_with_encoder(JpegEncoder::new_with_quality(&mut buf, 85))
-                .is_ok()
-            {
-                let _ = app_handle.emit("preview-update-final", buf.get_ref());
-            }
         }
-    });
+
+        let mut buf = Cursor::new(Vec::new());
+        if final_processed_image
+            .to_rgb8()
+            .write_with_encoder(JpegEncoder::new_with_quality(&mut buf, jpeg_quality))
+            .is_ok()
+        {
+            let _ = app_handle.emit("preview-update-final", buf.get_ref());
+        }
+    }
 
     Ok(())
 }
@@ -3040,6 +3088,7 @@ fn main() {
             cached_preview: Mutex::new(None),
             gpu_context: Mutex::new(None),
             gpu_image_cache: Mutex::new(None),
+            gpu_processor: Mutex::new(None),
             ai_state: Mutex::new(None),
             ai_init_lock: TokioMutex::new(()),
             export_task_handle: Mutex::new(None),

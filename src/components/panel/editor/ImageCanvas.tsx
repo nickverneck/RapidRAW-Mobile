@@ -33,7 +33,6 @@ interface ImageCanvasProps {
   finalPreviewUrl: string | null;
   handleCropComplete(c: Crop, cp: PercentCrop): void;
   imageRenderSize: RenderSize;
-  isAdjusting: boolean;
   isAiEditing: boolean;
   isCropping: boolean;
   isMaskControlHovered: boolean;
@@ -79,19 +78,6 @@ interface MaskOverlay {
 }
 
 const ORIGINAL_LAYER = 'original';
-
-function linesIntersect(eraserLine: DrawnLine, drawnLine: DrawnLine) {
-  const threshold = eraserLine.brushSize / 2 + drawnLine.brushSize / 2;
-  for (const p1 of eraserLine.points) {
-    for (const p2 of drawnLine.points) {
-      const distance = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-      if (distance < threshold) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
 
 const MaskOverlay = memo(
   ({
@@ -470,7 +456,6 @@ const ImageCanvas = memo(
     finalPreviewUrl,
     handleCropComplete,
     imageRenderSize,
-    isAdjusting,
     isAiEditing,
     isCropping,
     isMaskControlHovered,
@@ -1078,9 +1063,7 @@ const ImageCanvas = memo(
           }}
         >
           <div
-            className={clsx(
-              isAdjusting && !showOriginal ? 'opacity-90' : 'opacity-100',
-            )}
+            className="opacity-100"
             style={{
               height: '100%',
               opacity: isContentReady ? 1 : 0,
@@ -1100,7 +1083,7 @@ const ImageCanvas = memo(
                     style={{
                       opacity: layer.opacity,
                       transition: 'opacity 150ms ease-in-out',
-                      willChange: 'opacity',
+                      willChange: 'opacity, transform',
                       imageRendering: 'high-quality',
                       WebkitImageRendering: 'high-quality',
                       transform: 'translateZ(0)',

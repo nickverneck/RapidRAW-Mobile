@@ -27,7 +27,6 @@ interface EditorProps {
   canUndo: boolean;
   finalPreviewUrl: string | null;
   fullScreenUrl: string | null;
-  isAdjusting: boolean;
   isFullScreen: boolean;
   isFullScreenLoading: boolean;
   isLoading: boolean;
@@ -81,7 +80,6 @@ export default function Editor({
   canUndo,
   finalPreviewUrl,
   fullScreenUrl,
-  isAdjusting,
   isFullScreen,
   isFullScreenLoading,
   isLoading,
@@ -563,7 +561,6 @@ export default function Editor({
                 finalPreviewUrl={finalPreviewUrl}
                 handleCropComplete={handleCropComplete}
                 imageRenderSize={imageRenderSize}
-                isAdjusting={isAdjusting}
                 isAiEditing={isAiEditing}
                 isCropping={isCropping}
                 isMaskControlHovered={isMaskControlHovered}

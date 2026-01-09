@@ -33,6 +33,7 @@ interface ControlsProps {
   appSettings: AppSettings | null;
   isWbPickerActive?: boolean;
   toggleWbPicker?: () => void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 export default function Controls({
@@ -50,6 +51,7 @@ export default function Controls({
   appSettings,
   isWbPickerActive,
   toggleWbPicker,
+  onDragStateChange,
 }: ControlsProps) {
   const { showContextMenu } = useContextMenu();
 
@@ -211,6 +213,7 @@ export default function Controls({
                   appSettings={appSettings}
                   isWbPickerActive={isWbPickerActive}
                   toggleWbPicker={toggleWbPicker}
+                  onDragStateChange={onDragStateChange}
                 />
               </CollapsibleSection>
             </div>

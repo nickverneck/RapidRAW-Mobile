@@ -8,6 +8,7 @@ interface BasicAdjustmentsProps {
   adjustments: Adjustments;
   setAdjustments(adjustments: Partial<Adjustments>): any;
   isForMask?: boolean;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 const toneMapperOptions = [
@@ -20,6 +21,7 @@ interface ToneMapperSwitchProps {
   onMapperChange: (mapper: string) => void;
   exposureValue: number;
   onExposureChange: (value: number) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 const ToneMapperSwitch = ({
@@ -27,6 +29,7 @@ const ToneMapperSwitch = ({
   onMapperChange,
   exposureValue,
   onExposureChange,
+  onDragStateChange,
 }: ToneMapperSwitchProps) => {
   const [buttonRefs, setButtonRefs] = useState<Map<string, HTMLButtonElement>>(new Map());
   const [bubbleStyle, setBubbleStyle] = useState({});
@@ -139,6 +142,7 @@ const ToneMapperSwitch = ({
             step={0.01}
             value={exposureValue}
             trackClassName="bg-surface"
+            onDragStateChange={onDragStateChange}
           />
         </div>
       </div>
@@ -146,7 +150,12 @@ const ToneMapperSwitch = ({
   );
 };
 
-export default function BasicAdjustments({ adjustments, setAdjustments, isForMask = false }: BasicAdjustmentsProps) {
+export default function BasicAdjustments({
+  adjustments,
+  setAdjustments,
+  isForMask = false,
+  onDragStateChange,
+}: BasicAdjustmentsProps) {
   const handleAdjustmentChange = (key: BasicAdjustment, value: any) => {
     const numericValue = parseFloat(value);
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
@@ -168,6 +177,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
         onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Brightness, e.target.value)}
         step={0.01}
         value={adjustments.brightness}
+        onDragStateChange={onDragStateChange}
       />
       <Slider
         label="Contrast"
@@ -176,6 +186,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
         onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Contrast, e.target.value)}
         step={1}
         value={adjustments.contrast}
+        onDragStateChange={onDragStateChange}
       />
       <Slider
         label="Highlights"
@@ -184,6 +195,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
         onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Highlights, e.target.value)}
         step={1}
         value={adjustments.highlights}
+        onDragStateChange={onDragStateChange}
       />
       <Slider
         label="Shadows"
@@ -192,6 +204,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
         onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Shadows, e.target.value)}
         step={1}
         value={adjustments.shadows}
+        onDragStateChange={onDragStateChange}
       />
       <Slider
         label="Whites"
@@ -200,6 +213,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
         onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Whites, e.target.value)}
         step={1}
         value={adjustments.whites}
+        onDragStateChange={onDragStateChange}
       />
       <Slider
         label="Blacks"
@@ -208,6 +222,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
         onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Blacks, e.target.value)}
         step={1}
         value={adjustments.blacks}
+        onDragStateChange={onDragStateChange}
       />
 
       {isForMask ? (
@@ -218,6 +233,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
           onChange={(e: any) => handleAdjustmentChange(BasicAdjustment.Exposure, e.target.value)}
           step={0.01}
           value={adjustments.exposure}
+          onDragStateChange={onDragStateChange}
         />
       ) : (
         <ToneMapperSwitch
@@ -225,6 +241,7 @@ export default function BasicAdjustments({ adjustments, setAdjustments, isForMas
           onMapperChange={handleToneMapperChange}
           exposureValue={adjustments.exposure}
           onExposureChange={(value) => handleAdjustmentChange(BasicAdjustment.Exposure, value)}
+          onDragStateChange={onDragStateChange}
         />
       )}
     </div>
