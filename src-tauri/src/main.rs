@@ -571,7 +571,7 @@ fn apply_adjustments(
                     generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
 
                 let (w, h) = base.dimensions();
-                let target_size = 640;
+                let target_size = 720;
                 let (small_w, small_h) = if w > h {
                     let ratio = h as f32 / w as f32;
                     (target_size, (target_size as f32 * ratio) as u32)
@@ -596,7 +596,7 @@ fn apply_adjustments(
                 generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
 
             let (w, h) = base.dimensions();
-            let target_size = 640;
+            let target_size = 720;
             let (small_w, small_h) = if w > h {
                 let ratio = h as f32 / w as f32;
                 (target_size, (target_size as f32 * ratio) as u32)
