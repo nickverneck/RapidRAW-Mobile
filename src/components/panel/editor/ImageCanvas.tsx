@@ -613,13 +613,12 @@ const ImageCanvas = memo(
     useEffect(() => {
       const layerToFadeIn = layers.find((l: ImageLayer) => l.opacity === 0);
       if (layerToFadeIn) {
-        const timer = setTimeout(() => {
-          setLayers((prev: Array<ImageLayer>) =>
-            prev.map((l: ImageLayer) => (l.id === layerToFadeIn.id ? { ...l, opacity: 1 } : l)),
-          );
-        }, 10);
-
-        return () => clearTimeout(timer);
+        const frame = requestAnimationFrame(() => {
+           setLayers((prev: Array<ImageLayer>) =>
+             prev.map((l: ImageLayer) => (l.id === layerToFadeIn.id ? { ...l, opacity: 1 } : l)),
+           );
+        });
+        return () => cancelAnimationFrame(frame);
       }
     }, [layers]);
 

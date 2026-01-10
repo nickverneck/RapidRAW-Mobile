@@ -2787,7 +2787,7 @@ function App() {
         (currentAdjustments) => {
           applyAdjustments(currentAdjustments, true);
         },
-        100, 
+        120, 
         { leading: true, trailing: true }
       ),
     [applyAdjustments]
@@ -2811,7 +2811,7 @@ function App() {
       throttledInteractiveUpdate(adjustments);
       dragIdleTimer.current = setTimeout(() => {
         applyAdjustments(adjustments, false);
-      }, 100);
+      }, 150);
 
     } else {
       throttledInteractiveUpdate.cancel();
