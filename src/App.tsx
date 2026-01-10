@@ -6,6 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { homeDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import debounce from 'lodash.debounce';
+import throttle from 'lodash.throttle';
 import { ClerkProvider } from '@clerk/clerk-react';
 import clsx from 'clsx';
 import {
@@ -2780,6 +2781,24 @@ function App() {
     }
   };
 
+  const throttledInteractiveUpdate = useMemo(
+    () =>
+      throttle(
+        (currentAdjustments) => {
+          applyAdjustments(currentAdjustments, true);
+        },
+        100, 
+        { leading: true, trailing: true }
+      ),
+    [applyAdjustments]
+  );
+
+  useEffect(() => {
+    return () => {
+      throttledInteractiveUpdate.cancel();
+    };
+  }, [throttledInteractiveUpdate]);
+
   useEffect(() => {
     if (!selectedImage?.isReady) return;
 
@@ -2789,12 +2808,13 @@ function App() {
 
     if (isSliderDragging) {
       debouncedApplyAdjustments.cancel();
-      applyAdjustments(adjustments, true);
+      throttledInteractiveUpdate(adjustments);
       dragIdleTimer.current = setTimeout(() => {
         applyAdjustments(adjustments, false);
-      }, 50);
+      }, 100);
 
     } else {
+      throttledInteractiveUpdate.cancel();
       debouncedApplyAdjustments(adjustments);
       debouncedSave(selectedImage.path, adjustments);
     }
@@ -2803,7 +2823,16 @@ function App() {
       if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
       debouncedApplyAdjustments.cancel();
     };
-  }, [adjustments, selectedImage?.path, selectedImage?.isReady, isSliderDragging, applyAdjustments, debouncedApplyAdjustments, debouncedSave]);
+  }, [
+    adjustments, 
+    selectedImage?.path, 
+    selectedImage?.isReady, 
+    isSliderDragging, 
+    applyAdjustments, 
+    debouncedApplyAdjustments, 
+    throttledInteractiveUpdate,
+    debouncedSave
+  ]);
 
   useEffect(() => {
     if (activeRightPanel === Panel.Crop && selectedImage?.isReady) {
@@ -3869,6 +3898,158 @@ function App() {
     showContextMenu(event.clientX, event.clientY, options);
   };
 
+  const memoizedFolderTree = useMemo(() => (
+    rootPath && (
+      <>
+        <FolderTree
+          expandedFolders={expandedFolders}
+          isLoading={isTreeLoading}
+          isResizing={isResizing}
+          isVisible={uiVisibility.folderTree}
+          onContextMenu={handleFolderTreeContextMenu}
+          onFolderSelect={(path) => handleSelectSubfolder(path, false)}
+          onToggleFolder={handleToggleFolder}
+          selectedPath={currentFolderPath}
+          setIsVisible={(value: boolean) =>
+            setUiVisibility((prev: UiVisibility) => ({ ...prev, folderTree: value }))
+          }
+          style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
+          tree={folderTree}
+          pinnedFolderTrees={pinnedFolderTrees}
+          pinnedFolders={pinnedFolders}
+          activeSection={activeTreeSection}
+          onActiveSectionChange={handleActiveTreeSectionChange}
+        />
+        <Resizer
+          direction={Orientation.Vertical}
+          onMouseDown={createResizeHandler(setLeftPanelWidth, leftPanelWidth)}
+        />
+      </>
+    )
+  ), [
+    rootPath,
+    expandedFolders,
+    isTreeLoading,
+    isResizing,
+    uiVisibility.folderTree,
+    currentFolderPath,
+    leftPanelWidth,
+    folderTree,
+    pinnedFolderTrees,
+    pinnedFolders,
+    activeTreeSection
+  ]);
+
+  const memoizedLibraryView = useMemo(() => (
+    <div className="flex flex-row flex-grow h-full min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 gap-2">
+        {activeView === 'community' ? (
+          <CommunityPage
+            onBackToLibrary={() => setActiveView('library')}
+            supportedTypes={supportedTypes}
+            imageList={sortedImageList}
+            currentFolderPath={currentFolderPath}
+          />
+        ) : (
+          <MainLibrary
+            activePath={libraryActivePath}
+            aiModelDownloadStatus={aiModelDownloadStatus}
+            appSettings={appSettings}
+            currentFolderPath={currentFolderPath}
+            filterCriteria={filterCriteria}
+            imageList={sortedImageList}
+            imageRatings={imageRatings}
+            importState={importState}
+            indexingProgress={indexingProgress}
+            isIndexing={isIndexing}
+            isThumbnailsLoading={isThumbnailsLoading}
+            isLoading={isViewLoading}
+            isTreeLoading={isTreeLoading}
+            libraryScrollTop={libraryScrollTop}
+            libraryViewMode={libraryViewMode}
+            multiSelectedPaths={multiSelectedPaths}
+            onClearSelection={handleClearSelection}
+            onContextMenu={handleThumbnailContextMenu}
+            onContinueSession={handleContinueSession}
+            onEmptyAreaContextMenu={handleMainLibraryContextMenu}
+            onGoHome={handleGoHome}
+            onImageClick={handleLibraryImageSingleClick}
+            onImageDoubleClick={handleImageSelect}
+            onLibraryRefresh={handleLibraryRefresh}
+            onOpenFolder={handleOpenFolder}
+            onSettingsChange={handleSettingsChange}
+            onThumbnailAspectRatioChange={setThumbnailAspectRatio}
+            onThumbnailSizeChange={setThumbnailSize}
+            rootPath={rootPath}
+            searchCriteria={searchCriteria}
+            setFilterCriteria={setFilterCriteria}
+            setLibraryScrollTop={setLibraryScrollTop}
+            setLibraryViewMode={setLibraryViewMode}
+            setSearchCriteria={setSearchCriteria}
+            setSortCriteria={setSortCriteria}
+            sortCriteria={sortCriteria}
+            theme={theme}
+            thumbnailAspectRatio={thumbnailAspectRatio}
+            thumbnails={thumbnails}
+            thumbnailSize={thumbnailSize}
+            onNavigateToCommunity={() => setActiveView('community')}
+          />
+        )}
+        {rootPath && (
+          <BottomBar
+            isCopied={isCopied}
+            isCopyDisabled={multiSelectedPaths.length !== 1}
+            isExportDisabled={multiSelectedPaths.length === 0}
+            isLibraryView={true}
+            isPasted={isPasted}
+            isPasteDisabled={copiedAdjustments === null || multiSelectedPaths.length === 0}
+            isRatingDisabled={multiSelectedPaths.length === 0}
+            isResetDisabled={multiSelectedPaths.length === 0}
+            multiSelectedPaths={multiSelectedPaths}
+            onCopy={handleCopyAdjustments}
+            onExportClick={() => setIsLibraryExportPanelVisible((prev) => !prev)}
+            onOpenCopyPasteSettings={() => setIsCopyPasteSettingsModalOpen(true)}
+            onPaste={() => handlePasteAdjustments()}
+            onRate={handleRate}
+            onReset={() => handleResetAdjustments()}
+            rating={libraryActiveAdjustments.rating || 0}
+            thumbnailAspectRatio={thumbnailAspectRatio}
+          />
+        )}
+      </div>
+    </div>
+  ), [
+    activeView,
+    sortedImageList,
+    currentFolderPath,
+    libraryActivePath,
+    aiModelDownloadStatus,
+    appSettings,
+    filterCriteria,
+    imageRatings,
+    importState,
+    indexingProgress,
+    isIndexing,
+    isThumbnailsLoading,
+    isViewLoading,
+    isTreeLoading,
+    libraryScrollTop,
+    libraryViewMode,
+    multiSelectedPaths,
+    rootPath,
+    searchCriteria,
+    sortCriteria,
+    theme,
+    thumbnailAspectRatio,
+    thumbnails,
+    thumbnailSize,
+    isCopied,
+    isPasted,
+    copiedAdjustments,
+    libraryActiveAdjustments,
+    supportedTypes
+  ]);
+
   const renderMainView = () => {
     const panelVariants: any = {
       animate: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'circOut' } },
@@ -4106,85 +4287,7 @@ function App() {
         </div>
       );
     }
-    return (
-      <div className="flex flex-row flex-grow h-full min-h-0">
-        <div className="flex-1 flex flex-col min-w-0 gap-2">
-          {activeView === 'community' ? (
-            <CommunityPage
-              onBackToLibrary={() => setActiveView('library')}
-              supportedTypes={supportedTypes}
-              imageList={sortedImageList}
-              currentFolderPath={currentFolderPath}
-            />
-          ) : (
-            <MainLibrary
-              activePath={libraryActivePath}
-              aiModelDownloadStatus={aiModelDownloadStatus}
-              appSettings={appSettings}
-              currentFolderPath={currentFolderPath}
-              filterCriteria={filterCriteria}
-              imageList={sortedImageList}
-              imageRatings={imageRatings}
-              importState={importState}
-              indexingProgress={indexingProgress}
-              isIndexing={isIndexing}
-              isThumbnailsLoading={isThumbnailsLoading}
-              isLoading={isViewLoading}
-              isTreeLoading={isTreeLoading}
-              libraryScrollTop={libraryScrollTop}
-              libraryViewMode={libraryViewMode}
-              multiSelectedPaths={multiSelectedPaths}
-              onClearSelection={handleClearSelection}
-              onContextMenu={handleThumbnailContextMenu}
-              onContinueSession={handleContinueSession}
-              onEmptyAreaContextMenu={handleMainLibraryContextMenu}
-              onGoHome={handleGoHome}
-              onImageClick={handleLibraryImageSingleClick}
-              onImageDoubleClick={handleImageSelect}
-              onLibraryRefresh={handleLibraryRefresh}
-              onOpenFolder={handleOpenFolder}
-              onSettingsChange={handleSettingsChange}
-              onThumbnailAspectRatioChange={setThumbnailAspectRatio}
-              onThumbnailSizeChange={setThumbnailSize}
-              rootPath={rootPath}
-              searchCriteria={searchCriteria}
-              setFilterCriteria={setFilterCriteria}
-              setLibraryScrollTop={setLibraryScrollTop}
-              setLibraryViewMode={setLibraryViewMode}
-              setSearchCriteria={setSearchCriteria}
-              setSortCriteria={setSortCriteria}
-              sortCriteria={sortCriteria}
-              theme={theme}
-              thumbnailAspectRatio={thumbnailAspectRatio}
-              thumbnails={thumbnails}
-              thumbnailSize={thumbnailSize}
-              onNavigateToCommunity={() => setActiveView('community')}
-            />
-          )}
-          {rootPath && (
-            <BottomBar
-              isCopied={isCopied}
-              isCopyDisabled={multiSelectedPaths.length !== 1}
-              isExportDisabled={multiSelectedPaths.length === 0}
-              isLibraryView={true}
-              isPasted={isPasted}
-              isPasteDisabled={copiedAdjustments === null || multiSelectedPaths.length === 0}
-              isRatingDisabled={multiSelectedPaths.length === 0}
-              isResetDisabled={multiSelectedPaths.length === 0}
-              multiSelectedPaths={multiSelectedPaths}
-              onCopy={handleCopyAdjustments}
-              onExportClick={() => setIsLibraryExportPanelVisible((prev) => !prev)}
-              onOpenCopyPasteSettings={() => setIsCopyPasteSettingsModalOpen(true)}
-              onPaste={() => handlePasteAdjustments()}
-              onRate={handleRate}
-              onReset={() => handleResetAdjustments()}
-              rating={libraryActiveAdjustments.rating || 0}
-              thumbnailAspectRatio={thumbnailAspectRatio}
-            />
-          )}
-        </div>
-      </div>
-    );
+    return memoizedLibraryView;
   };
 
   const renderContent = () => {
@@ -4214,33 +4317,7 @@ function App() {
           </div>
         )}
         <div className="flex flex-row flex-grow h-full min-h-0">
-          {rootPath && (
-            <>
-              <FolderTree
-                expandedFolders={expandedFolders}
-                isLoading={isTreeLoading}
-                isResizing={isResizing}
-                isVisible={uiVisibility.folderTree}
-                onContextMenu={handleFolderTreeContextMenu}
-                onFolderSelect={(path) => handleSelectSubfolder(path, false)}
-                onToggleFolder={handleToggleFolder}
-                selectedPath={currentFolderPath}
-                setIsVisible={(value: boolean) =>
-                  setUiVisibility((prev: UiVisibility) => ({ ...prev, folderTree: value }))
-                }
-                style={{ width: uiVisibility.folderTree ? `${leftPanelWidth}px` : '32px' }}
-                tree={folderTree}
-                pinnedFolderTrees={pinnedFolderTrees}
-                pinnedFolders={pinnedFolders}
-                activeSection={activeTreeSection}
-                onActiveSectionChange={handleActiveTreeSectionChange}
-              />
-              <Resizer
-                direction={Orientation.Vertical}
-                onMouseDown={createResizeHandler(setLeftPanelWidth, leftPanelWidth)}
-              />
-            </>
-          )}
+          {memoizedFolderTree}
           <div className="flex-1 flex flex-col min-w-0">{renderContent()}</div>
           {!selectedImage && isLibraryExportPanelVisible && (
             <Resizer

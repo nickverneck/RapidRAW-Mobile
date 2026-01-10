@@ -627,9 +627,9 @@ fn apply_adjustments(
         let small_w = small_preview_base.width() as f32;
         let scale_factor = if orig_w > 0.0 { small_w / orig_w } else { 1.0 };
         let new_scale = scale_for_gpu * scale_factor;
-        (small_preview_base, new_scale, 50)
+        (small_preview_base, new_scale, 45)
     } else {
-        (final_preview_base, scale_for_gpu, 85)
+        (final_preview_base, scale_for_gpu, 90)
     };
 
     let (preview_width, preview_height) = processing_image.dimensions();
