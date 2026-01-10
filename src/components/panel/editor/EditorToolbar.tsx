@@ -139,7 +139,7 @@ const EditorToolbar = memo(
               "bg-surface text-text-secondary flex flex-col items-center overflow-hidden transition-all duration-200 ease-out pt-2",
               isExpanded 
                 ? "h-[4.5rem] px-8 rounded-2xl absolute min-w-[340px] whitespace-nowrap shadow-2xl shadow-black/50" 
-                : "h-9 px-4 rounded-[18px] absolute min-w-0 w-auto shadow-none"
+                : "h-9 px-4 rounded-[18px] absolute min-w-0 w-auto max-w-full shadow-none"
             )}
             onMouseEnter={() => setIsInfoHovered(true)}
             onMouseLeave={() => setIsInfoHovered(false)}
