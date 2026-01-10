@@ -3939,6 +3939,7 @@ function App() {
     expandedFolders,
     isTreeLoading,
     isResizing,
+    handleSelectSubfolder,
     uiVisibility.folderTree,
     currentFolderPath,
     leftPanelWidth,
