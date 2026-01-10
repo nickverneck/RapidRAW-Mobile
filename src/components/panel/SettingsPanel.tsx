@@ -910,6 +910,18 @@ export default function SettingsPanel({
                     </SettingItem>
 
                     <SettingItem
+                      label="Live Interactive Previews"
+                      description="Update the preview immediately while dragging sliders. Disable this if the interface feels laggy during adjustments."
+                    >
+                      <Switch
+                        checked={appSettings?.enableLivePreviews ?? true}
+                        id="live-previews-toggle"
+                        label="Enable Live Previews"
+                        onChange={(checked) => onSettingsChange({ ...appSettings, enableLivePreviews: checked })}
+                      />
+                    </SettingItem>
+
+                    <SettingItem
                       label="RAW Highlight Recovery"
                       description="Controls how much detail is recovered from clipped highlights in RAW files. Higher values recover more detail but can introduce purple artefacts."
                     >

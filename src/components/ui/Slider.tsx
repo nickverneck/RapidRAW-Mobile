@@ -13,6 +13,8 @@ interface SliderProps {
   trackClassName?: string;
 }
 
+const DOUBLE_CLICK_THRESHOLD_MS = 300;
+
 const Slider = ({
   defaultValue = 0,
   label,
@@ -32,6 +34,7 @@ const Slider = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isLabelHovered, setIsLabelHovered] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastUpTime = useRef(0);
 
   useEffect(() => {
     onDragStateChange(isDragging);
@@ -155,8 +158,18 @@ const Slider = ({
     onChange(e);
   };
 
-  const handleDragStart = () => setIsDragging(true);
-  const handleDragEnd = () => setIsDragging(false);
+  const handleDragStart = (e: React.MouseEvent<HTMLInputElement>) => {
+    if (Date.now() - lastUpTime.current < DOUBLE_CLICK_THRESHOLD_MS) {
+      e.preventDefault();
+      return;
+    }
+    setIsDragging(true);
+  };
+
+  const handleDragEnd = () => {
+    lastUpTime.current = Date.now();
+    setIsDragging(false);
+  };
 
   const handleValueClick = () => {
     setIsEditing(true);

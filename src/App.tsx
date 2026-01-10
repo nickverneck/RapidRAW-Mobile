@@ -2808,10 +2808,17 @@ function App() {
 
     if (isSliderDragging) {
       debouncedApplyAdjustments.cancel();
-      throttledInteractiveUpdate(adjustments);
+      
+      const livePreviewsEnabled = appSettings?.enableLivePreviews !== false;
+      const idleTimeoutDuration = livePreviewsEnabled ? 150 : 50;
+
+      if (livePreviewsEnabled) {
+        throttledInteractiveUpdate(adjustments);
+      }
+
       dragIdleTimer.current = setTimeout(() => {
         applyAdjustments(adjustments, false);
-      }, 150);
+      }, idleTimeoutDuration);
 
     } else {
       throttledInteractiveUpdate.cancel();
@@ -2831,7 +2838,8 @@ function App() {
     applyAdjustments, 
     debouncedApplyAdjustments, 
     throttledInteractiveUpdate,
-    debouncedSave
+    debouncedSave,
+    appSettings?.enableLivePreviews
   ]);
 
   useEffect(() => {

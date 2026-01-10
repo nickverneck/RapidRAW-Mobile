@@ -138,6 +138,7 @@ export interface AppSettings {
   decorations?: any;
   editorPreviewResolution?: number;
   enableZoomHifi?: boolean;
+  enableLivePreviews?: boolean;
   enableAiTagging?: boolean;
   enableExifReading?: boolean;
   filterCriteria?: FilterCriteria;
