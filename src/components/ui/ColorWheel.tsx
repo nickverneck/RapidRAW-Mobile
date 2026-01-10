@@ -75,6 +75,7 @@ const ColorWheel = ({
   useEffect(() => {
     const handleInteractionEnd = () => {
       setIsWheelDragging(false);
+      onDragStateChange?.(isSliderDragging); 
       if (containerRef.current && !containerRef.current.matches(':hover')) {
         setIsHovered(false);
       }
@@ -87,7 +88,7 @@ const ColorWheel = ({
       window.removeEventListener('mouseup', handleInteractionEnd);
       window.removeEventListener('touchend', handleInteractionEnd);
     };
-  }, [isWheelDragging]);
+  }, [isWheelDragging, isSliderDragging, onDragStateChange]);
 
   useEffect(() => {
     onDragStateChange?.(isDragging);
@@ -103,6 +104,11 @@ const ColorWheel = ({
 
   const handleReset = () => {
     onChange(defaultValue);
+  };
+
+  const handleDragStart = () => {
+    onDragStateChange?.(true);
+    setIsWheelDragging(true);
   };
 
   const hsva: HsvaColor = { h: hue, s: saturation, v: 100, a: 1 };
@@ -139,13 +145,17 @@ const ColorWheel = ({
 
       <div ref={sizerRef} className="relative w-full aspect-square">
         {wheelSize > 0 && (
-          <div className="absolute inset-0 cursor-pointer" onDoubleClick={handleReset} title="Double-click to reset">
+          <div 
+            className="absolute inset-0 cursor-pointer" 
+            onDoubleClick={handleReset} 
+            title="Double-click to reset"
+            onMouseDownCapture={handleDragStart}
+            onTouchStartCapture={handleDragStart}
+          >
             <Wheel
               color={hsva}
               height={wheelSize}
               onChange={handleWheelChange}
-              onMouseDown={() => setIsWheelDragging(true)}
-              onTouchStart={() => setIsWheelDragging(true)}
               pointer={({ style }) => (
                 <div style={{ ...style, zIndex: 1 }}>
                   <div

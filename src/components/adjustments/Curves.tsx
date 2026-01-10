@@ -140,32 +140,88 @@ export default function CurveGraph({
   const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
   const [localPoints, setLocalPoints] = useState<Array<Coord> | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const activeChannelRef = useRef(activeChannel);
+  const draggingIndexRef = useRef<number | null>(null);
+  const localPointsRef = useRef<Array<Coord> | null>(null);
+  const propPointsRef = useRef<Array<Coord> | undefined>(undefined);
 
   useEffect(() => {
-    if (draggingPointIndex === null) {
-      setLocalPoints(null);
-    }
-  }, [adjustments?.curves?.[activeChannel]]);
-
-  useEffect(() => {
+    activeChannelRef.current = activeChannel;
     setLocalPoints(null);
     setDraggingPointIndex(null);
   }, [activeChannel]);
 
   useEffect(() => {
-    const moveHandler = (e: any) => handleMouseMove(e);
-    const upHandler = () => handleMouseUp();
+    propPointsRef.current = adjustments?.curves?.[activeChannel];
+  }, [adjustments?.curves, activeChannel]);
+
+  useEffect(() => {
+    if (draggingPointIndex === null) {
+      setLocalPoints(null);
+      localPointsRef.current = null;
+    }
+  }, [adjustments?.curves?.[activeChannel], draggingPointIndex]);
+
+  useEffect(() => {
+    const isDragging = draggingPointIndex !== null;
+    onDragStateChange?.(isDragging);
+    draggingIndexRef.current = draggingPointIndex;
+  }, [draggingPointIndex, onDragStateChange]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: any) => {
+      const index = draggingIndexRef.current;
+      if (index === null) return;
+
+      const currentPoints = localPointsRef.current || propPointsRef.current;
+      if (!currentPoints) return;
+
+      const svg = svgRef.current;
+      if (!svg) return;
+      
+      const rect = svg.getBoundingClientRect();
+      let x = Math.max(0, Math.min(255, ((e.clientX - rect.left) / rect.width) * 255));
+      const y = Math.max(0, Math.min(255, 255 - ((e.clientY - rect.top) / rect.height) * 255));
+
+      const newPoints = [...currentPoints];
+      const isEndPoint = index === 0 || index === currentPoints.length - 1;
+
+      if (isEndPoint) {
+        x = newPoints[index].x;
+      } else {
+        const prevX = currentPoints[index - 1].x;
+        const nextX = currentPoints[index + 1].x;
+        x = Math.max(prevX + 0.01, Math.min(nextX - 0.01, x));
+      }
+
+      newPoints[index] = { x, y };
+
+      localPointsRef.current = newPoints;
+      setLocalPoints(newPoints);
+
+      setAdjustments((prev: Adjustments) => ({
+        ...prev,
+        curves: { ...prev.curves, [activeChannelRef.current]: newPoints },
+      }));
+    };
+
+    const handleMouseUp = () => {
+      setDraggingPointIndex(null);
+      draggingIndexRef.current = null;
+      localPointsRef.current = null;
+      onDragStateChange?.(false);
+    };
 
     if (draggingPointIndex !== null) {
-      window.addEventListener('mousemove', moveHandler);
-      window.addEventListener('mouseup', upHandler);
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
-      window.removeEventListener('mousemove', moveHandler);
-      window.removeEventListener('mouseup', upHandler);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [draggingPointIndex, localPoints, adjustments?.curves, activeChannel, setAdjustments]);
+  }, [draggingPointIndex, setAdjustments, onDragStateChange]);
 
   const isLightTheme = theme === Theme.Light || theme === Theme.Arctic;
   const histogramOpacity = isLightTheme ? 0.6 : 0.15;
@@ -209,42 +265,14 @@ export default function CurveGraph({
 
   const handlePointMouseDown = (e: any, index: number) => {
     e.preventDefault();
+    e.stopPropagation();
+    
     onDragStateChange?.(true);
+
     setLocalPoints(points);
+    localPointsRef.current = points;
     setDraggingPointIndex(index);
-  };
-
-  const handleMouseMove = (e: any) => {
-    if (draggingPointIndex === null) {
-      return;
-    }
-
-    let { x, y } = getMousePos(e);
-
-    const newPoints = [...points];
-    const isEndPoint = draggingPointIndex === 0 || draggingPointIndex === points.length - 1;
-
-    if (isEndPoint) {
-      x = newPoints[draggingPointIndex].x;
-    } else {
-      const prevX = points[draggingPointIndex - 1].x;
-      const nextX = points[draggingPointIndex + 1].x;
-      x = Math.max(prevX + 0.01, Math.min(nextX - 0.01, x));
-    }
-
-    newPoints[draggingPointIndex] = { x, y };
-
-    setLocalPoints(newPoints);
-
-    setAdjustments((prev: Adjustments) => ({
-      ...prev,
-      curves: { ...prev.curves, [activeChannel]: newPoints },
-    }));
-  };
-
-  const handleMouseUp = () => {
-    onDragStateChange?.(false);
-    setDraggingPointIndex(null);
+    draggingIndexRef.current = index;
   };
 
   const handleContainerMouseDown = (e: any) => {
@@ -253,17 +281,21 @@ export default function CurveGraph({
     }
 
     onDragStateChange?.(true);
+
     const { x, y } = getMousePos(e);
     const newPoints = [...points, { x, y }].sort((a: Coord, b: Coord) => a.x - b.x);
     const newPointIndex = newPoints.findIndex((p: Coord) => p.x === x && p.y === y);
 
     setLocalPoints(newPoints);
+    localPointsRef.current = newPoints;
+    
     setAdjustments((prev: Adjustments) => ({
       ...prev,
       curves: { ...prev.curves, [activeChannel]: newPoints },
     }));
 
     setDraggingPointIndex(newPointIndex);
+    draggingIndexRef.current = newPointIndex;
   };
 
   const handleDoubleClick = () => {
