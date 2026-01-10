@@ -318,6 +318,7 @@ function App() {
     filmstrip: true,
   });
   const [isSliderDragging, setIsSliderDragging] = useState(false);
+  const dragIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isFullScreenLoading, setIsFullScreenLoading] = useState(false);
   const [fullScreenUrl, setFullScreenUrl] = useState<string | null>(null);
@@ -2773,12 +2774,27 @@ function App() {
   };
 
   useEffect(() => {
-    if (selectedImage?.isReady) {
-      applyAdjustments(adjustments, isSliderDragging);
-      if (!isSliderDragging) {
-        debouncedSave(selectedImage.path, adjustments);
-      }
+    if (!selectedImage?.isReady) return;
+
+    if (dragIdleTimer.current) {
+      clearTimeout(dragIdleTimer.current);
     }
+
+    if (isSliderDragging) {
+      applyAdjustments(adjustments, true);
+      dragIdleTimer.current = setTimeout(() => {
+        applyAdjustments(adjustments, false);
+      }, 50);
+
+    } else {
+      applyAdjustments(adjustments, false);
+      
+      debouncedSave(selectedImage.path, adjustments);
+    }
+
+    return () => {
+      if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
+    };
   }, [adjustments, selectedImage?.path, selectedImage?.isReady, isSliderDragging, applyAdjustments, debouncedSave]);
 
   useEffect(() => {
