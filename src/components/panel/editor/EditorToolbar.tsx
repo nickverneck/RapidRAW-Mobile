@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { Eye, EyeOff, ArrowLeft, Maximize, Loader2, Undo, Redo, Waves } from 'lucide-react';
 import clsx from 'clsx';
 import { SelectedImage } from '../../ui/AppProperties';
-import { IconAperture, IconFocalLength, IconIso, IconShutter } from './ExifIcons';
+import { IconAperture, IconCalendar, IconClock, IconFocalLength, IconIso, IconShutter } from './ExifIcons';
 
 interface EditorToolbarProps {
   canRedo: boolean;
@@ -19,6 +19,8 @@ interface EditorToolbarProps {
   onUndo(): void;
   selectedImage: SelectedImage;
   showOriginal: boolean;
+  showDateView: boolean;
+  onToggleDateView(): void;
 }
 
 const EditorToolbar = memo(
@@ -37,6 +39,8 @@ const EditorToolbar = memo(
     onUndo,
     selectedImage,
     showOriginal,
+    showDateView,
+    onToggleDateView,
   }: EditorToolbarProps) => {
     const isAnyLoading = isLoading || !!isLoadingFullRes || isFullScreenLoading;
     const [isLoaderVisible, setIsLoaderVisible] = useState(false);
@@ -53,30 +57,44 @@ const EditorToolbar = memo(
       const path = selectedImage.path;
       const parts = path.split('?vc=');
       const fullFileName = parts[0].split(/[\/\\]/).pop() || '';
-      
+
       const exif = selectedImage.exif || {};
-      
+
       let fNum = exif.FNumber;
       if (fNum) {
         const fStr = String(fNum);
         fNum = fStr.toLowerCase().startsWith('f') ? fStr : `f/${fStr}`;
       }
 
+      let captureDate = null;
+      let captureTime = null;
+
+      if (exif.DateTimeOriginal) {
+        const dateTimeParts = exif.DateTimeOriginal.split(' ');
+        captureDate = dateTimeParts[0]?.replace(/:/g, '-') || null;
+        if (dateTimeParts[1]) {
+          const timeParts = dateTimeParts[1].split(':');
+          captureTime = `${timeParts[0]}:${timeParts[1]}`;
+        }
+      }
+
       const data = {
         iso: exif.PhotographicSensitivity || exif.ISO,
         fNumber: fNum,
         shutter: exif.ExposureTime,
-        focal: exif.FocalLength,
+        focal: exif.FocalLengthIn35mmFilm,
+        captureDate: captureDate,
+        captureTime: captureTime,
       };
 
-      const hasData = !!(data.iso || data.fNumber || data.shutter || data.focal);
+      const hasData = !!(data.iso || data.fNumber || data.shutter || data.focal || data.captureDate);
 
       return {
         baseName: fullFileName,
         isVirtualCopy: parts.length > 1,
         vcId: parts.length > 1 ? parts[1] : null,
         exifData: data,
-        hasExif: hasData
+        hasExif: hasData,
       };
     }, [selectedImage.path, selectedImage.exif]);
 
@@ -126,34 +144,40 @@ const EditorToolbar = memo(
           </button>
 
           <div className="hidden 2xl:flex items-center gap-2" aria-hidden="true">
-            <div className="p-2 invisible pointer-events-none"><Undo size={20} /></div>
-            <div className="p-2 invisible pointer-events-none"><Undo size={20} /></div>
-            <div className="p-2 invisible pointer-events-none"><Undo size={20} /></div>
-            <div className="p-2 invisible pointer-events-none"><Undo size={20} /></div>
+            <div className="p-2 invisible pointer-events-none">
+              <Undo size={20} />
+            </div>
+            <div className="p-2 invisible pointer-events-none">
+              <Undo size={20} />
+            </div>
+            <div className="p-2 invisible pointer-events-none">
+              <Undo size={20} />
+            </div>
+            <div className="p-2 invisible pointer-events-none">
+              <Undo size={20} />
+            </div>
           </div>
         </div>
 
         <div className="flex-1 flex justify-center min-w-0 relative h-full">
           <div
             className={clsx(
-              "bg-surface text-text-secondary flex flex-col items-center overflow-hidden transition-all duration-200 ease-out pt-2",
-              isExpanded 
-                ? "h-[4.5rem] px-8 rounded-2xl absolute min-w-[340px] whitespace-nowrap shadow-2xl shadow-black/50" 
-                : "h-9 px-4 rounded-[18px] absolute min-w-0 w-auto max-w-full shadow-none"
+              'bg-surface text-text-secondary flex flex-col items-center overflow-hidden transition-all duration-200 ease-out pt-2',
+              isExpanded
+                ? 'h-[4.5rem] px-8 rounded-2xl absolute min-w-[340px] whitespace-nowrap shadow-2xl shadow-black/50'
+                : 'h-9 px-4 rounded-[18px] absolute min-w-0 w-auto max-w-full shadow-none',
             )}
             onMouseEnter={() => setIsInfoHovered(true)}
             onMouseLeave={() => setIsInfoHovered(false)}
-            style={{ 
-              top: '10px', 
+            style={{
+              top: '10px',
               transform: 'translateX(-50%)',
               left: '50%',
-              zIndex: isExpanded ? 50 : 0
+              zIndex: isExpanded ? 50 : 0,
             }}
           >
             <div className="flex items-center justify-center max-w-full h-5 shrink-0">
-              <span className="font-medium text-text-primary truncate min-w-0 shrink text-xs">
-                {baseName}
-              </span>
+              <span className="font-medium text-text-primary truncate min-w-0 shrink text-xs">{baseName}</span>
 
               {isVirtualCopy && (
                 <div
@@ -200,36 +224,79 @@ const EditorToolbar = memo(
               </div>
             </div>
 
-            <div 
+            <div
               className={clsx(
-                "flex items-center gap-6 text-xs font-medium mt-2 w-full justify-center border-t border-text-secondary/10 pt-2 transition-opacity duration-200",
-                isExpanded ? "opacity-100 delay-75" : "opacity-0 hidden"
+                'relative mt-2 w-full flex-grow justify-center border-t border-text-secondary/10 pt-2 transition-opacity duration-200',
+                isExpanded ? 'opacity-100 delay-75' : 'opacity-0 hidden',
+                hasExif && 'cursor-pointer',
               )}
+              onClick={() => hasExif && onToggleDateView()}
             >
-              {exifData.shutter && (
-                <div className="flex items-center gap-1.5" title="Shutter Speed">
-                  <span className="text-text-secondary"><IconShutter /></span>
-                  <span className="text-text-primary">{exifData.shutter}</span>
-                </div>
-              )}
-              {exifData.fNumber && (
-                <div className="flex items-center gap-1.5" title="Aperture">
-                   <span className="text-text-secondary"><IconAperture /></span>
-                   <span className="text-text-primary">{exifData.fNumber}</span>
-                </div>
-              )}
-              {exifData.iso && (
-                <div className="flex items-center gap-1.5" title="ISO">
-                   <span className="text-text-secondary"><IconIso /></span>
-                   <span className="text-text-primary">{exifData.iso}</span>
-                </div>
-              )}
-              {exifData.focal && (
-                <div className="flex items-center gap-1.5" title="Focal Length">
-                   <span className="text-text-secondary"><IconFocalLength /></span>
-                   <span className="text-text-primary">{String(exifData.focal).endsWith('mm') ? exifData.focal : `${exifData.focal}mm`}</span>
-                </div>
-              )}
+              <div
+                className={clsx(
+                  'absolute inset-0 flex items-center justify-center gap-6 text-xs font-medium transition-opacity duration-200',
+                  showDateView ? 'opacity-0 pointer-events-none' : 'opacity-100',
+                )}
+              >
+                {exifData.shutter && (
+                  <div className="flex items-center gap-1.5" title="Shutter Speed">
+                    <span className="text-text-secondary">
+                      <IconShutter />
+                    </span>
+                    <span className="text-text-primary">{exifData.shutter}</span>
+                  </div>
+                )}
+                {exifData.fNumber && (
+                  <div className="flex items-center gap-1.5" title="Aperture">
+                    <span className="text-text-secondary">
+                      <IconAperture />
+                    </span>
+                    <span className="text-text-primary">{exifData.fNumber}</span>
+                  </div>
+                )}
+                {exifData.iso && (
+                  <div className="flex items-center gap-1.5" title="ISO">
+                    <span className="text-text-secondary">
+                      <IconIso />
+                    </span>
+                    <span className="text-text-primary">{exifData.iso}</span>
+                  </div>
+                )}
+                {exifData.focal && (
+                  <div className="flex items-center gap-1.5" title="Focal Length">
+                    <span className="text-text-secondary">
+                      <IconFocalLength />
+                    </span>
+                    <span className="text-text-primary">
+                      {String(exifData.focal).endsWith('mm') ? exifData.focal : `${exifData.focal}mm`}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={clsx(
+                  'absolute inset-0 flex items-center justify-center gap-6 text-xs font-medium transition-opacity duration-200',
+                  showDateView ? 'opacity-100' : 'opacity-0 pointer-events-none',
+                )}
+              >
+                {exifData.captureDate && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-text-secondary">
+                      <IconCalendar />
+                    </span>
+                    <span className="text-text-primary">{exifData.captureDate}</span>
+                  </div>
+                )}
+                {exifData.captureTime && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-text-secondary">
+                      <IconClock />
+                    </span>
+                    <span className="text-text-primary">{exifData.captureTime}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

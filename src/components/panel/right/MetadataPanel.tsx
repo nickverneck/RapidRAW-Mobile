@@ -10,7 +10,7 @@ interface CameraSettings {
   [index: string]: CameraSetting;
   ExposureTime: CameraSetting;
   FNumber: CameraSetting;
-  FocalLength: CameraSetting;
+  FocalLengthIn35mmFilm: CameraSetting;
   LensModel: CameraSetting;
   PhotographicSensitivity: CameraSetting;
 }
@@ -74,9 +74,9 @@ const KEY_CAMERA_SETTINGS_MAP: CameraSettings = {
   PhotographicSensitivity: {
     label: 'ISO',
   },
-  FocalLength: {
+  FocalLengthIn35mmFilm: {
     format: (value: number) => (String(value).endsWith('mm') ? value : `${value} mm`),
-    label: 'Focal Distance',
+    label: 'Focal Length',
   },
   LensModel: {
     format: (value: number) => String(value).replace(/"/g, ''),
@@ -88,7 +88,7 @@ const KEY_SETTINGS_ORDER: Array<string> = [
   'FNumber',
   'ExposureTime',
   'PhotographicSensitivity',
-  'FocalLength',
+  'FocalLengthIn35mmFilm',
   'LensModel',
 ];
 
@@ -110,14 +110,6 @@ export default function MetadataPanel({ selectedImage }: MetaDataPanelProps) {
       };
     }).filter(Boolean);
 
-    const gpsKeys = [
-      'GPSLatitude',
-      'GPSLatitudeRef',
-      'GPSLongitude',
-      'GPSLongitudeRef',
-      'GPSAltitude',
-      'GPSAltitudeRef',
-    ];
     const latStr = exif.GPSLatitude;
     const latRef = exif.GPSLatitudeRef;
     const lonStr = exif.GPSLongitude;
@@ -133,11 +125,7 @@ export default function MetadataPanel({ selectedImage }: MetaDataPanelProps) {
       }
     }
 
-    const otherExifEntries = Object.entries(exif)
-      .filter(
-        ([key]) => !KEY_SETTINGS_ORDER.includes(key) && !gpsKeys.includes(key),
-      )
-      .sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+    const otherExifEntries = Object.entries(exif).sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
 
     return { keyCameraSettings, gpsData, otherExifEntries };
   }, [selectedImage?.exif]);
@@ -159,6 +147,9 @@ export default function MetadataPanel({ selectedImage }: MetaDataPanelProps) {
               <div className="flex flex-col gap-1">
                 <MetadataItem label="Filename" value={selectedImage.path.split(/[\\/]/).pop()} />
                 <MetadataItem label="Dimensions" value={`${selectedImage.width} x ${selectedImage.height}`} />
+                {selectedImage.exif?.DateTimeOriginal && (
+                  <MetadataItem label="Capture Date" value={selectedImage.exif.DateTimeOriginal} />
+                )}
               </div>
             </div>
 

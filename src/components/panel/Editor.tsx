@@ -123,6 +123,7 @@ export default function Editor({
   const prevCropParams = useRef<any>(null);
   const [isMaskHovered, setIsMaskHovered] = useState(false);
   const [isLoaderVisible, setIsLoaderVisible] = useState(false);
+  const [showExifDateView, setShowExifDateView] = useState(false);
   const [maskOverlayUrl, setMaskOverlayUrl] = useState<string | null>(null);
   const [transformState, setTransformState] = useState<TransformState>({ scale: 1, positionX: 0, positionY: 0 });
   const imageContainerRef = useRef<HTMLImageElement>(null);
@@ -512,6 +513,8 @@ export default function Editor({
           selectedImage={selectedImage}
           showOriginal={showOriginal}
           isLoadingFullRes={isLoadingFullRes}
+          showDateView={showExifDateView}
+          onToggleDateView={() => setShowExifDateView(prev => !prev)}
         />
 
         <div
