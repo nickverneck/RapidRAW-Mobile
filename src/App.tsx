@@ -1154,6 +1154,13 @@ function App() {
     [selectedImage?.isReady]
   );
 
+  const debouncedApplyAdjustments = useCallback(
+    debounce((currentAdjustments) => {
+      applyAdjustments(currentAdjustments, false);
+    }, 50),
+    [applyAdjustments],
+  );
+
   const debouncedGenerateUncroppedPreview = useCallback(
     debounce((currentAdjustments) => {
       if (!selectedImage?.isReady) {
@@ -2781,21 +2788,22 @@ function App() {
     }
 
     if (isSliderDragging) {
+      debouncedApplyAdjustments.cancel();
       applyAdjustments(adjustments, true);
       dragIdleTimer.current = setTimeout(() => {
         applyAdjustments(adjustments, false);
       }, 50);
 
     } else {
-      applyAdjustments(adjustments, false);
-      
+      debouncedApplyAdjustments(adjustments);
       debouncedSave(selectedImage.path, adjustments);
     }
 
     return () => {
       if (dragIdleTimer.current) clearTimeout(dragIdleTimer.current);
+      debouncedApplyAdjustments.cancel();
     };
-  }, [adjustments, selectedImage?.path, selectedImage?.isReady, isSliderDragging, applyAdjustments, debouncedSave]);
+  }, [adjustments, selectedImage?.path, selectedImage?.isReady, isSliderDragging, applyAdjustments, debouncedApplyAdjustments, debouncedSave]);
 
   useEffect(() => {
     if (activeRightPanel === Panel.Crop && selectedImage?.isReady) {
