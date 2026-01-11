@@ -35,6 +35,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::io::Write;
 use std::sync::Mutex;
+use std::sync::mpsc::{self, Sender, Receiver};
 
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
@@ -108,6 +109,11 @@ pub struct GpuProcessorState {
     pub height: u32,
 }
 
+struct PreviewJob {
+    adjustments: serde_json::Value,
+    is_interactive: bool,
+}
+
 pub struct AppState {
     original_image: Mutex<Option<LoadedImage>>,
     cached_preview: Mutex<Option<CachedPreview>>,
@@ -123,6 +129,7 @@ pub struct AppState {
     pub lut_cache: Mutex<HashMap<String, Arc<Lut>>>,
     initial_file_path: Mutex<Option<String>>,
     thumbnail_cancellation_token: Arc<AtomicBool>,
+    preview_worker_tx: Mutex<Option<Sender<PreviewJob>>>,
 }
 
 #[derive(serde::Serialize)]
@@ -535,22 +542,17 @@ fn apply_watermark(
     Ok(())
 }
 
-#[tauri::command]
-fn apply_adjustments(
-    js_adjustments: serde_json::Value,
-    is_interactive: bool,
+fn process_preview_job(
+    app_handle: &tauri::AppHandle,
     state: tauri::State<AppState>,
-    app_handle: tauri::AppHandle,
+    job: PreviewJob,
 ) -> Result<(), String> {
     let context = get_or_init_gpu_context(&state)?;
-    let adjustments_clone = js_adjustments.clone();
+    let adjustments_clone = job.adjustments.clone();
 
-    let loaded_image = state
-        .original_image
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or("No original image loaded")?;
+    let loaded_image_guard = state.original_image.lock().unwrap();
+    let loaded_image = loaded_image_guard.as_ref().ok_or("No original image loaded")?.clone();
+    drop(loaded_image_guard);
 
     let new_transform_hash = calculate_transform_hash(&adjustments_clone);
 
@@ -622,7 +624,7 @@ fn apply_adjustments(
 
     drop(cached_preview_lock);
 
-    let (processing_image, effective_scale, jpeg_quality) = if is_interactive {
+    let (processing_image, effective_scale, jpeg_quality) = if job.is_interactive {
         let orig_w = final_preview_base.width() as f32;
         let small_w = small_preview_base.width() as f32;
         let scale_factor = if orig_w > 0.0 { small_w / orig_w } else { 1.0 };
@@ -634,7 +636,7 @@ fn apply_adjustments(
 
     let (preview_width, preview_height) = processing_image.dimensions();
 
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+    let mask_definitions: Vec<MaskDefinition> = job.adjustments
         .get("masks")
         .and_then(|m| serde_json::from_value(m.clone()).ok())
         .unwrap_or_else(Vec::new);
@@ -674,7 +676,7 @@ fn apply_adjustments(
     );
 
     if let Ok(final_processed_image) = final_processed_image_result {
-        if !is_interactive {
+        if !job.is_interactive {
             if let Ok(histogram_data) =
                 image_processing::calculate_histogram_from_image(&final_processed_image)
             {
@@ -697,6 +699,43 @@ fn apply_adjustments(
         }
     }
 
+    Ok(())
+}
+
+fn start_preview_worker(app_handle: tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    let (tx, rx): (Sender<PreviewJob>, Receiver<PreviewJob>) = mpsc::channel();
+    
+    *state.preview_worker_tx.lock().unwrap() = Some(tx);
+
+    std::thread::spawn(move || {
+        while let Ok(mut job) = rx.recv() {
+            while let Ok(next_job) = rx.try_recv() {
+                job = next_job;
+            }
+            
+            let state = app_handle.state::<AppState>();
+            if let Err(e) = process_preview_job(&app_handle, state, job) {
+                log::error!("Preview worker error: {}", e);
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn apply_adjustments(
+    js_adjustments: serde_json::Value,
+    is_interactive: bool,
+    state: tauri::State<AppState>,
+) -> Result<(), String> {
+    let tx_guard = state.preview_worker_tx.lock().unwrap();
+    if let Some(tx) = &*tx_guard {
+        let job = PreviewJob {
+            adjustments: js_adjustments,
+            is_interactive,
+        };
+        tx.send(job).map_err(|e| format!("Failed to send to preview worker: {}", e))?;
+    }
     Ok(())
 }
 
@@ -3068,6 +3107,8 @@ fn main() {
                     log::info!("Applied Linux GPU optimizations.");
                 }
             }
+            
+            start_preview_worker(app_handle.clone());
 
             let window_cfg = app.config().app.windows.get(0).unwrap().clone();
             let transparent = settings.transparent.unwrap_or(window_cfg.transparent);
@@ -3102,6 +3143,7 @@ fn main() {
             lut_cache: Mutex::new(HashMap::new()),
             initial_file_path: Mutex::new(None),
             thumbnail_cancellation_token: Arc::new(AtomicBool::new(false)),
+            preview_worker_tx: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             load_image,
