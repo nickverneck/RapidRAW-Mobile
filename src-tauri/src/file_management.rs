@@ -249,6 +249,8 @@ pub struct AppSettings {
     pub enable_zoom_hifi: Option<bool>,
     #[serde(default)]
     pub enable_live_previews: Option<bool>,
+    #[serde(default)]
+    pub enable_high_quality_live_previews: Option<bool>,
     pub sort_criteria: Option<SortCriteria>,
     pub filter_criteria: Option<FilterCriteria>,
     pub theme: Option<String>,
@@ -303,6 +305,7 @@ impl Default for AppSettings {
             editor_preview_resolution: Some(1920),
             enable_zoom_hifi: Some(true),
             enable_live_previews: Some(true),
+            enable_high_quality_live_previews: Some(false),
             sort_criteria: None,
             filter_criteria: None,
             theme: Some("dark".to_string()),

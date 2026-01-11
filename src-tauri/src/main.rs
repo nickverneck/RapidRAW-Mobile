@@ -650,6 +650,10 @@ fn process_preview_job(
     drop(loaded_image_guard);
 
     let new_transform_hash = calculate_transform_hash(&adjustments_clone);
+    let settings = load_settings(app_handle.clone()).unwrap_or_default();
+    let hq_live = settings.enable_high_quality_live_previews.unwrap_or(false);
+    let interactive_divisor = if hq_live { 1.5 } else { 2.0 };
+    let interactive_quality = if hq_live { 75 } else { 45 };
 
     let mut cached_preview_lock = state.cached_preview.lock().unwrap();
 
@@ -667,8 +671,8 @@ fn process_preview_job(
                 let (base, scale, offset) =
                     generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
 
-                let settings = load_settings(app_handle.clone()).unwrap_or_default();
-                let target_size = settings.editor_preview_resolution.unwrap_or(1920) / 2;
+                let final_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
+                let target_size = (final_preview_dim as f32 / interactive_divisor) as u32;
 
                 let (w, h) = base.dimensions();
                 let (small_w, small_h) = if w > h {
@@ -694,8 +698,8 @@ fn process_preview_job(
             let (base, scale, offset) =
                 generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
 
-            let settings = load_settings(app_handle.clone()).unwrap_or_default();
-            let target_size = settings.editor_preview_resolution.unwrap_or(1920) / 2;
+            let final_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
+            let target_size = (final_preview_dim as f32 / interactive_divisor) as u32;
 
             let (w, h) = base.dimensions();
             let (small_w, small_h) = if w > h {
@@ -724,7 +728,7 @@ fn process_preview_job(
         let small_w = small_preview_base.width() as f32;
         let scale_factor = if orig_w > 0.0 { small_w / orig_w } else { 1.0 };
         let new_scale = scale_for_gpu * scale_factor;
-        (small_preview_base, new_scale, 45)
+        (small_preview_base, new_scale, interactive_quality)
     } else {
         (final_preview_base, scale_for_gpu, 90)
     };

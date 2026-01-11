@@ -297,6 +297,7 @@ export default function SettingsPanel({
   const [testStatus, setTestStatus] = useState<TestStatus>({ message: '', success: null, testing: false });
   const [saveStatus, setSaveStatus] = useState({ saving: false, message: '' });
   const [isConfigExpanded, setIsConfigExpanded] = useState(false);
+  const [hasInteractedWithLivePreview, setHasInteractedWithLivePreview] = useState(false);
 
   const [aiProvider, setAiProvider] = useState(appSettings?.aiProvider || 'cpu');
   const [comfyUiAddress, setComfyUiAddress] = useState<string>(appSettings?.comfyuiAddress || '');
@@ -909,17 +910,50 @@ export default function SettingsPanel({
                       />
                     </SettingItem>
 
-                    <SettingItem
-                      label="Live Interactive Previews"
-                      description="Update the preview immediately while dragging sliders. Disable this if the interface feels laggy during adjustments."
-                    >
-                      <Switch
-                        checked={appSettings?.enableLivePreviews ?? true}
-                        id="live-previews-toggle"
-                        label="Enable Live Previews"
-                        onChange={(checked) => onSettingsChange({ ...appSettings, enableLivePreviews: checked })}
-                      />
-                    </SettingItem>
+                    <div className="space-y-4">
+                      <SettingItem
+                        label="Live Interactive Previews"
+                        description="Update the preview immediately while dragging sliders. Disable this if the interface feels laggy during adjustments."
+                      >
+                        <Switch
+                          checked={appSettings?.enableLivePreviews ?? true}
+                          id="live-previews-toggle"
+                          label="Enable Live Previews"
+                          onChange={(checked) => {
+                            setHasInteractedWithLivePreview(true);
+                            onSettingsChange({ ...appSettings, enableLivePreviews: checked });
+                          }}
+                        />
+                      </SettingItem>
+
+                      <AnimatePresence>
+                        {(appSettings?.enableLivePreviews ?? true) && (
+                          <motion.div
+                            initial={hasInteractedWithLivePreview ? { height: 0, opacity: 0 } : false}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.3, ease: 'easeInOut' }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pl-4 border-l-2 border-border-color ml-1">
+                              <SettingItem
+                                label="High Quality Live Preview"
+                                description="Uses higher resolution and less compression during interaction. Significantly increases GPU load."
+                              >
+                                <Switch
+                                  checked={appSettings?.enableHighQualityLivePreviews ?? false}
+                                  id="hq-live-previews-toggle"
+                                  label="Enable High Quality"
+                                  onChange={(checked) =>
+                                    onSettingsChange({ ...appSettings, enableHighQualityLivePreviews: checked })
+                                  }
+                                />
+                              </SettingItem>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
 
                     <SettingItem
                       label="RAW Highlight Recovery"
