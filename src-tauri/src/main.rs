@@ -130,6 +130,8 @@ pub struct AppState {
     initial_file_path: Mutex<Option<String>>,
     thumbnail_cancellation_token: Arc<AtomicBool>,
     preview_worker_tx: Mutex<Option<Sender<PreviewJob>>>,
+    pub mask_cache: Mutex<HashMap<u64, GrayImage>>,
+    pub patch_cache: Mutex<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(serde::Serialize)]
@@ -319,6 +321,53 @@ fn calculate_full_job_hash(path: &str, adjustments: &serde_json::Value) -> u64 {
     hasher.finish()
 }
 
+fn hydrate_adjustments(state: &tauri::State<AppState>, adjustments: &mut serde_json::Value) {
+    let mut cache = state.patch_cache.lock().unwrap();
+
+    if let Some(patches) = adjustments.get_mut("aiPatches").and_then(|v| v.as_array_mut()) {
+        for patch in patches {
+            let id = patch.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            if id.is_empty() { continue; }
+
+            let has_data = patch.get("patchData").map_or(false, |v| !v.is_null());
+
+            if has_data {
+                if let Some(data) = patch.get("patchData") {
+                    cache.insert(id.clone(), data.clone());
+                }
+            } else {
+                if let Some(cached_data) = cache.get(&id) {
+                    patch["patchData"] = cached_data.clone();
+                }
+            }
+        }
+    }
+
+    if let Some(masks) = adjustments.get_mut("masks").and_then(|v| v.as_array_mut()) {
+        for mask_container in masks {
+            if let Some(sub_masks) = mask_container.get_mut("subMasks").and_then(|v| v.as_array_mut()) {
+                for sub_mask in sub_masks {
+                    let id = sub_mask.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    if id.is_empty() { continue; }
+
+                    if let Some(params) = sub_mask.get_mut("parameters").and_then(|p| p.as_object_mut()) {
+                        if params.contains_key("mask_data_base64") {
+                            let val = params.get("mask_data_base64").unwrap();
+                            if !val.is_null() {
+                                cache.insert(id.clone(), val.clone());
+                            } else {
+                                if let Some(cached_data) = cache.get(&id) {
+                                    params.insert("mask_data_base64".to_string(), cached_data.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn generate_transformed_preview(
     loaded_image: &LoadedImage,
     adjustments: &serde_json::Value,
@@ -450,6 +499,9 @@ async fn load_image(
 
     *state.cached_preview.lock().unwrap() = None;
     *state.gpu_image_cache.lock().unwrap() = None;
+    state.mask_cache.lock().unwrap().clear();
+    state.patch_cache.lock().unwrap().clear();
+
     *state.original_image.lock().unwrap() = Some(LoadedImage {
         path: source_path_str.clone(),
         image: pristine_img,
@@ -542,13 +594,56 @@ fn apply_watermark(
     Ok(())
 }
 
+fn get_cached_or_generate_mask(
+    state: &tauri::State<AppState>,
+    def: &MaskDefinition,
+    width: u32,
+    height: u32,
+    scale: f32,
+    crop_offset: (f32, f32),
+) -> Option<GrayImage> {
+    let mut hasher = DefaultHasher::new();
+    
+    let def_json = serde_json::to_string(&def).unwrap_or_default();
+    def_json.hash(&mut hasher);
+    
+    width.hash(&mut hasher);
+    height.hash(&mut hasher);
+    scale.to_bits().hash(&mut hasher);
+    crop_offset.0.to_bits().hash(&mut hasher);
+    crop_offset.1.to_bits().hash(&mut hasher);
+    
+    let key = hasher.finish();
+
+    {
+        let cache = state.mask_cache.lock().unwrap();
+        if let Some(img) = cache.get(&key) {
+            return Some(img.clone());
+        }
+    }
+
+    let generated = generate_mask_bitmap(def, width, height, scale, crop_offset);
+
+    if let Some(img) = &generated {
+        let mut cache = state.mask_cache.lock().unwrap();
+        if cache.len() > 50 {
+            cache.clear(); 
+        }
+        cache.insert(key, img.clone());
+    }
+
+    generated
+}
+
 fn process_preview_job(
     app_handle: &tauri::AppHandle,
     state: tauri::State<AppState>,
     job: PreviewJob,
 ) -> Result<(), String> {
     let context = get_or_init_gpu_context(&state)?;
-    let adjustments_clone = job.adjustments.clone();
+    let mut adjustments_json = job.adjustments;
+    hydrate_adjustments(&state, &mut adjustments_json);
+    let adjustments_clone = adjustments_json;
 
     let loaded_image_guard = state.original_image.lock().unwrap();
     let loaded_image = loaded_image_guard.as_ref().ok_or("No original image loaded")?.clone();
@@ -636,7 +731,7 @@ fn process_preview_job(
 
     let (preview_width, preview_height) = processing_image.dimensions();
 
-    let mask_definitions: Vec<MaskDefinition> = job.adjustments
+    let mask_definitions: Vec<MaskDefinition> = adjustments_clone
         .get("masks")
         .and_then(|m| serde_json::from_value(m.clone()).ok())
         .unwrap_or_else(Vec::new);
@@ -649,7 +744,8 @@ fn process_preview_job(
     let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
         .iter()
         .filter_map(|def| {
-            generate_mask_bitmap(
+            get_cached_or_generate_mask(
+                &state,
                 def,
                 preview_width,
                 preview_height,
@@ -746,7 +842,9 @@ fn generate_uncropped_preview(
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let context = get_or_init_gpu_context(&state)?;
-    let adjustments_clone = js_adjustments.clone();
+    let mut adjustments_clone = js_adjustments.clone();
+    hydrate_adjustments(&state, &mut adjustments_clone);
+
     let loaded_image = state
         .original_image
         .lock()
@@ -791,7 +889,7 @@ fn generate_uncropped_preview(
 
         let (preview_width, preview_height) = processing_base.dimensions();
 
-        let mask_definitions: Vec<MaskDefinition> = js_adjustments
+        let mask_definitions: Vec<MaskDefinition> = adjustments_clone
             .get("masks")
             .and_then(|m| serde_json::from_value(m.clone()).ok())
             .unwrap_or_else(Vec::new);
@@ -799,7 +897,8 @@ fn generate_uncropped_preview(
         let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
             .iter()
             .filter_map(|def| {
-                generate_mask_bitmap(
+                get_cached_or_generate_mask(
+                    &state,
                     def,
                     preview_width,
                     preview_height,
@@ -850,13 +949,16 @@ fn generate_original_transformed_preview(
         .clone()
         .ok_or("No original image loaded")?;
 
+    let mut adjustments_clone = js_adjustments.clone();
+    hydrate_adjustments(&state, &mut adjustments_clone);
+
     let mut image_for_preview = loaded_image.image.clone();
     if loaded_image.is_raw {
         apply_cpu_default_raw_processing(&mut image_for_preview);
     }
 
     let (transformed_full_res, _unscaled_crop_offset) =
-        apply_all_transformations(&image_for_preview, &js_adjustments);
+        apply_all_transformations(&image_for_preview, &adjustments_clone);
 
     let settings = load_settings(app_handle).unwrap_or_default();
     let preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
@@ -893,6 +995,10 @@ fn generate_fullscreen_preview(
     state: tauri::State<AppState>,
 ) -> Result<Response, String> {
     let context = get_or_init_gpu_context(&state)?;
+
+    let mut adjustments_clone = js_adjustments.clone();
+    hydrate_adjustments(&state, &mut adjustments_clone);
+
     let (original_image, is_raw) = get_full_image_for_processing(&state)?;
     let path = state
         .original_image
@@ -902,15 +1008,15 @@ fn generate_fullscreen_preview(
         .ok_or("Original image path not found")?
         .path
         .clone();
-    let unique_hash = calculate_full_job_hash(&path, &js_adjustments);
-    let base_image = composite_patches_on_image(&original_image, &js_adjustments)
+    let unique_hash = calculate_full_job_hash(&path, &adjustments_clone);
+    let base_image = composite_patches_on_image(&original_image, &adjustments_clone)
         .map_err(|e| format!("Failed to composite AI patches for fullscreen: {}", e))?;
 
     let (transformed_image, unscaled_crop_offset) =
-        apply_all_transformations(&base_image, &js_adjustments);
+        apply_all_transformations(&base_image, &adjustments_clone);
     let (img_w, img_h) = transformed_image.dimensions();
 
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+    let mask_definitions: Vec<MaskDefinition> = adjustments_clone
         .get("masks")
         .and_then(|m| serde_json::from_value(m.clone()).ok())
         .unwrap_or_else(Vec::new);
@@ -920,8 +1026,8 @@ fn generate_fullscreen_preview(
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, 1.0, unscaled_crop_offset))
         .collect();
 
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
-    let lut_path = js_adjustments["lutPath"].as_str();
+    let all_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw);
+    let lut_path = adjustments_clone["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
 
     let final_image = process_and_get_dynamic_image(
@@ -1411,7 +1517,11 @@ async fn estimate_export_size(
         .ok_or("No original image loaded")?;
     let is_raw = loaded_image.is_raw;
 
-    let new_transform_hash = calculate_transform_hash(&js_adjustments);
+    // HYDRATE
+    let mut adjustments_clone = js_adjustments.clone();
+    hydrate_adjustments(&state, &mut adjustments_clone);
+
+    let new_transform_hash = calculate_transform_hash(&adjustments_clone);
     let cached_preview_lock = state.cached_preview.lock().unwrap();
 
     let (preview_image, scale, unscaled_crop_offset) = if let Some(cached) = &*cached_preview_lock {
@@ -1424,18 +1534,18 @@ async fn estimate_export_size(
         } else {
             drop(cached_preview_lock);
             let (base, scale, offset) =
-                generate_transformed_preview(&loaded_image, &js_adjustments, &app_handle)?;
+                generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
             (base, scale, offset)
         }
     } else {
         drop(cached_preview_lock);
         let (base, scale, offset) =
-            generate_transformed_preview(&loaded_image, &js_adjustments, &app_handle)?;
+            generate_transformed_preview(&loaded_image, &adjustments_clone, &app_handle)?;
         (base, scale, offset)
     };
 
     let (img_w, img_h) = preview_image.dimensions();
-    let mask_definitions: Vec<MaskDefinition> = js_adjustments
+    let mask_definitions: Vec<MaskDefinition> = adjustments_clone
         .get("masks")
         .and_then(|m| serde_json::from_value(m.clone()).ok())
         .unwrap_or_else(Vec::new);
@@ -1450,10 +1560,10 @@ async fn estimate_export_size(
         .filter_map(|def| generate_mask_bitmap(def, img_w, img_h, scale, scaled_crop_offset))
         .collect();
 
-    let all_adjustments = get_all_adjustments_from_json(&js_adjustments, is_raw);
-    let lut_path = js_adjustments["lutPath"].as_str();
+    let all_adjustments = get_all_adjustments_from_json(&adjustments_clone, is_raw);
+    let lut_path = adjustments_clone["lutPath"].as_str();
     let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
-    let unique_hash = calculate_full_job_hash(&loaded_image.path, &js_adjustments).wrapping_add(1);
+    let unique_hash = calculate_full_job_hash(&loaded_image.path, &adjustments_clone).wrapping_add(1);
 
     let processed_preview = process_and_get_dynamic_image(
         &context,
@@ -1474,7 +1584,7 @@ async fn estimate_export_size(
     let preview_byte_size = preview_bytes.len();
 
     let (transformed_full_res, _unscaled_crop_offset) =
-        apply_all_transformations(&loaded_image.image, &js_adjustments);
+        apply_all_transformations(&loaded_image.image, &adjustments_clone);
     let (mut final_full_w, mut final_full_h) = transformed_full_res.dimensions();
 
     if let Some(resize_opts) = &export_settings.resize {
@@ -3144,6 +3254,8 @@ fn main() {
             initial_file_path: Mutex::new(None),
             thumbnail_cancellation_token: Arc::new(AtomicBool::new(false)),
             preview_worker_tx: Mutex::new(None),
+            mask_cache: Mutex::new(HashMap::new()),
+            patch_cache: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             load_image,

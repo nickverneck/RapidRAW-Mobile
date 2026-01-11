@@ -343,6 +343,7 @@ function App() {
   const [transformedOriginalUrl, setTransformedOriginalUrl] = useState<string | null>(null);
   const fullResRequestRef = useRef<any>(null);
   const fullResCacheKeyRef = useRef<string | null>(null);
+  const patchesSentToBackend = useRef<Set<string>>(new Set());
 
   useDelayedRevokeBlobUrl(finalPreviewUrl);
   useDelayedRevokeBlobUrl(uncroppedAdjustedPreviewUrl);
@@ -660,6 +661,7 @@ function App() {
         });
 
         const newPatchData = JSON.parse(newPatchDataJson);
+        patchesSentToBackend.current.delete(patchId);
         setAdjustments((prev: Adjustments) => ({
           ...prev,
           aiPatches: prev.aiPatches.map((p: AiPatch) =>
@@ -757,6 +759,7 @@ function App() {
         if (!newPatchData?.color || !newPatchData?.mask) {
           throw new Error('Inpainting failed to return a valid result.');
         }
+        patchesSentToBackend.current.delete(patchId);
 
         setAdjustments((prev: Partial<Adjustments>) => ({
           ...prev,
@@ -856,6 +859,7 @@ function App() {
         .find((sm: SubMask) => sm.id === subMaskId);
 
       const mergedParameters = { ...(subMask?.parameters || {}), ...newParameters };
+      patchesSentToBackend.current.delete(subMaskId);
       updateSubMask(subMaskId, { parameters: mergedParameters });
     } catch (error) {
       console.error('Failed to generate AI subject mask:', error);
@@ -884,6 +888,7 @@ function App() {
         .find((sm: SubMask) => sm.id === subMaskId);
 
       const mergedParameters = { ...(subMask?.parameters || {}), ...newParameters };
+      patchesSentToBackend.current.delete(subMaskId);
       updateSubMask(subMaskId, { parameters: mergedParameters });
     } catch (error) {
       console.error('Failed to generate AI foreground mask:', error);
@@ -912,6 +917,7 @@ function App() {
         .find((sm: SubMask) => sm.id === subMaskId);
 
       const mergedParameters = { ...(subMask?.parameters || {}), ...newParameters };
+      patchesSentToBackend.current.delete(subMaskId);
       updateSubMask(subMaskId, { parameters: mergedParameters });
     } catch (error) {
       console.error('Failed to generate AI sky mask:', error);
@@ -1143,9 +1149,40 @@ function App() {
   const applyAdjustments = useAsyncThrottle(
     async (currentAdjustments: Adjustments, dragging: boolean = false) => {
       if (!selectedImage?.isReady) return;
+
+      const payload = JSON.parse(JSON.stringify(currentAdjustments));
+
+      if (payload.aiPatches && Array.isArray(payload.aiPatches)) {
+        payload.aiPatches.forEach((p: any) => {
+          if (p.id && p.patchData && !p.isLoading) {
+            if (patchesSentToBackend.current.has(p.id)) {
+              p.patchData = null; 
+            } else {
+              patchesSentToBackend.current.add(p.id);
+            }
+          }
+        });
+      }
+
+      if (payload.masks && Array.isArray(payload.masks)) {
+        payload.masks.forEach((container: any) => {
+          if (container.subMasks && Array.isArray(container.subMasks)) {
+            container.subMasks.forEach((sm: any) => {
+              if (sm.id && sm.parameters && sm.parameters.mask_data_base64) {
+                if (patchesSentToBackend.current.has(sm.id)) {
+                  sm.parameters.mask_data_base64 = null;
+                } else {
+                  patchesSentToBackend.current.add(sm.id);
+                }
+              }
+            });
+          }
+        });
+      }
+
       try {
         await invoke(Invokes.ApplyAdjustments, { 
-          jsAdjustments: currentAdjustments,
+          jsAdjustments: payload, 
           isInteractive: dragging 
         });
       } catch (err) {
@@ -1748,6 +1785,7 @@ function App() {
       }
       applyAdjustments.cancel();
       debouncedSave.cancel();
+      patchesSentToBackend.current.clear(); 
 
       setSelectedImage({
         exif: null,
