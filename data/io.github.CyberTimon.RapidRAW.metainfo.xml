@@ -38,6 +38,27 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.8" date="2026-01-20">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.8</url>
+        <description translate="no">
+            <p>New Features</p>
+            <ul>
+                <li>Live Previews: See changes in near real-time as you drag sliders, thanks to a large rewrite of the GPU processing engine. The old behavior can be restored in settings for less powerful machines.</li>
+                <li>Updated Collage Maker: Completely overhauled with drag & drop placement, an option to keep aspect ratios, and zoom & pan controls within each cell.</li>
+                <li>LUT Quality Improvement: Implemented tetrahedral interpolation to eliminate banding and posterization artifacts, ensuring smooth color transitions even with low-resolution LUTs.</li>
+            </ul>
+            <p>Core Improvements</p>
+            <ul>
+                <li>Added a separate preview worker and optional high-quality live previews.</li>
+                <li>Enhanced EXIF UI with more info when hovering over the image name.</li>
+                <li>Added a 'Prefer RAW' filter option to the library.</li>
+                <li>Added support for uppercase file extensions.</li>
+                <li>The thumbnail cache is now flushed when switching folders.</li>
+                <li>AI masking stability improvements under load.</li>
+                <li>Updated the Rawler library.</li>
+            </ul>
+        </description>
+    </release>
     <release version="v1.4.7" date="2025-12-23">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.7</url>
         <description translate="no">
