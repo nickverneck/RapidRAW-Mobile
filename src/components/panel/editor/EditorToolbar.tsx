@@ -130,7 +130,7 @@ const EditorToolbar = memo(
       };
     }, [isAnyLoading, isLoading, isLoaderVisible]);
 
-    const isExpanded = isInfoHovered && hasExif;
+    const isExpanded = isInfoHovered && (hasExif || isLoading);
 
     return (
       <div className="relative flex-shrink-0 flex items-center justify-between px-4 h-14 gap-4 z-40">
