@@ -663,7 +663,7 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
                     </div>
                 )}
                 
-                <div style={{ width: previewSize.width, height: previewSize.height }} className="relative shadow-lg">
+                <div style={{ width: previewSize.width, height: previewSize.height }} className="relative">
                     <canvas ref={previewCanvasRef} className="block" />
                     
                     <div className="absolute inset-0 z-10">
