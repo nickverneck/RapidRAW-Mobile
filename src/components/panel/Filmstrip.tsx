@@ -35,6 +35,7 @@ const FilmstripThumbnail = ({
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
   const [layers, setLayers] = useState<ImageLayer[]>([]);
   const latestThumbDataRef = useRef<string | undefined>(undefined);
+  const isInitialLoad = useRef(true);
 
   const { path, tags } = imageFile;
   const rating = imageRatings?.[path] || 0;
@@ -50,10 +51,20 @@ const FilmstripThumbnail = ({
       const img = new Image();
       img.onload = () => {
         setAspectRatio(img.naturalWidth / img.naturalHeight);
+        if (isInitialLoad.current) {
+          setTimeout(() => {
+            isInitialLoad.current = false;
+          }, 200);
+        }
       };
       img.src = thumbData;
     } else {
       setAspectRatio(null);
+      if (isInitialLoad.current) {
+        setTimeout(() => {
+          isInitialLoad.current = false;
+        }, 200);
+      }
     }
   }, [thumbData, thumbnailAspectRatio]);
 
@@ -128,6 +139,12 @@ const FilmstripThumbnail = ({
       )}
       data-path={path}
       layout
+      transition={{
+        layout: {
+          duration: isInitialLoad.current ? 0 : 0.3,
+          ease: 'easeInOut',
+        },
+      }}
       onClick={(e: any) => {
         e.stopPropagation();
         if (onImageSelect) {
