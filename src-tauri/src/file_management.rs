@@ -38,7 +38,7 @@ use crate::image_processing::{
     Crop, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
     auto_results_to_json, get_all_adjustments_from_json, perform_auto_analysis, apply_cpu_default_raw_processing,
 };
-use crate::mask_generation::{MaskDefinition, generate_mask_bitmap};
+use crate::mask_generation::MaskDefinition;
 use crate::preset_converter;
 use crate::tagging::COLOR_TAG_PREFIX;
 
@@ -837,7 +837,8 @@ pub fn generate_thumbnail_data(
             let mask_bitmaps: Vec<ImageBuffer<Luma<u8>, Vec<u8>>> = mask_definitions
                 .iter()
                 .filter_map(|def| {
-                    generate_mask_bitmap(
+                    crate::get_cached_or_generate_mask(
+                        &state,
                         def,
                         preview_w,
                         preview_h,

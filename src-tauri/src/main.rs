@@ -594,7 +594,7 @@ fn apply_watermark(
     Ok(())
 }
 
-fn get_cached_or_generate_mask(
+pub fn get_cached_or_generate_mask(
     state: &tauri::State<AppState>,
     def: &MaskDefinition,
     width: u32,
