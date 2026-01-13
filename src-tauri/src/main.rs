@@ -5,7 +5,7 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod ai_processing;
-mod comfyui_connector;
+mod ai_connector;
 mod culling;
 mod denoising;
 mod file_management;
@@ -2322,24 +2322,26 @@ fn update_window_effect(theme: String, window: tauri::Window) {
 }
 
 #[tauri::command]
-async fn check_comfyui_status(app_handle: tauri::AppHandle) {
+async fn check_ai_connector_status(app_handle: tauri::AppHandle) {
     let settings = load_settings(app_handle.clone()).unwrap_or_default();
-    let is_connected = if let Some(address) = settings.comfyui_address {
-        comfyui_connector::ping_server(&address).await.is_ok()
+    let is_connected = if let Some(address) = settings.ai_connector_address {
+        ai_connector::check_status(&address).await.unwrap_or(false)
     } else {
         false
     };
     let _ = app_handle.emit(
-        "comfyui-status-update",
+        "ai-connector-status-update",
         serde_json::json!({ "connected": is_connected }),
     );
 }
 
 #[tauri::command]
-async fn test_comfyui_connection(address: String) -> Result<(), String> {
-    comfyui_connector::ping_server(&address)
-        .await
-        .map_err(|e| e.to_string())
+async fn test_ai_connector_connection(address: String) -> Result<(), String> {
+    match ai_connector::check_status(&address).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err("Server reachable but returned bad health status".to_string()),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 fn calculate_dynamic_patch_radius(width: u32, height: u32) -> u32 {
@@ -2354,7 +2356,7 @@ fn calculate_dynamic_patch_radius(width: u32, height: u32) -> u32 {
 
 #[tauri::command]
 async fn invoke_generative_replace_with_mask_def(
-    _path: String,
+    path: String,
     patch_definition: AiPatchDefinition,
     current_adjustments: Value,
     use_fast_inpaint: bool,
@@ -2394,30 +2396,25 @@ async fn invoke_generative_replace_with_mask_def(
         // cpu based inpainting, low quality but no setup required
         let patch_radius = calculate_dynamic_patch_radius(img_w, img_h);
         inpainting::perform_fast_inpaint(&source_image, &mask_bitmap, patch_radius)?
-    } else if let Some(address) = settings.comfyui_address {
+    } else if let Some(address) = settings.ai_connector_address {
         // self hosted generative ai service
-        let comfy_config = settings.comfyui_workflow_config;
-
         let mut rgba_mask = RgbaImage::new(img_w, img_h);
         for (x, y, luma_pixel) in mask_bitmap.enumerate_pixels() {
             let intensity = luma_pixel[0];
-            rgba_mask.put_pixel(x, y, Rgba([0, 0, 0, intensity]));
+            rgba_mask.put_pixel(x, y, Rgba([intensity, intensity, intensity, 255]));
         }
-        let mask_image = DynamicImage::ImageRgba8(rgba_mask);
+        let mask_image_dynamic = DynamicImage::ImageRgba8(rgba_mask);
 
-        let result_png_bytes = comfyui_connector::execute_workflow(
+        let (real_path_buf, _) = crate::file_management::parse_virtual_path(&path);
+        let real_path_str = real_path_buf.to_string_lossy().to_string();
+
+        ai_connector::process_inpainting(
             &address,
-            &comfy_config,
-            source_image,
-            Some(mask_image),
-            Some(patch_definition.prompt),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-        image::load_from_memory(&result_png_bytes)
-            .map_err(|e| e.to_string())?
-            .to_rgba8()
+            &real_path_str,
+            &source_image,
+            &mask_image_dynamic,
+            patch_definition.prompt
+        ).await.map_err(|e| e.to_string())?
     } else if let Some(auth_token) = token {
         // convenience cloud service
         let client = reqwest::Client::new();
@@ -2467,7 +2464,7 @@ async fn invoke_generative_replace_with_mask_def(
         }
     } else {
         return Err(
-            "No generative backend available. Connect to ComfyUI or upgrade to Pro for Cloud AI."
+            "No generative backend available. Connect to a RapidRAW AI Connector or upgrade to Pro for Cloud AI."
                 .to_string(),
         );
     };
@@ -3279,8 +3276,8 @@ fn main() {
             generate_ai_foreground_mask,
             generate_ai_sky_mask,
             update_window_effect,
-            check_comfyui_status,
-            test_comfyui_connection,
+            check_ai_connector_status,
+            test_ai_connector_connection,
             invoke_generative_replace_with_mask_def,
             get_supported_file_types,
             get_log_file_path,

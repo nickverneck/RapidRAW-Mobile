@@ -15,7 +15,7 @@ interface AiPanelProps {
   activeSubMaskId: string | null;
   aiModelDownloadStatus: string | null;
   brushSettings: BrushSettings | null;
-  isComfyUiConnected: boolean;
+  isAIConnectorConnected: boolean;
   isGeneratingAi: boolean;
   isGeneratingAiMask: boolean;
   onDeletePatch(id: string): void;
@@ -50,8 +50,8 @@ const ConnectionStatus = ({ isConnected }: ConnectionStatusProps) => {
     return (
       <div className="flex items-center gap-2 px-4 py-2 bg-surface rounded-lg mb-4">
         <div className={'w-2.5 h-2.5 rounded-full bg-green-500'} />
-        <span className="text-sm font-medium text-text-secondary">ComfyUI Backend:</span>
-        <span className={'text-sm font-bold text-green-400'}>Connected</span>
+        <span className="text-sm font-medium text-text-secondary">AI Connector:</span>
+        <span className={'text-sm font-bold text-green-400'}>Ready</span>
       </div>
     );
   }
@@ -64,7 +64,7 @@ const ConnectionStatus = ({ isConnected }: ConnectionStatusProps) => {
     >
       <div className="flex items-center gap-2 px-4 pt-2">
         <div className={'w-2.5 h-2.5 rounded-full bg-red-500'} />
-        <span className="text-sm font-medium text-text-secondary">ComfyUI Backend:</span>
+        <span className="text-sm font-medium text-text-secondary">AI Connector:</span>
         <span className={'text-sm font-bold text-red-400'}>Not Detected</span>
       </div>
       <div className="px-4 pb-2">
@@ -91,7 +91,7 @@ export default function AIPanel({
   adjustments,
   setAdjustments,
   selectedImage,
-  isComfyUiConnected,
+  isAIConnectorConnected,
   isGeneratingAi,
   onGenerativeReplace,
   onDeletePatch,
@@ -349,7 +349,7 @@ export default function AIPanel({
             aiModelDownloadStatus={aiModelDownloadStatus}
             brushSettings={brushSettings}
             editingPatch={editingPatch}
-            isComfyUiConnected={isComfyUiConnected}
+            isAIConnectorConnected={isAIConnectorConnected}
             isGeneratingAi={isGeneratingAi || editingPatch.isLoading}
             isGeneratingAiMask={isGeneratingAiMask}
             onGenerateAiForegroundMask={onGenerateAiForegroundMask}
@@ -388,7 +388,7 @@ export default function AIPanel({
           <p className="text-center text-text-tertiary mt-4">No image selected.</p>
         ) : (
           <>
-            <ConnectionStatus isConnected={isComfyUiConnected} />
+            <ConnectionStatus isConnected={isAIConnectorConnected} />
 
             <div onClick={(e: any) => e.stopPropagation()}>
               <div>

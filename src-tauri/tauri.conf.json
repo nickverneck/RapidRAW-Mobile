@@ -36,8 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources",
-      "workflows"
+      "resources"
     ],
     "category": "Photography",
     "fileAssociations": [

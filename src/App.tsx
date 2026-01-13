@@ -438,7 +438,7 @@ function App() {
   });
   const [customEscapeHandler, setCustomEscapeHandler] = useState(null);
   const [isGeneratingAiMask, setIsGeneratingAiMask] = useState(false);
-  const [isComfyUiConnected, setIsComfyUiConnected] = useState(false);
+  const [isAIConnectorConnected, setisAIConnectorConnected] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [isMaskControlHovered, setIsMaskControlHovered] = useState(false);
   const [libraryScrollTop, setLibraryScrollTop] = useState<number>(0);
@@ -606,11 +606,11 @@ function App() {
   }, [libraryViewMode]);
 
   useEffect(() => {
-    const unlisten = listen('comfyui-status-update', (event: any) => {
-      setIsComfyUiConnected(event.payload.connected);
+    const unlisten = listen('ai-connector-status-update', (event: any) => {
+      setisAIConnectorConnected(event.payload.connected);
     });
-    invoke(Invokes.CheckComfyuiStatus);
-    const interval = setInterval(() => invoke(Invokes.CheckComfyuiStatus), 3000);
+    invoke(Invokes.CheckAIConnectorStatus);
+    const interval = setInterval(() => invoke(Invokes.CheckAIConnectorStatus), 10000);
     return () => {
       clearInterval(interval);
       unlisten.then((f) => f());
@@ -4302,7 +4302,7 @@ function App() {
                           adjustments={adjustments}
                           aiModelDownloadStatus={aiModelDownloadStatus}
                           brushSettings={brushSettings}
-                          isComfyUiConnected={isComfyUiConnected}
+                          isAIConnectorConnected={isAIConnectorConnected}
                           isGeneratingAi={isGeneratingAi}
                           isGeneratingAiMask={isGeneratingAiMask}
                           onDeletePatch={handleDeleteAiPatch}

@@ -27,7 +27,7 @@ interface AiControlsProps {
   aiModelDownloadStatus: string | null;
   brushSettings: BrushSettings | null;
   editingPatch: any;
-  isComfyUiConnected: boolean;
+  isAIConnectorConnected: boolean;
   isGeneratingAi: boolean;
   isGeneratingAiMask: boolean;
   onGenerateAiForegroundMask(id: string): void;
@@ -142,7 +142,7 @@ export default function AIControls({
   aiModelDownloadStatus,
   brushSettings,
   editingPatch,
-  isComfyUiConnected,
+  isAIConnectorConnected,
   isGeneratingAi,
   isGeneratingAiMask,
   onGenerateAiForegroundMask,
@@ -161,7 +161,7 @@ export default function AIControls({
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string>(editingPatch?.prompt || '');
   const isQuickErasePatch = editingPatch?.subMasks?.some((sm: SubMask) => sm.type === Mask.QuickEraser);
-  const [useFastInpaint, setUseFastInpaint] = useState(isQuickErasePatch || !isComfyUiConnected);
+  const [useFastInpaint, setUseFastInpaint] = useState(isQuickErasePatch || !isAIConnectorConnected);
 
   useEffect(() => {
     setPrompt(editingPatch?.prompt || '');
@@ -169,8 +169,8 @@ export default function AIControls({
 
   useEffect(() => {
     const isQuickErase = editingPatch?.subMasks?.some((sm: SubMask) => sm.type === Mask.QuickEraser);
-    setUseFastInpaint(isQuickErase || !isComfyUiConnected);
-  }, [isComfyUiConnected, editingPatch]);
+    setUseFastInpaint(isQuickErase || !isAIConnectorConnected);
+  }, [isAIConnectorConnected, editingPatch]);
 
   useEffect(() => {
     if (isGeneratingAiMask) {
@@ -408,15 +408,15 @@ export default function AIControls({
           <div className="pt-1">
             <Switch
               checked={useFastInpaint}
-              disabled={isQuickErasePatch || !isComfyUiConnected}
+              disabled={isQuickErasePatch || !isAIConnectorConnected}
               label="Use fast inpainting"
               onChange={setUseFastInpaint}
               tooltip={
                 isQuickErasePatch
                   ? 'Quick Erase always uses fast inpainting.'
-                  : !isComfyUiConnected
-                  ? 'ComfyUI not connected, fast inpainting is required.'
-                  : 'Fast inpainting is quicker but not generative. Uncheck to use ComfyUI with a text prompt.'
+                  : !isAIConnectorConnected
+                  ? 'AI Connector not connected, fast inpainting is required.'
+                  : 'Fast inpainting is quicker but not generative. Uncheck to use AI Connector with a text prompt.'
               }
             />
           </div>

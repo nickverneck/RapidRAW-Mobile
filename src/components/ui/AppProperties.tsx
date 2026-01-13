@@ -14,7 +14,7 @@ export enum Invokes {
   BatchExportImages = 'batch_export_images',
   CalculateAutoAdjustments = 'calculate_auto_adjustments',
   CancelExport = 'cancel_export',
-  CheckComfyuiStatus = 'check_comfyui_status',
+  CheckAIConnectorStatus = 'check_ai_connector_status',
   ClearAllSidecars = 'clear_all_sidecars',
   ClearAiTags = 'clear_ai_tags',
   ClearAllTags = 'clear_all_tags',
@@ -71,7 +71,7 @@ export enum Invokes {
   ShowInFinder = 'show_in_finder',
   StartBackgroundIndexing = 'start_background_indexing',
   StitchPanorama = 'stitch_panorama',
-  TestComfyuiConnection = 'test_comfyui_connection',
+  TestAIConnectorConnection = 'test_ai_connector_connection',
   UpdateWindowEffect = 'update_window_effect',
   FetchCommunityPresets = 'fetch_community_presets',
   GenerateAllCommunityPreviews = 'generate_all_community_previews',
@@ -117,24 +117,9 @@ export enum ThumbnailAspectRatio {
   Contain = 'contain',
 }
 
-export interface ComfyUIWorkflowConfig {
-  workflowPath: string | null;
-  modelCheckpoints: { [nodeId: string]: string };
-  vaeLoaders: { [nodeId: string]: string };
-  controlnetLoaders: { [nodeId: string]: string };
-  sourceImageNodeId: string;
-  maskImageNodeId: string;
-  textPromptNodeId: string;
-  finalOutputNodeId: string;
-  samplerNodeId: string;
-  samplerSteps: number;
-  inpaintResolution?: number;
-}
-
 export interface AppSettings {
   adaptiveEditorTheme?: Theme;
-  comfyuiAddress?: string;
-  comfyuiWorkflowConfig?: ComfyUIWorkflowConfig;
+  aiConnectorAddress?: string;
   decorations?: any;
   editorPreviewResolution?: number;
   enableZoomHifi?: boolean;
