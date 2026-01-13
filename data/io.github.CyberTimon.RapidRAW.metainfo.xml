@@ -29,7 +29,7 @@
   <launchable type="desktop-id">io.github.CyberTimon.RapidRAW.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/refs/tags/v1.4.2/.github/assets/editor.png</image>
+      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/assets/.github/assets/editor.png</image>
         <caption>Editor interface</caption>
     </screenshot>
   </screenshots>
@@ -44,7 +44,7 @@
             <p>New Features</p>
             <ul>
                 <li>Live Previews: See changes in near real-time as you drag sliders, thanks to a large rewrite of the GPU processing engine. The old behavior can be restored in settings for less powerful machines.</li>
-                <li>Updated Collage Maker: Completely overhauled with drag & drop placement, an option to keep aspect ratios, and zoom & pan controls within each cell.</li>
+                <li>Updated Collage Maker: Completely overhauled with drag &amp; drop placement, an option to keep aspect ratios, and zoom &amp; pan controls within each cell.</li>
                 <li>LUT Quality Improvement: Implemented tetrahedral interpolation to eliminate banding and posterization artifacts, ensuring smooth color transitions even with low-resolution LUTs.</li>
             </ul>
             <p>Core Improvements</p>
