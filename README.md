@@ -345,10 +345,14 @@ These features are integrated directly into RapidRAW and run entirely on your co
 
 ### 2. Self-Hosted Integration with ComfyUI (Local & Free)
 
-For users with a capable GPU who want maximum control, I've made it so RapidRAW can connect to your own local [ComfyUI](https://github.com/comfyanonymous/ComfyUI) server.
+For users with a capable GPU who want maximum control, RapidRAW can connect to your own local [ComfyUI](https://github.com/comfyanonymous/ComfyUI) server. This is managed by the [**RapidRAW-AI-Connector**](https://github.com/CyberTimon/RapidRAW-AI-Connector), a lightweight middleware that bridges RapidRAW and ComfyUI. Its purpose is to manage image caching, workflow injection, and AI coordination.
 
-*   **Full Control:** Use your own hardware and any custom Stable Diffusion model or workflow you choose.
-*   **Cost-Free Power:** Leverage your existing hardware for advanced generative edits at no extra cost.
+**Why this approach?** This new architecture makes generative edits much more efficient. Instead of sending the entire high-resolution image for every single change, the AI Connector intelligently caches it. The full image is sent only once; for every subsequent edit, only the tiny mask and text are transferred. This makes the process significantly faster and more responsive.
+
+This setup gives you the best of both worlds: a highly efficient workflow while retaining full control to use your own hardware and any custom Diffusion models or workflows you choose.
+
+*   **Full Control:** Use your own hardware and any custom Diffusion model or workflow you choose.
+*   **Cost-Free Power:** Utilise your existing hardware for advanced generative edits at no extra cost.
 *   **Custom Workflow Selection:** Import your own ComfyUI workflows and use your custom nodes.
 
 ### 3. Optional Cloud Service (Subscription)
@@ -361,8 +365,8 @@ This is purely a **convenience service**. It provides the **same high-quality re
 
 | Feature                 | Built-in AI (Free)                               | Self-Hosted (ComfyUI)                               | Optional Cloud Service                           |
 | ----------------------- | ------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------ |
-| **Cost**                | Free, included                                   | Free (requires your own hardware)                   | $5 / month                                   |
-| **Setup**               | None                                             | Manual ComfyUI server setup                         | None (Just log in)                           |
+| **Cost**                | Free, included                                   | Free (requires your own hardware)                   | $TBD / month                                   |
+| **Setup**               | None                                             | Manual ComfyUI / AI Connector setup                         | None (Just log in)                           |
 | **Use Case**            | Everyday workflow acceleration                   | Full control for technical users                    | Maximum convenience                          |
 | **Status**              | **Available**                                    | **Available**                                       | Coming Soon                                 |
 
