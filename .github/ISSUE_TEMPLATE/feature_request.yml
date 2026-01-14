@@ -1,0 +1,45 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for RapidRAW
+title: "FEATURE: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest a new feature! Please fill out the information below to help us understand your idea.
+        
+        > **Note:** This template is for feature requests only. For bug reports, please use the [Bug Report template](../../issues/new/choose) instead.
+
+  - type: input
+    id: title
+    attributes:
+      label: Feature Title
+      description: Provide a brief, descriptive title for this feature
+      placeholder: Describe the feature briefly...
+    validations:
+      required: true
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: Describe the feature you'd like to see added
+      placeholder: A clear and detailed description of what you want to happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, mockups, or examples
+      placeholder: Any additional information, images, or examples that would help illustrate your request...
+
+  - type: checkboxes
+    id: similar-requests
+    attributes:
+      label: Similar feature requests
+      description: Have you checked for similar feature requests?
+      options:
+        - label: I have searched existing issues and discussions and didn't find a duplicate
+          required: true
