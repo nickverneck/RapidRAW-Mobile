@@ -10,15 +10,6 @@ body:
         
         > **Note:** This template is for feature requests only. For bug reports, please use the [Bug Report template](../../issues/new/choose) instead.
 
-  - type: input
-    id: title
-    attributes:
-      label: Feature Title
-      description: Provide a brief, descriptive title for this feature
-      placeholder: Describe the feature briefly...
-    validations:
-      required: true
-
   - type: textarea
     id: feature-description
     attributes:
