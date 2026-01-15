@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug or issue with RapidRAW (not for feature requests)
+description: Report a bug or issue with RapidRAW
 title: "BUG: "
 labels: ["bug"]
 body:
