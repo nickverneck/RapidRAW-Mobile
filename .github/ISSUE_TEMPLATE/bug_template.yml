@@ -1,5 +1,5 @@
-name: Issue Report
-description: Report a bug or issue with RapidRAW (not for feature requests)
+name: Bug Report
+description: Report a bug or issue with RapidRAW
 title: "BUG: "
 labels: ["bug"]
 body:
@@ -9,15 +9,6 @@ body:
         Thanks for taking the time to report a bug! Please fill out the information below to help us understand and fix the issue.
         
         > **Note:** This template is for reporting bugs and issues only. For feature requests, please use the [Discussions page](../../discussions) instead.
-
-  - type: input
-    id: title
-    attributes:
-      label: Issue Title
-      description: Provide a brief, descriptive title for this bug
-      placeholder: Describe the issue briefly...
-    validations:
-      required: true
 
   - type: textarea
     id: what-happened
