@@ -499,6 +499,7 @@ export default function MasksPanel({
                         className={`flex-col px-4 pb-2 space-y-1 transition-colors ${isRootOver ? 'bg-surface' : ''}`}
                     >
                         <p className="text-sm my-3 font-semibold text-text-primary">Masks</p>
+                        
                         {isMaskListEmpty && <div className="text-center text-text-secondary text-sm py-4 opacity-70">No masks created.</div>}
                         
                         <AnimatePresence 
@@ -512,55 +513,29 @@ export default function MasksPanel({
                         >
                             {adjustments.masks.map((container) => (
                               <ContainerRow 
-                                  key={container.id} container={container} 
+                                  key={container.id} 
+                                  container={container} 
                                   isSelected={activeMaskContainerId === container.id && activeMaskId === null}
                                   hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
                                   isExpanded={expandedContainers.has(container.id)}
-                                  activeDragItem={activeDragItem}
-                                  onToggle={() => handleToggleExpand(container.id)} onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
-                                  renamingId={renamingId} setRenamingId={setRenamingId} tempName={tempName} setTempName={setTempName}
-                                  updateContainer={updateContainer} handleDelete={handleDeleteContainer} handleDuplicate={handleDuplicateContainer} 
-                                  setCopiedMask={setCopiedMask} copiedMask={copiedMask} presets={presets}
+                                  onToggle={() => handleToggleExpand(container.id)} 
+                                  onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
+                                  renamingId={renamingId} setRenamingId={setRenamingId} 
+                                  tempName={tempName} setTempName={setTempName}
+                                  updateContainer={updateContainer} 
+                                  handleDelete={handleDeleteContainer} 
+                                  handleDuplicate={handleDuplicateContainer} 
+                                  setCopiedMask={setCopiedMask} 
+                                  copiedMask={copiedMask} 
+                                  presets={presets}
                                   setAdjustments={setAdjustments}
-                              >
-                                  <AnimatePresence initial={false}>
-                                  {expandedContainers.has(container.id) && (
-                                      <motion.div 
-                                          initial={{ height: 0, opacity: 0 }} 
-                                          animate={{ height: 'auto', opacity: 1 }} 
-                                          exit={{ height: 0, opacity: 0 }} 
-                                          className="overflow-hidden pl-2 border-l border-border-color/20 ml-[15px]" 
-                                          layout
-                                      >
-                                          <AnimatePresence mode="popLayout" initial={false}>
-                                              {container.subMasks.length > 0 ? container.subMasks.map((subMask, index) => (
-                                                  <SubMaskRow 
-                                                      key={subMask.id} 
-                                                      subMask={subMask} 
-                                                      index={index + 1}
-                                                      totalCount={container.subMasks.length}
-                                                      containerId={container.id} 
-                                                      isActive={activeMaskId === subMask.id}
-                                                      parentVisible={container.visible}
-                                                      activeDragItem={activeDragItem}
-                                                      onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
-                                                      updateSubMask={updateSubMask} handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
-                                                  />
-                                              )) : (
-                                                  <motion.div 
-                                                      initial={{ opacity: 0 }} 
-                                                      animate={{ opacity: 1 }} 
-                                                      exit={{ opacity: 0 }}
-                                                      className="p-3 text-xs text-text-secondary text-center italic"
-                                                  >
-                                                      No mask components.
-                                                  </motion.div>
-                                              )}
-                                          </AnimatePresence>
-                                      </motion.div>
-                                  )}
-                                  </AnimatePresence>
-                              </ContainerRow>
+                                  activeDragItem={activeDragItem}
+                                  activeMaskId={activeMaskId}
+                                  onSelectContainer={onSelectContainer}
+                                  onSelectMask={onSelectMask}
+                                  updateSubMask={updateSubMask}
+                                  handleDeleteSubMask={handleDeleteSubMask}
+                              />
                             ))}
                         </AnimatePresence>
                     </motion.div>
@@ -661,16 +636,27 @@ function DraggableGridItem({ maskType, isGeneratingAiMask, onClick }: any) {
     );
 }
 
-function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect, children, renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete, handleDuplicate, setCopiedMask, copiedMask, presets, setAdjustments, activeDragItem }: any) {
+function ContainerRow({
+  container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect,
+  renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete,
+  handleDuplicate, setCopiedMask, copiedMask, presets, setAdjustments,
+  activeDragItem, activeMaskId, onSelectContainer, onSelectMask, updateSubMask, handleDeleteSubMask,
+}: any) {
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: container.id, data: { type: 'Container', item: container } });
   const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({ id: container.id, data: { type: 'Container', item: container } });
+  const [isSubMaskListEmpty, setIsSubMaskListEmpty] = useState(container.subMasks.length === 0);
+  const { showContextMenu } = useContextMenu();
+
+  useEffect(() => {
+    if (container.subMasks.length > 0 && isSubMaskListEmpty) {
+      setIsSubMaskListEmpty(false);
+    }
+  }, [container.subMasks.length, isSubMaskListEmpty]);
   
   const setCombinedRef = (node: HTMLElement | null) => {
     setDroppableRef(node);
     setDraggableRef(node);
   };
-
-  const { showContextMenu } = useContextMenu();
 
   const handleRenameSubmit = () => { 
       if (tempName.trim()) {
@@ -702,16 +688,13 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
     ]);
   };
 
-  // Determine styles based on what is being dragged and hover state
   const isDraggingContainer = activeDragItem?.type === 'Container';
   let borderClass = '';
   
   if (isOver) {
     if (isDraggingContainer) {
-      // If dragging a container over another, show reorder line (top border)
       borderClass = 'border-t-2 border-accent';
     } else {
-      // If dragging a submask/creation, show drop-inside style
       borderClass = 'bg-card-active border border-accent/50';
     }
   }
@@ -748,7 +731,54 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
                <button className="p-1 hover:text-red-500 text-text-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(container.id); }}><Trash2 size={16}/></button>
             </div>
         </div>
-        {children}
+        
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden pl-2 border-l border-border-color/20 ml-[15px]"
+              layout
+            >
+              <AnimatePresence
+                mode="popLayout"
+                initial={false}
+                onExitComplete={() => {
+                  if (container.subMasks.length === 0) {
+                    setIsSubMaskListEmpty(true);
+                  }
+                }}
+              >
+                {container.subMasks.map((subMask: SubMask, index: number) => (
+                  <SubMaskRow
+                    key={subMask.id}
+                    subMask={subMask}
+                    index={index + 1}
+                    totalCount={container.subMasks.length}
+                    containerId={container.id}
+                    isActive={activeMaskId === subMask.id}
+                    parentVisible={container.visible}
+                    activeDragItem={activeDragItem}
+                    onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
+                    updateSubMask={updateSubMask}
+                    handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
+                  />
+                ))}
+              </AnimatePresence>
+              {isSubMaskListEmpty && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="p-3 text-xs text-text-secondary text-center italic"
+                >
+                  No mask components.
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
     </motion.div>
   );
 }
