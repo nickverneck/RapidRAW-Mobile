@@ -491,41 +491,54 @@ export default function MasksPanel({
                           }}
                         >
                             {adjustments.masks.map((container) => (
-                               <ContainerRow 
-                                 key={container.id} container={container} 
-                                 isSelected={activeMaskContainerId === container.id && activeMaskId === null}
-                                 hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
-                                 isExpanded={expandedContainers.has(container.id)}
-                                 onToggle={() => handleToggleExpand(container.id)} onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
-                                 renamingId={renamingId} setRenamingId={setRenamingId} tempName={tempName} setTempName={setTempName}
-                                 updateContainer={updateContainer} handleDelete={handleDeleteContainer} handleDuplicate={handleDuplicateContainer} 
-                                 setCopiedMask={setCopiedMask} copiedMask={copiedMask} presets={presets}
-                                 setAdjustments={setAdjustments}
-                               >
-                                 <AnimatePresence initial={false}>
-                                    {expandedContainers.has(container.id) && (
-                                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-2 border-l border-border-color/20 ml-[15px]" layout>
-                                            {container.subMasks.length > 0 ? container.subMasks.map((subMask, index) => (
-                                                <SubMaskRow 
-                                                  key={subMask.id} 
-                                                  subMask={subMask} 
-                                                  index={index + 1}
-                                                  totalCount={container.subMasks.length}
-                                                  containerId={container.id} 
-                                                  isActive={activeMaskId === subMask.id}
-                                                  parentVisible={container.visible}
-                                                  onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
-                                                  updateSubMask={updateSubMask} handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
-                                                />
-                                            )) : (
-                                              <div className="p-3 text-xs text-text-secondary text-center italic">
-                                                No mask components.
-                                              </div>
-                                            )}
-                                        </motion.div>
-                                    )}
-                                 </AnimatePresence>
-                               </ContainerRow>
+                              <ContainerRow 
+                                  key={container.id} container={container} 
+                                  isSelected={activeMaskContainerId === container.id && activeMaskId === null}
+                                  hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
+                                  isExpanded={expandedContainers.has(container.id)}
+                                  onToggle={() => handleToggleExpand(container.id)} onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
+                                  renamingId={renamingId} setRenamingId={setRenamingId} tempName={tempName} setTempName={setTempName}
+                                  updateContainer={updateContainer} handleDelete={handleDeleteContainer} handleDuplicate={handleDuplicateContainer} 
+                                  setCopiedMask={setCopiedMask} copiedMask={copiedMask} presets={presets}
+                                  setAdjustments={setAdjustments}
+                              >
+                                  <AnimatePresence initial={false}>
+                                  {expandedContainers.has(container.id) && (
+                                      <motion.div 
+                                          initial={{ height: 0, opacity: 0 }} 
+                                          animate={{ height: 'auto', opacity: 1 }} 
+                                          exit={{ height: 0, opacity: 0 }} 
+                                          className="overflow-hidden pl-2 border-l border-border-color/20 ml-[15px]" 
+                                          layout
+                                      >
+                                          <AnimatePresence mode="popLayout" initial={false}>
+                                              {container.subMasks.length > 0 ? container.subMasks.map((subMask, index) => (
+                                                  <SubMaskRow 
+                                                      key={subMask.id} 
+                                                      subMask={subMask} 
+                                                      index={index + 1}
+                                                      totalCount={container.subMasks.length}
+                                                      containerId={container.id} 
+                                                      isActive={activeMaskId === subMask.id}
+                                                      parentVisible={container.visible}
+                                                      onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
+                                                      updateSubMask={updateSubMask} handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
+                                                  />
+                                              )) : (
+                                                  <motion.div 
+                                                      initial={{ opacity: 0 }} 
+                                                      animate={{ opacity: 1 }} 
+                                                      exit={{ opacity: 0 }}
+                                                      className="p-3 text-xs text-text-secondary text-center italic"
+                                                  >
+                                                      No mask components.
+                                                  </motion.div>
+                                              )}
+                                          </AnimatePresence>
+                                      </motion.div>
+                                  )}
+                                  </AnimatePresence>
+                              </ContainerRow>
                             ))}
                         </AnimatePresence>
                     </motion.div>
@@ -726,14 +739,18 @@ function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentV
    const showNumber = isHovered && totalCount > 1;
 
    return (
-      <motion.div layout="position" initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -15, transition: { duration: 0.2 } }}
+      <motion.div 
+         layout="position" 
+         initial={{ opacity: 0, x: -15 }} 
+         animate={{ opacity: 1, x: 0, scale: 1 }} 
+         exit={{ opacity: 0, x: -15, scale: 0.95, transition: { duration: 0.2 } }}
          ref={setCombinedRef} {...attributes} {...listeners}
          onMouseEnter={handleMouseEnter}
          onMouseLeave={handleMouseLeave}
          className={`flex items-center gap-2 p-2 rounded-md transition-colors group mt-0.5 cursor-pointer 
             ${isActive ? 'bg-surface' : 'hover:bg-card-active'} 
             ${isOver ? 'border-t-2 border-accent' : ''} 
-            ${isDragging ? 'opacity-40' : ''}
+            ${isDragging ? 'opacity-40 z-50' : ''}
             ${parentVisible === false ? 'opacity-50' : ''} transition-opacity duration-300`}
          onClick={(e) => { e.stopPropagation(); onSelect(); }}
          onContextMenu={onContextMenu}
