@@ -694,7 +694,10 @@ function ContainerRow({
   if (isOver) {
     if (isDraggingContainer) {
       borderClass = 'border-t-2 border-accent';
-    } else {
+    } else if (
+      (activeDragItem?.type === 'SubMask' && activeDragItem?.parentId !== container.id) ||
+      activeDragItem?.type === 'Creation'
+    ) {
       borderClass = 'bg-card-active border border-accent/50';
     }
   }

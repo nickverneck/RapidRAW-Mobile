@@ -64,6 +64,9 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2026-01-16:** Major masking system overhaul with drag & drop, per-mask opacity/invert & UI improvements
+*   **2026-01-13:** New python middleware client for external generative AI integration (ComfyUI)
+*   **2026-01-12:** Created a RapidRAW community discord server
 *   **2026-01-11:** Separate preview worker, optional high-quality live previews & mask/ai patch caching
 *   **2026-01-10:** Enhanced EXIF UI, optimized color wheels/curves & rawler update
 *   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
