@@ -500,6 +500,7 @@ export default function MasksPanel({
                             collapsibleState={collapsibleState} setCollapsibleState={setCollapsibleState}
                             copiedSectionAdjustments={copiedSectionAdjustments} setCopiedSectionAdjustments={setCopiedSectionAdjustments}
                             onDragStateChange={onDragStateChange} isSettingsSectionOpen={isSettingsSectionOpen} setSettingsSectionOpen={setSettingsSectionOpen}
+                            presets={presets}
                         />
                     </motion.div>
                 )}
@@ -594,6 +595,7 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
       { label: 'Paste Adjustments', icon: ClipboardPaste, disabled: !copiedMask, onClick: () => { if (copiedMask) updateContainer(container.id, { adjustments: { ...copiedMask.adjustments } }); }},
       { label: 'Apply Preset', icon: Bookmark, submenu: generatePresetSubmenu(presets).length ? generatePresetSubmenu(presets) : [{label: 'No presets', disabled: true}] },
       { type: OPTION_SEPARATOR },
+      { label: 'Reset Mask Adjustments', icon: RotateCcw, onClick: () => updateContainer(container.id, { adjustments: JSON.parse(JSON.stringify(INITIAL_MASK_ADJUSTMENTS)) }) },
       { label: 'Delete Mask', icon: Trash2, isDestructive: true, onClick: () => handleDelete(container.id) },
     ]);
   };
@@ -661,15 +663,60 @@ function SubMaskRow({ subMask, containerId, isActive, parentVisible, onSelect, u
    );
 }
 
-function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushSettings, setBrushSettings, updateContainer, updateSubMask, histogram, appSettings, isGeneratingAiMask, setIsMaskControlHovered, collapsibleState, setCollapsibleState, copiedSectionAdjustments, setCopiedSectionAdjustments, onDragStateChange, isSettingsSectionOpen, setSettingsSectionOpen }: any) {
+function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushSettings, setBrushSettings, updateContainer, updateSubMask, histogram, appSettings, isGeneratingAiMask, setIsMaskControlHovered, collapsibleState, setCollapsibleState, copiedSectionAdjustments, setCopiedSectionAdjustments, onDragStateChange, isSettingsSectionOpen, setSettingsSectionOpen, presets }: any) {
   const { showContextMenu } = useContextMenu();
   const isActive = !!container;
+  const presetButtonRef = useRef<HTMLButtonElement>(null);
   
   const placeholderContainer = {
     ...INITIAL_MASK_CONTAINER,
     adjustments: INITIAL_MASK_ADJUSTMENTS
   };
   const displayContainer = container || placeholderContainer;
+
+  const handleApplyPresetToMask = (presetAdjustments: Partial<Adjustments>) => {
+    if (!container) return;
+    const currentAdjustments = container.adjustments;
+    const newMaskAdjustments = {
+        ...currentAdjustments,
+        ...presetAdjustments,
+        sectionVisibility: {
+            ...(currentAdjustments.sectionVisibility || INITIAL_MASK_ADJUSTMENTS.sectionVisibility),
+            ...(presetAdjustments.sectionVisibility || {}),
+        }
+    };
+    updateContainer(container.id, { adjustments: newMaskAdjustments });
+  };
+
+  const generatePresetSubmenu = (presetList: any[]): any[] => {
+    return presetList
+      .map((item: any) => {
+        if (item.folder) {
+          return {
+            label: item.folder.name,
+            icon: FolderIcon,
+            submenu: generatePresetSubmenu(item.folder.children),
+          };
+        }
+        if (item.preset || item.adjustments) {
+          return {
+            label: item.name || item.preset.name,
+            onClick: () => handleApplyPresetToMask(item.adjustments || item.preset.adjustments),
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  };
+
+  const handlePresetSelectClick = () => {
+    if (presetButtonRef.current) {
+      const rect = presetButtonRef.current.getBoundingClientRect();
+      const presetSubmenu = generatePresetSubmenu(presets);
+      const options = presetSubmenu.length > 0 ? presetSubmenu : [{ label: 'No presets found', disabled: true }];
+      showContextMenu(rect.left, rect.bottom + 5, options);
+    }
+  };
 
   const handleMaskPropertyChange = (key: string, value: any) => {
     if (!isActive) return;
@@ -778,6 +825,17 @@ function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushS
          <CollapsibleSection title={'Properties'} isOpen={isSettingsSectionOpen} onToggle={() => setSettingsSectionOpen(!isSettingsSectionOpen)} canToggleVisibility={false} isContentVisible={true}>
              <div className="space-y-4 pt-2">
                  <Switch checked={!!displayContainer.invert} label="Invert Mask" onChange={(v) => handleMaskPropertyChange('invert', v)} />
+                 <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-text-secondary select-none">Apply Preset</span>
+                    <button
+                        ref={presetButtonRef}
+                        onClick={handlePresetSelectClick}
+                        className="text-sm text-text-primary text-right select-none cursor-pointer hover:text-accent transition-colors"
+                        title="Select a preset to apply"
+                    >
+                        Select
+                    </button>
+                </div>
                  <Slider defaultValue={100} label="Opacity" max={100} min={0} value={displayContainer.opacity ?? 100} onChange={(e: any) => handleMaskPropertyChange('opacity', Number(e.target.value))} step={1} />
                  {activeSubMask && (
                     <>
