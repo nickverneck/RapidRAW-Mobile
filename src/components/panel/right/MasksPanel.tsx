@@ -114,7 +114,7 @@ const SUB_MASK_CONFIG: Record<Mask, any> = {
 };
 
 const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsChange: any }) => (
-  <div className="space-y-4 pt-4 border-t border-surface mt-4">
+  <div className="space-y-4 border-t border-surface">
     <Slider defaultValue={100} label="Brush Size" max={200} min={1} onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, size: Number(e.target.value) }))} step={1} value={settings.size} />
     <Slider defaultValue={50} label="Brush Feather" max={100} min={0} onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, feather: Number(e.target.value) }))} step={1} value={settings.feather} />
     <div className="grid grid-cols-2 gap-2 pt-2">
