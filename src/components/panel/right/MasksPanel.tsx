@@ -162,16 +162,6 @@ export default function MasksPanel({
   
   const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'mask-list-root' });
   
-  // Sort masks alphabetically on mount
-  useEffect(() => {
-    if (adjustments.masks.length > 0) {
-        setAdjustments((prev: Adjustments) => ({
-            ...prev,
-            masks: [...prev.masks].sort((a, b) => a.name.localeCompare(b.name))
-        }));
-    }
-  }, []);
-
   useEffect(() => {
     if (!hasPerformedInitialSelection.current && !activeMaskContainerId && adjustments.masks.length > 0) {
       const lastMask = adjustments.masks[adjustments.masks.length - 1];
@@ -330,6 +320,36 @@ export default function MasksPanel({
 
     const dragData = active.data.current as DragData;
     const overData = over?.data.current as DragData;
+
+    // Handle Mask Container Reordering
+    if (dragData.type === 'Container') {
+      const overId = over?.id;
+      if (!overId || active.id === overId) return;
+
+      setAdjustments((prev: Adjustments) => {
+        const oldIndex = prev.masks.findIndex(m => m.id === dragData.item!.id);
+        let newIndex = -1;
+
+        if (overId === 'mask-list-root') {
+             // Dropped to the end if over the root container
+             newIndex = prev.masks.length - 1;
+        } else if (overData?.type === 'Container') {
+             newIndex = prev.masks.findIndex(m => m.id === overId);
+        } else if (overData?.type === 'SubMask') {
+             // If dropped on a submask, find the parent container index
+             newIndex = prev.masks.findIndex(m => m.id === overData.parentId);
+        }
+
+        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+            const newMasks = [...prev.masks];
+            const [movedItem] = newMasks.splice(oldIndex, 1);
+            newMasks.splice(newIndex, 0, movedItem);
+            return { ...prev, masks: newMasks };
+        }
+        return prev;
+      });
+      return;
+    }
 
     if (dragData.type === 'Creation' && dragData.maskType) {
       if (overData?.type === 'Container') {
@@ -496,6 +516,7 @@ export default function MasksPanel({
                                   isSelected={activeMaskContainerId === container.id && activeMaskId === null}
                                   hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
                                   isExpanded={expandedContainers.has(container.id)}
+                                  activeDragItem={activeDragItem}
                                   onToggle={() => handleToggleExpand(container.id)} onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
                                   renamingId={renamingId} setRenamingId={setRenamingId} tempName={tempName} setTempName={setTempName}
                                   updateContainer={updateContainer} handleDelete={handleDeleteContainer} handleDuplicate={handleDuplicateContainer} 
@@ -521,6 +542,7 @@ export default function MasksPanel({
                                                       containerId={container.id} 
                                                       isActive={activeMaskId === subMask.id}
                                                       parentVisible={container.visible}
+                                                      activeDragItem={activeDragItem}
                                                       onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
                                                       updateSubMask={updateSubMask} handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
                                                   />
@@ -639,8 +661,15 @@ function DraggableGridItem({ maskType, isGeneratingAiMask, onClick }: any) {
     );
 }
 
-function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect, children, renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete, handleDuplicate, setCopiedMask, copiedMask, presets, setAdjustments }: any) {
-  const { setNodeRef, isOver } = useDroppable({ id: container.id, data: { type: 'Container', item: container } });
+function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect, children, renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete, handleDuplicate, setCopiedMask, copiedMask, presets, setAdjustments, activeDragItem }: any) {
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: container.id, data: { type: 'Container', item: container } });
+  const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({ id: container.id, data: { type: 'Container', item: container } });
+  
+  const setCombinedRef = (node: HTMLElement | null) => {
+    setDroppableRef(node);
+    setDraggableRef(node);
+  };
+
   const { showContextMenu } = useContextMenu();
 
   const handleRenameSubmit = () => { 
@@ -648,7 +677,7 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
           const newName = tempName.trim();
           setAdjustments((prev: any) => {
               const updatedMasks = prev.masks.map((m: any) => m.id === container.id ? { ...m, name: newName } : m);
-              return { ...prev, masks: updatedMasks.sort((a: any, b: any) => a.name.localeCompare(b.name)) };
+              return { ...prev, masks: updatedMasks };
           });
       }
       setRenamingId(null); 
@@ -673,12 +702,34 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
     ]);
   };
 
+  // Determine styles based on what is being dragged and hover state
+  const isDraggingContainer = activeDragItem?.type === 'Container';
+  let borderClass = '';
+  
+  if (isOver) {
+    if (isDraggingContainer) {
+      // If dragging a container over another, show reorder line (top border)
+      borderClass = 'border-t-2 border-accent';
+    } else {
+      // If dragging a submask/creation, show drop-inside style
+      borderClass = 'bg-card-active border border-accent/50';
+    }
+  }
+
   return (
-    <motion.div layout="position" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }} ref={setNodeRef} className="mb-0.5 overflow-hidden">
+    <motion.div 
+      layout="position" 
+      initial={{ opacity: 0, height: 0 }} 
+      animate={{ opacity: isDragging ? 0.4 : 1, height: 'auto' }} 
+      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }} 
+      ref={setCombinedRef} 
+      className="mb-0.5 overflow-hidden"
+    >
         <div 
+           {...listeners} {...attributes}
            className={`flex items-center gap-2 p-2 rounded-md transition-colors group 
              ${isSelected ? 'bg-surface' : 'hover:bg-card-active'} 
-             ${isOver ? 'bg-card-active' : ''}`}
+             ${borderClass}`}
            onClick={(e) => { e.stopPropagation(); onSelect(); }}
            onContextMenu={onContextMenu}
         >
@@ -702,7 +753,7 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
   );
 }
 
-function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete }: any) {
+function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete, activeDragItem }: any) {
    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
    const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
    const setCombinedRef = (node: HTMLElement | null) => { setNodeRef(node); setDroppableRef(node); };
@@ -710,6 +761,8 @@ function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentV
    const { showContextMenu } = useContextMenu();
    const [isHovered, setIsHovered] = useState(false);
    const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+   const isDraggingContainer = activeDragItem?.type === 'Container';
 
    const handleMouseEnter = () => {
        if (hoverTimeoutRef.current) {
@@ -749,9 +802,11 @@ function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentV
          onMouseLeave={handleMouseLeave}
          className={`flex items-center gap-2 p-2 rounded-md transition-colors group mt-0.5 cursor-pointer 
             ${isActive ? 'bg-surface' : 'hover:bg-card-active'} 
-            ${isOver ? 'border-t-2 border-accent' : ''} 
+            ${isOver && !isDraggingContainer ? 'border-t-2 border-accent' : ''} 
             ${isDragging ? 'opacity-40 z-50' : ''}
-            ${parentVisible === false ? 'opacity-50' : ''} transition-opacity duration-300`}
+            ${parentVisible === false ? 'opacity-50' : ''}
+            ${isDraggingContainer ? 'opacity-30 pointer-events-none' : ''}
+            transition-opacity duration-300`}
          onClick={(e) => { e.stopPropagation(); onSelect(); }}
          onContextMenu={onContextMenu}
       >
@@ -952,7 +1007,13 @@ function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushS
 
   return (
     <div className={`px-4 pb-4 space-y-2 transition-opacity duration-300 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-         <CollapsibleSection title={isComponentMode ? "Component Properties" : "Mask Properties"} isOpen={isSettingsSectionOpen} onToggle={() => setSettingsSectionOpen(!isSettingsSectionOpen)} canToggleVisibility={false} isContentVisible={true}>
+         <CollapsibleSection 
+            title={isComponentMode ? `${formatMaskTypeName(activeSubMask.type)} Properties` : "Mask Properties"} 
+            isOpen={isSettingsSectionOpen} 
+            onToggle={() => setSettingsSectionOpen(!isSettingsSectionOpen)} 
+            canToggleVisibility={false} 
+            isContentVisible={true}
+         >
              <div className="space-y-4 pt-2">
                  <Switch 
                      checked={!!(isComponentMode ? activeSubMask.invert : displayContainer.invert)} 
