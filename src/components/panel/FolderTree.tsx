@@ -148,29 +148,40 @@ function TreeNode({
     <div className="text-sm">
       <div
         className={clsx('flex items-center gap-2 p-1.5 rounded-md transition-colors', {
-          'bg-card-active': isSelected,
-          'hover:bg-surface': !isSelected,
+          'bg-surface': isSelected,
+          'hover:bg-card-active': !isSelected,
         })}
         onClick={handleNameClick}
         onContextMenu={(e: any) => onContextMenu(e, node.path, isPinned)}
       >
         <div
-          className={clsx('cursor-pointer p-0.5 rounded hover:bg-surface', {
+          className={clsx('cursor-pointer p-0.5 rounded transition-colors', {
             'cursor-default': !hasChildren,
+            'text-primary': isSelected && isExpanded, 
+            'text-text-secondary': !isSelected || !isExpanded,
+            'hover:bg-surface-hover': !isSelected && hasChildren
           })}
           onClick={handleFolderIconClick}
         >
           {isExpanded ? (
-            <FolderOpen size={16} className="text-hover-color flex-shrink-0" />
+            <FolderOpen size={16} className={isSelected ? 'text-primary' : 'text-hover-color'} />
           ) : (
-            <Folder size={16} className="text-text-secondary flex-shrink-0" />
+            <Folder size={16} className={isSelected ? 'text-primary' : 'text-text-secondary'} />
           )}
         </div>
-        <span onDoubleClick={handleNameDoubleClick} className="truncate select-none cursor-pointer flex-1">
+        
+        <span 
+          onDoubleClick={handleNameDoubleClick} 
+          className={clsx('truncate select-none cursor-pointer flex-1 font-medium', {
+            'text-primary': isSelected,
+            'text-text-primary': !isSelected
+          })}
+        >
           {node.name}
         </span>
+
         {hasChildren && (
-          <div className="p-0.5 rounded hover:bg-surface cursor-pointer" onClick={handleFolderIconClick}>
+          <div className="p-0.5 rounded hover:bg-surface/50 cursor-pointer" onClick={handleFolderIconClick}>
             {isExpanded ? (
               <ChevronUp size={16} className="text-text-secondary flex-shrink-0" />
             ) : (
@@ -184,7 +195,7 @@ function TreeNode({
         {hasChildren && isExpanded && (
           <motion.div
             animate="open"
-            className="pl-4 border-l border-border-color/20 ml-2 overflow-hidden"
+            className="pl-4 border-l border-border-color/20 ml-[15px] overflow-hidden"
             exit="closed"
             initial="closed"
             key="children-container"

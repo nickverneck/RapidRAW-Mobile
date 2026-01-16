@@ -1,31 +1,64 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft,
-  ChevronsRight,
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  pointerWithin,
+} from '@dnd-kit/core';
+import {
+  Circle,
   ClipboardPaste,
   Copy,
   Edit,
   Eye,
   EyeOff,
   FileEdit,
+  FolderOpen,
   Folder as FolderIcon,
+  Minus,
+  Plus,
   PlusSquare,
   RotateCcw,
   Trash2,
   Bookmark,
 } from 'lucide-react';
-import MaskControls from './MaskControls';
+
+import CollapsibleSection from '../../ui/CollapsibleSection';
+import Switch from '../../ui/Switch';
+import Slider from '../../ui/Slider';
+import BasicAdjustments from '../../adjustments/Basic';
+import CurveGraph from '../../adjustments/Curves';
+import ColorPanel from '../../adjustments/Color';
+import DetailsPanel from '../../adjustments/Details';
+import EffectsPanel from '../../adjustments/Effects';
+
+import {
+  Mask,
+  MaskType,
+  SubMask,
+  MASK_PANEL_CREATION_TYPES,
+  OTHERS_MASK_TYPES,
+  MASK_ICON_MAP,
+  SubMaskMode,
+  ToolType,
+} from './Masks';
 import {
   Adjustments,
   INITIAL_MASK_ADJUSTMENTS,
   INITIAL_MASK_CONTAINER,
   MaskContainer,
+  ADJUSTMENT_SECTIONS,
 } from '../../../utils/adjustments';
 import { useContextMenu } from '../../../context/ContextMenuContext';
-import { Mask, MaskType, SubMask, MASK_PANEL_CREATION_TYPES, OTHERS_MASK_TYPES } from './Masks';
-import { BrushSettings, OPTION_SEPARATOR, SelectedImage, AppSettings } from '../../ui/AppProperties';
+import { AppSettings, BrushSettings, OPTION_SEPARATOR, SelectedImage } from '../../ui/AppProperties';
 import { createSubMask } from '../../../utils/maskUtils';
 import { usePresets } from '../../../hooks/usePresets';
 
@@ -44,7 +77,7 @@ interface MasksPanelProps {
   onSelectContainer(id: string | null): void;
   onSelectMask(id: string | null): void;
   selectedImage: SelectedImage;
-  setAdjustments(adjustments: Partial<Adjustments>): void;
+  setAdjustments(updater: any): void;
   setBrushSettings(brushSettings: BrushSettings): void;
   setCopiedMask(mask: MaskContainer): void;
   setCustomEscapeHandler(handler: any): void;
@@ -52,15 +85,44 @@ interface MasksPanelProps {
   onDragStateChange?: (isDragging: boolean) => void;
 }
 
-const itemVariants = {
-  hidden: { opacity: 0, x: -15 },
-  visible: (i: number) => ({
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.25, delay: i * 0.05 },
-  }),
-  exit: { opacity: 0, x: -15, transition: { duration: 0.2 } },
+interface DragData {
+  type: 'Container' | 'SubMask' | 'Creation';
+  item?: MaskContainer | SubMask;
+  maskType?: Mask;
+  parentId?: string;
+}
+
+function formatMaskTypeName(type: string) {
+  if (type === Mask.AiSubject) return 'AI Subject';
+  if (type === Mask.AiForeground) return 'AI Foreground';
+  if (type === Mask.AiSky) return 'AI Sky';
+  if (type === Mask.All) return 'Whole Image';
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+const SUB_MASK_CONFIG: Record<Mask, any> = {
+  [Mask.Radial]: { parameters: [{ key: 'feather', label: 'Feather', min: 0, max: 100, step: 1, multiplier: 100, defaultValue: 50 }] },
+  [Mask.Brush]: { showBrushTools: true },
+  [Mask.Linear]: { parameters: [] },
+  [Mask.Color]: { parameters: [] },
+  [Mask.Luminance]: { parameters: [] },
+  [Mask.All]: { parameters: [] },
+  [Mask.AiSubject]: { parameters: [{ key: 'grow', label: 'Grow', min: -100, max: 100, step: 1, defaultValue: 0 }, { key: 'feather', label: 'Feather', min: 0, max: 100, step: 1, defaultValue: 0 }] },
+  [Mask.AiForeground]: { parameters: [{ key: 'grow', label: 'Grow', min: -100, max: 100, step: 1, defaultValue: 0 }, { key: 'feather', label: 'Feather', min: 0, max: 100, step: 1, defaultValue: 0 }] },
+  [Mask.AiSky]: { parameters: [{ key: 'grow', label: 'Grow', min: -100, max: 100, step: 1, defaultValue: 0 }, { key: 'feather', label: 'Feather', min: 0, max: 100, step: 1, defaultValue: 0 }] },
+  [Mask.QuickEraser]: { parameters: [] },
 };
+
+const BrushTools = ({ settings, onSettingsChange }: { settings: any; onSettingsChange: any }) => (
+  <div className="space-y-4 pt-4 border-t border-surface mt-4">
+    <Slider defaultValue={100} label="Brush Size" max={200} min={1} onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, size: Number(e.target.value) }))} step={1} value={settings.size} />
+    <Slider defaultValue={50} label="Brush Feather" max={100} min={0} onChange={(e: any) => onSettingsChange((s: any) => ({ ...s, feather: Number(e.target.value) }))} step={1} value={settings.feather} />
+    <div className="grid grid-cols-2 gap-2 pt-2">
+      <button className={`p-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 ${settings.tool === ToolType.Brush ? 'text-primary bg-surface' : 'bg-surface text-text-secondary hover:bg-card-active'}`} onClick={() => onSettingsChange((s: any) => ({ ...s, tool: ToolType.Brush }))}>Brush</button>
+      <button className={`p-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 ${settings.tool === ToolType.Eraser ? 'text-primary bg-surface' : 'bg-surface text-text-secondary hover:bg-card-active'}`} onClick={() => onSettingsChange((s: any) => ({ ...s, tool: ToolType.Eraser }))}>Eraser</button>
+    </div>
+  </div>
+);
 
 export default function MasksPanel({
   activeMaskContainerId,
@@ -84,478 +146,669 @@ export default function MasksPanel({
   setIsMaskControlHovered,
   onDragStateChange,
 }: MasksPanelProps) {
-  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
-  const [renamingContainerId, setRenamingContainerId] = useState(null);
+  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
+  const [activeDragItem, setActiveDragItem] = useState<DragData | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [tempName, setTempName] = useState('');
-  const { presets } = usePresets(adjustments);
+  const [collapsibleState, setCollapsibleState] = useState<any>({ basic: true, curves: false, color: false, details: false, effects: false });
+  const [copiedSectionAdjustments, setCopiedSectionAdjustments] = useState<any | null>(null);
+  const [isSettingsSectionOpen, setSettingsSectionOpen] = useState(true);
+  const [isSettingsPanelEverOpened, setIsSettingsPanelEverOpened] = useState(false);
+  const hasPerformedInitialSelection = useRef(false);
+  const [isMaskListEmpty, setIsMaskListEmpty] = useState(adjustments.masks.length === 0);
+
   const { showContextMenu } = useContextMenu();
-  const isInitialRender = useRef(true);
-
-  const handleBackToList = useCallback(() => {
-    onSelectContainer(null);
-    onSelectMask(null);
-  }, [onSelectContainer, onSelectMask]);
-
-  const handleFinishRename = () => {
-    if (renamingContainerId && tempName.trim()) {
-      updateContainer(renamingContainerId, { name: tempName.trim() });
-    }
-    setRenamingContainerId(null);
-    setTempName('');
-  };
-
+  const { presets } = usePresets(adjustments);
+  
+  const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'mask-list-root' });
+  
   useEffect(() => {
-    const escapeHandler = () => {
-      if (renamingContainerId) {
-        handleFinishRename();
-      } else if (activeMaskContainerId) {
-        handleBackToList();
-      }
-    };
-
-    if (activeMaskContainerId) {
-      setCustomEscapeHandler(() => escapeHandler);
-    } else {
-      setCustomEscapeHandler(null);
-    }
-
-    return () => setCustomEscapeHandler(null);
-  }, [activeMaskContainerId, renamingContainerId, handleBackToList]);
-
-  useEffect(() => {
-    isInitialRender.current = false;
-  }, []);
-
-  const handleAddMaskContainer = (type: Mask) => {
-    const subMask = createSubMask(type, selectedImage);
-
-    if (adjustments?.crop && subMask.parameters && (type === Mask.Linear || type === Mask.Radial)) {
-      const { x, y, width, height } = adjustments.crop;
-      const { width: imgW, height: imgH } = selectedImage;
-
-      if (imgW && imgH && (width !== imgW || height !== imgH)) {
-        const ratioX = width / imgW;
-        const ratioY = height / imgH;
-        const cx = x + width / 2;
-        const cy = y + height / 2;
-        const ox = imgW / 2;
-        const oy = imgH / 2;
-
-        const p = { ...subMask.parameters };
-
-        if (type === Mask.Linear) {
-          if (typeof p.startX === 'number') p.startX = cx + (p.startX - ox) * ratioX;
-          if (typeof p.endX === 'number') p.endX = cx + (p.endX - ox) * ratioX;
-          if (typeof p.startY === 'number') p.startY = cy + (p.startY - oy) * ratioY;
-          if (typeof p.endY === 'number') p.endY = cy + (p.endY - oy) * ratioY;
-        } else if (type === Mask.Radial) {
-          if (typeof p.centerX === 'number') p.centerX = cx + (p.centerX - ox) * ratioX;
-          if (typeof p.centerY === 'number') p.centerY = cy + (p.centerY - oy) * ratioY;
-          if (typeof p.radiusX === 'number') p.radiusX *= ratioX;
-          if (typeof p.radiusY === 'number') p.radiusY *= ratioY;
-        }
-        subMask.parameters = p;
-      }
-    }
-
-    const newContainer = {
-      ...INITIAL_MASK_CONTAINER,
-      id: uuidv4(),
-      name: `Mask ${adjustments.masks.length + 1}`,
-      subMasks: [subMask],
-    };
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, masks: [...(prev.masks || []), newContainer] }));
-    onSelectContainer(newContainer.id);
-    onSelectMask(subMask.id);
-    if (type === Mask.AiForeground) {
-      onGenerateAiForegroundMask(subMask.id);
-    } else if (type === Mask.AiSky) {
-      onGenerateAiSkyMask(subMask.id);
-    }
-  };
-
-  const handleAddOthersMask = (event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const options = OTHERS_MASK_TYPES.map((maskType) => ({
-      label: maskType.name,
-      icon: maskType.icon,
-      onClick: () => handleAddMaskContainer(maskType.type),
-    }));
-    showContextMenu(rect.left, rect.bottom + 5, options);
-  };
-
-  const handleDeleteContainer = (id: string) => {
-    setDeletingItemId(id);
-    setTimeout(() => {
-      if (activeMaskContainerId === id) onSelectContainer(null);
-      const container = adjustments.masks.find((c: MaskContainer) => c.id === id);
-      if (container && container.subMasks.some((sm: SubMask) => sm.id === activeMaskId)) {
+    if (!hasPerformedInitialSelection.current && !activeMaskContainerId && adjustments.masks.length > 0) {
+      const lastMask = adjustments.masks[adjustments.masks.length - 1];
+      if (lastMask) {
+        onSelectContainer(lastMask.id);
         onSelectMask(null);
       }
-      setAdjustments((prev: Partial<Adjustments>) => ({
-        ...prev,
-        masks: (prev.masks || []).filter((c: MaskContainer) => c.id !== id),
-      }));
-      setDeletingItemId(null);
-    }, 200);
-  };
+    }
 
-  const handleToggleContainerVisibility = (id: string) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({
-      ...prev,
-      masks: prev.masks?.map((c: MaskContainer) => (c.id === id ? { ...c, visible: !c.visible } : c)),
-    }));
-  };
+    if (activeMaskContainerId) {
+      hasPerformedInitialSelection.current = true;
 
-  const updateContainer = (containerId: string, updatedData: any) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({
-      ...prev,
-      masks: (prev.masks || []).map((c: MaskContainer) => (c.id === containerId ? { ...c, ...updatedData } : c)),
-    }));
-  };
+      setExpandedContainers(prev => {
+        if (prev.has(activeMaskContainerId)) {
+          return prev;
+        }
+        return new Set(prev).add(activeMaskContainerId);
+      });
+    }
 
-  const updateSubMask = (subMaskId: string, updatedData: any) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({
-      ...prev,
-      masks: prev.masks?.map((c: MaskContainer) => ({
-        ...c,
-        subMasks: c.subMasks.map((sm: SubMask) => (sm.id === subMaskId ? { ...sm, ...updatedData } : sm)),
-      })),
-    }));
+    if (activeMaskContainerId || adjustments.masks.length > 0) {
+      setIsSettingsPanelEverOpened(true);
+    }
+    
+  }, [activeMaskContainerId, adjustments.masks, onSelectContainer, onSelectMask]);
+
+
+  useEffect(() => {
+    const handler = () => {
+      if (renamingId) { setRenamingId(null); setTempName(''); }
+      else if (activeMaskId) onSelectMask(null);
+      else if (activeMaskContainerId) onSelectContainer(null);
+    };
+    if (activeMaskContainerId || renamingId) setCustomEscapeHandler(() => handler);
+    else setCustomEscapeHandler(null);
+    return () => setCustomEscapeHandler(null);
+  }, [activeMaskContainerId, activeMaskId, renamingId, onSelectContainer, onSelectMask, setCustomEscapeHandler]);
+
+  const handleDeselect = () => { onSelectContainer(null); onSelectMask(null); };
+
+  const handleToggleExpand = (id: string) => {
+    setExpandedContainers(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
   const handleResetAllMasks = () => {
-    onSelectContainer(null);
-    onSelectMask(null);
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, masks: [] }));
+    handleDeselect();
+    setAdjustments((prev: any) => ({ ...prev, masks: [] }));
   };
 
-  const handleOpenContainerForEditing = (container: MaskContainer) => {
-    onSelectContainer(container.id);
-    const lastSubMaskId = container.subMasks.length > 0 ? container.subMasks[container.subMasks.length - 1].id : null;
-    onSelectMask(lastSubMaskId);
+  const createMaskLogic = (type: Mask) => {
+      const subMask = createSubMask(type, selectedImage);
+      if (adjustments?.crop && subMask.parameters && (type === Mask.Linear || type === Mask.Radial)) {
+        const { x, y, width, height } = adjustments.crop;
+        const { width: imgW, height: imgH } = selectedImage;
+        if (imgW && imgH) {
+           const ratioX = width / imgW; const ratioY = height / imgH;
+           const cx = x + width / 2; const cy = y + height / 2;
+           const ox = imgW / 2; const oy = imgH / 2;
+           const p = { ...subMask.parameters };
+           if (type === Mask.Linear) { p.startX = cx + (p.startX - ox) * ratioX; p.endX = cx + (p.endX - ox) * ratioX; p.startY = cy + (p.startY - oy) * ratioY; p.endY = cy + (p.endY - oy) * ratioY; } 
+           else if (type === Mask.Radial) { p.centerX = cx + (p.centerX - ox) * ratioX; p.centerY = cy + (p.centerY - oy) * ratioY; p.radiusX *= ratioX; p.radiusY *= ratioY; }
+           subMask.parameters = p;
+        }
+      }
+      return subMask;
   };
 
-  const handleDeselect = () => onSelectMask(null);
-
-  const handleStartRename = (container: MaskContainer) => {
-    setRenamingContainerId(container.id);
-    setTempName(container.name);
-  };
-
-  const handleRenameKeyDown = (e: any) => {
-    if (e.key === 'Enter') {
-      handleFinishRename();
-    } else if (e.key === 'Escape') {
-      setRenamingContainerId(null);
-      setTempName('');
+  const handleAddMaskContainer = (type: Mask) => {
+    if (adjustments.masks.length === 0) {
+      setIsMaskListEmpty(false);
     }
+    const subMask = createMaskLogic(type);
+    const newContainer = { ...INITIAL_MASK_CONTAINER, id: uuidv4(), name: `Mask ${adjustments.masks.length + 1}`, subMasks: [subMask] };
+    setAdjustments((prev: Adjustments) => ({ ...prev, masks: [...(prev.masks || []), newContainer] }));
+    onSelectContainer(newContainer.id);
+    onSelectMask(subMask.id);
+    setExpandedContainers(prev => new Set(prev).add(newContainer.id));
+    if (type === Mask.AiForeground) onGenerateAiForegroundMask(subMask.id);
+    else if (type === Mask.AiSky) onGenerateAiSkyMask(subMask.id);
   };
 
-  const handleDuplicateContainer = (containerToDuplicate: MaskContainer) => {
-    const newContainer = JSON.parse(JSON.stringify(containerToDuplicate));
-    newContainer.id = uuidv4();
-    newContainer.name = `${containerToDuplicate.name} Copy`;
-    newContainer.subMasks = newContainer.subMasks.map((sm: SubMask) => ({ ...sm, id: uuidv4() }));
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, masks: [...(prev.masks || []), newContainer] }));
-  };
-
-  const handlePasteContainer = () => {
-    if (!copiedMask) {
-      return;
-    }
-    const newContainer = JSON.parse(JSON.stringify(copiedMask));
-    newContainer.id = uuidv4();
-    newContainer.subMasks = newContainer.subMasks.map((sm: SubMask) => ({ ...sm, id: uuidv4() }));
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, masks: [...(prev.masks || []), newContainer] }));
-  };
-
-  const handlePasteContainerAdjustments = (targetContainerId: string) => {
-    if (!copiedMask) {
-      return;
-    }
-    setAdjustments((prev: Partial<Adjustments>) => ({
-      ...prev,
-      masks: prev.masks?.map((c: MaskContainer) =>
-        c.id === targetContainerId ? { ...c, adjustments: JSON.parse(JSON.stringify(copiedMask.adjustments)) } : c,
-      ),
-    }));
-  };
-
-  const handleApplyPresetToMask = (containerId: string, presetAdjustments: Partial<Adjustments>) => {
+  const handleAddSubMask = (containerId: string, type: Mask) => {
+    const subMask = createMaskLogic(type);
     setAdjustments((prev: Adjustments) => ({
-      ...prev,
-      masks: prev.masks.map((c: MaskContainer) => {
-        if (c.id === containerId) {
-          const newMaskAdjustments = {
-            ...c.adjustments,
-            ...presetAdjustments,
-          };
-          newMaskAdjustments.sectionVisibility = {
-            ...c.adjustments.sectionVisibility,
-            ...presetAdjustments.sectionVisibility,
-          };
-          return { ...c, adjustments: newMaskAdjustments };
-        }
-        return c;
-      }),
+      ...prev, masks: prev.masks?.map((c: MaskContainer) => c.id === containerId ? { ...c, subMasks: [...c.subMasks, subMask] } : c),
     }));
+    onSelectContainer(containerId);
+    onSelectMask(subMask.id);
+    setExpandedContainers(prev => new Set(prev).add(containerId));
+    if (type === Mask.AiForeground) onGenerateAiForegroundMask(subMask.id);
+    else if (type === Mask.AiSky) onGenerateAiSkyMask(subMask.id);
   };
 
-  const generatePresetSubmenu = (presetList: any[], containerId: string): any[] => {
-    return presetList
-      .map((item: any) => {
-        if (item.folder) {
-          return {
-            label: item.folder.name,
-            icon: FolderIcon,
-            submenu: generatePresetSubmenu(item.folder.children, containerId),
-          };
-        }
-        if (item.preset) {
-          return {
-            label: item.preset.name,
-            onClick: () => handleApplyPresetToMask(containerId, item.preset.adjustments),
-          };
-        }
-        if (item.adjustments) {
-          return {
-            label: item.name,
-            onClick: () => handleApplyPresetToMask(containerId, item.adjustments),
-          };
-        }
-        return null;
-      })
-      .filter(Boolean);
+  const handleGridClick = (type: Mask) => {
+    if (activeMaskContainerId) handleAddSubMask(activeMaskContainerId, type);
+    else handleAddMaskContainer(type);
   };
 
-  const handleContainerContextMenu = (event: any, container: MaskContainer) => {
-    event.preventDefault();
+  const handleAddOthersMask = (event: React.MouseEvent) => {
     event.stopPropagation();
-
-    const presetSubmenu = generatePresetSubmenu(presets, container.id);
-
-    showContextMenu(event.clientX, event.clientY, [
-      { label: 'Edit Mask', icon: Edit, onClick: () => handleOpenContainerForEditing(container) },
-      { label: 'Rename Mask', icon: FileEdit, onClick: () => handleStartRename(container) },
-      { type: OPTION_SEPARATOR },
-      { label: 'Duplicate Mask', icon: PlusSquare, onClick: () => handleDuplicateContainer(container) },
-      { label: 'Copy Mask', icon: Copy, onClick: () => setCopiedMask(container) },
-      {
-        label: 'Paste Adjustments',
-        icon: ClipboardPaste,
-        disabled: !copiedMask,
-        onClick: () => handlePasteContainerAdjustments(container.id),
-      },
-      {
-        label: 'Apply Preset',
-        icon: Bookmark,
-        submenu: presetSubmenu.length > 0 ? presetSubmenu : [{ label: 'No presets found', disabled: true }],
-      },
-      { type: OPTION_SEPARATOR },
-      { label: 'Delete Mask', icon: Trash2, isDestructive: true, onClick: () => handleDeleteContainer(container.id) },
-    ]);
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const options = OTHERS_MASK_TYPES.map((maskType) => ({ label: maskType.name, icon: maskType.icon, onClick: () => handleGridClick(maskType.type) }));
+    showContextMenu(rect.left, rect.bottom + 5, options);
   };
 
-  const handlePanelContextMenu = (event: any) => {
-    if (event.target !== event.currentTarget) {
+  const updateContainer = (id: string, data: any) => setAdjustments((prev: Adjustments) => ({ ...prev, masks: prev.masks.map(m => m.id === id ? { ...m, ...data } : m) }));
+  const updateSubMask = (id: string, data: any) => setAdjustments((prev: Adjustments) => ({ ...prev, masks: prev.masks.map(m => ({ ...m, subMasks: m.subMasks.map(sm => sm.id === id ? { ...sm, ...data } : sm) })) }));
+  
+  const handleDeleteContainer = (id: string) => {
+    if (activeMaskContainerId === id) handleDeselect();
+    setAdjustments((prev: Adjustments) => ({ ...prev, masks: prev.masks.filter(m => m.id !== id) }));
+  };
+
+  const handleDeleteSubMask = (containerId: string, subMaskId: string) => {
+    if (activeMaskId === subMaskId) onSelectMask(null);
+    setAdjustments((prev: Adjustments) => ({ ...prev, masks: prev.masks.map(m => m.id === containerId ? { ...m, subMasks: m.subMasks.filter(sm => sm.id !== subMaskId) } : m) }));
+  };
+
+  const handleDuplicateContainer = (container: MaskContainer) => {
+    if (adjustments.masks.length === 0) {
+      setIsMaskListEmpty(false);
+    }
+    const newC = JSON.parse(JSON.stringify(container));
+    newC.id = uuidv4();
+    newC.name = `${container.name} Copy`;
+    newC.subMasks.forEach((sm: any) => sm.id = uuidv4());
+    setAdjustments((prev: Adjustments) => ({ ...prev, masks: [...prev.masks, newC] }));
+  };
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragItem(event.active.data.current as DragData);
+    if (onDragStateChange) onDragStateChange(true);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragItem(null);
+    if (onDragStateChange) onDragStateChange(false);
+
+    const dragData = active.data.current as DragData;
+    const overData = over?.data.current as DragData;
+
+    if (dragData.type === 'Creation' && dragData.maskType) {
+      if (overData?.type === 'Container') handleAddSubMask(overData.item!.id, dragData.maskType);
+      else if (overData?.type === 'SubMask') handleAddSubMask(overData.parentId!, dragData.maskType);
+      else handleAddMaskContainer(dragData.maskType);
       return;
     }
-    event.preventDefault();
-    event.stopPropagation();
-    showContextMenu(event.clientX, event.clientY, [
-      { label: 'Paste Mask', icon: ClipboardPaste, disabled: !copiedMask, onClick: handlePasteContainer },
-    ]);
+
+    if (dragData.type === 'SubMask') {
+      const sourceContainerId = dragData.parentId;
+      if (!sourceContainerId) return;
+
+      if (over?.id === 'mask-list-root' || !over) {
+        setAdjustments((prev: Adjustments) => {
+          const newMasks = JSON.parse(JSON.stringify(prev.masks));
+          const sourceContainer = newMasks.find((m: MaskContainer) => m.id === sourceContainerId);
+          if (!sourceContainer) return prev;
+          const subMaskIndex = sourceContainer.subMasks.findIndex((sm: SubMask) => sm.id === dragData.item!.id);
+          if (subMaskIndex === -1) return prev;
+          const [movedSubMask] = sourceContainer.subMasks.splice(subMaskIndex, 1);
+          if (adjustments.masks.length === 0) {
+            setIsMaskListEmpty(false);
+          }
+          const newContainer = { ...INITIAL_MASK_CONTAINER, id: uuidv4(), name: `Mask ${newMasks.length + 1}`, subMasks: [movedSubMask] };
+          newMasks.push(newContainer);
+          setTimeout(() => {
+            onSelectContainer(newContainer.id);
+            onSelectMask(movedSubMask.id);
+            setExpandedContainers(p => new Set(p).add(newContainer.id));
+          }, 0);
+          return { ...prev, masks: newMasks };
+        });
+        return;
+      }
+      
+      if (!over) return;
+
+      let targetContainerId = null;
+      if (overData?.type === 'Container') targetContainerId = overData.item!.id;
+      else if (overData?.type === 'SubMask') targetContainerId = overData.parentId;
+
+      if (targetContainerId) {
+        setAdjustments((prev: Adjustments) => {
+          const newMasks = prev.masks.map(m => ({ ...m, subMasks: [...m.subMasks] }));
+          const sourceContainer = newMasks.find(m => m.id === sourceContainerId);
+          const targetContainer = newMasks.find(m => m.id === targetContainerId);
+          if (!sourceContainer || !targetContainer) return prev;
+          const subMaskIndex = sourceContainer.subMasks.findIndex(sm => sm.id === dragData.item!.id);
+          if (subMaskIndex === -1) return prev;
+          const [movedSubMask] = sourceContainer.subMasks.splice(subMaskIndex, 1);
+          if (sourceContainerId === targetContainerId) {
+            const overSubMaskIndex = sourceContainer.subMasks.findIndex(sm => sm.id === over.id);
+            const insertIndex = overSubMaskIndex >= 0 ? overSubMaskIndex : sourceContainer.subMasks.length;
+            sourceContainer.subMasks.splice(insertIndex, 0, movedSubMask);
+          } else {
+            targetContainer.subMasks.push(movedSubMask);
+            setExpandedContainers(p => new Set(p).add(targetContainerId!));
+          }
+          return { ...prev, masks: newMasks };
+        });
+      }
+    }
   };
 
-  const editingContainer = adjustments.masks.find((m: MaskContainer) => m.id === activeMaskContainerId);
+  const handlePanelContextMenu = (e: React.MouseEvent) => {
+      e.preventDefault();
+      const allTypes = [...MASK_PANEL_CREATION_TYPES.filter(m => m.id !== 'others'), ...OTHERS_MASK_TYPES];
+      const newMaskSubMenu = allTypes.map(m => ({ label: m.name, icon: m.icon, onClick: () => handleAddMaskContainer(m.type) }));
+      const handlePaste = () => {
+          if (copiedMask) {
+              if (adjustments.masks.length === 0) {
+                  setIsMaskListEmpty(false);
+              }
+              const newC = JSON.parse(JSON.stringify(copiedMask));
+              newC.id = uuidv4();
+              newC.subMasks.forEach((sm: any) => (sm.id = uuidv4()));
+              setAdjustments((prev: Adjustments) => ({ ...prev, masks: [...prev.masks, newC] }));
+          }
+      };
+      showContextMenu(e.clientX, e.clientY, [
+          { label: 'Paste Mask', icon: ClipboardPaste, disabled: !copiedMask, onClick: handlePaste },
+          { label: 'Add New Mask', icon: Plus, submenu: newMaskSubMenu }
+      ]);
+  };
 
-  if (editingContainer) {
-    const activeSubMask = editingContainer.subMasks.find((sm: SubMask) => sm.id === activeMaskId) ?? null;
-    return (
-      <div className="flex flex-col h-full">
-        <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface h-[69px]">
-          <button
-            className="p-2 rounded-full hover:bg-surface transition-colors flex-shrink-0"
-            onClick={handleBackToList}
-            title="Back to Mask List"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div className="flex-grow min-w-0 text-center px-2">
-            {renamingContainerId === editingContainer.id ? (
-              <input
-                autoFocus
-                className="bg-transparent w-full text-xl font-bold text-primary text-shadow-shiny focus:outline-none focus:ring-1 focus:ring-accent rounded px-1 py-1 text-center"
-                onBlur={handleFinishRename}
-                onChange={(e: any) => setTempName(e.target.value)}
-                onClick={(e: any) => e.stopPropagation()}
-                onKeyDown={handleRenameKeyDown}
-                type="text"
-                value={tempName}
-              />
-            ) : (
-              <h2
-                className="text-xl font-bold text-primary text-shadow-shiny truncate cursor-pointer px-4 py-4"
-                onClick={() => handleStartRename(editingContainer)}
-                title="Click to rename"
-              >
-                {editingContainer.name}
-              </h2>
-            )}
-          </div>
-          <button
-            className="p-2 rounded-full hover:bg-surface transition-colors flex-shrink-0"
-            onClick={() => updateContainer(editingContainer.id, { adjustments: { ...INITIAL_MASK_ADJUSTMENTS } })}
-            title="Reset Mask Adjustments"
-          >
-            <RotateCcw size={18} />
-          </button>
-        </div>
-        <div className="flex-grow overflow-y-auto">
-          <MaskControls
-            activeMaskId={activeMaskId}
-            activeSubMask={activeSubMask}
-            adjustments={adjustments}
-            aiModelDownloadStatus={aiModelDownloadStatus}
-            appSettings={appSettings}
-            brushSettings={brushSettings}
-            editingMask={editingContainer}
-            histogram={histogram}
-            isGeneratingAiMask={isGeneratingAiMask}
-            onGenerateAiForegroundMask={onGenerateAiForegroundMask}
-            onGenerateAiSkyMask={onGenerateAiSkyMask}
-            onSelectMask={onSelectMask}
-            selectedImage={selectedImage}
-            setAdjustments={setAdjustments}
-            setBrushSettings={setBrushSettings}
-            setIsMaskControlHovered={setIsMaskControlHovered}
-            updateMask={updateContainer}
-            updateSubMask={updateSubMask}
-            onDragStateChange={onDragStateChange}
-          />
-        </div>
-      </div>
-    );
-  }
+  const activeContainer = adjustments.masks.find(m => m.id === activeMaskContainerId);
+  const activeSubMaskData = activeContainer?.subMasks.find(sm => sm.id === activeMaskId);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface h-[69px]">
-        <h2 className="text-xl font-bold text-primary text-shadow-shiny">Masking</h2>
-        <button
-          className="p-2 rounded-full hover:bg-surface transition-colors"
-          disabled={adjustments.masks.length === 0}
-          onClick={handleResetAllMasks}
-          title="Reset All Masks"
-        >
-          <RotateCcw size={18} />
-        </button>
-      </div>
-      <div
-        className="flex-grow overflow-y-auto p-4 text-text-secondary space-y-6"
-        onClick={handleDeselect}
-        onContextMenu={handlePanelContextMenu}
-      >
-        <div onClick={(e: any) => e.stopPropagation()}>
-          {aiModelDownloadStatus && (
-            <div className="p-2 text-center text-xs text-text-secondary bg-surface rounded-md mb-4">
-              Downloading AI Model: {aiModelDownloadStatus}
-            </div>
-          )}
-          <p className="text-sm mb-3 font-semibold text-text-primary">Create New Mask</p>
-          <div className="grid grid-cols-3 gap-2">
-            {MASK_PANEL_CREATION_TYPES.map((maskType: MaskType) => (
-              <button
-                className={`bg-surface text-text-primary rounded-lg p-2 flex flex-col items-center justify-center gap-1.5 aspect-square transition-colors ${
-                  maskType.disabled || isGeneratingAiMask ? 'opacity-50 cursor-not-allowed' : 'hover:bg-card-active'
-                }`}
-                disabled={maskType.disabled || isGeneratingAiMask}
-                key={maskType.type || maskType.id}
-                onClick={(e) => {
-                  if (maskType.id === 'others') {
-                    handleAddOthersMask(e);
-                  } else {
-                    handleAddMaskContainer(maskType.type);
-                  }
-                }}
-                title={maskType.disabled ? `${maskType.name} (Coming Soon)` : `Add ${maskType.name} Mask`}
-              >
-                <maskType.icon size={24} />
-                <span className="text-xs">{maskType.name}</span>
-              </button>
-            ))}
-          </div>
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
+      <div className="flex flex-col h-full select-none overflow-hidden" onClick={handleDeselect} onContextMenu={handlePanelContextMenu}>
+        
+        <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface h-[69px]">
+            <h2 className="text-xl font-bold text-primary text-shadow-shiny">Masking</h2>
+            <button className="p-2 rounded-full hover:bg-surface transition-colors" disabled={adjustments.masks.length === 0} onClick={handleResetAllMasks} title="Reset All Masks">
+               <RotateCcw size={18} />
+            </button>
         </div>
-        {adjustments.masks.length > 0 && (
-          <div onClick={(e: any) => e.stopPropagation()}>
-            <p className="text-sm mb-3 font-semibold text-text-primary">Masks ({adjustments.masks.length})</p>
-            <div className="flex flex-col gap-2">
-              <AnimatePresence>
-                {adjustments.masks
-                  .filter((c: MaskContainer) => c.id !== deletingItemId)
-                  .map((container: MaskContainer, index: number) => (
-                    <motion.div
-                      animate="visible"
-                      className={`group p-2 rounded-lg flex items-center justify-between cursor-pointer transition-all duration-200 ${
-                        activeMaskContainerId === container.id ? 'bg-accent/20' : 'bg-surface hover:bg-card-active'
-                      } ${!container.visible ? 'opacity-60' : 'opacity-100'}`}
-                      custom={index}
-                      exit="exit"
-                      initial={isInitialRender.current ? 'hidden' : false}
-                      key={container.id}
-                      layout
-                      onClick={() => handleOpenContainerForEditing(container)}
-                      onContextMenu={(e: any) => handleContainerContextMenu(e, container)}
-                      variants={itemVariants}
-                    >
-                      <div className="flex items-center gap-3 flex-grow min-w-0">
-                        <ChevronsRight size={16} className="text-text-secondary flex-shrink-0" />
-                        {renamingContainerId === container.id ? (
-                          <input
-                            autoFocus
-                            className="bg-transparent w-full text-sm font-medium text-text-primary focus:outline-none focus:ring-1 focus:ring-accent rounded px-1 -mx-1"
-                            onBlur={handleFinishRename}
-                            onChange={(e: any) => setTempName(e.target.value)}
-                            onClick={(e: any) => e.stopPropagation()}
-                            onContextMenu={(e: any) => e.stopPropagation()}
-                            onKeyDown={handleRenameKeyDown}
-                            type="text"
-                            value={tempName}
-                          />
-                        ) : (
-                          <span className="font-medium text-sm text-text-primary truncate">{container.name}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <button
-                          className="p-1.5 rounded-full text-text-secondary hover:bg-bg-primary"
-                          onClick={(e: any) => {
-                            e.stopPropagation();
-                            handleToggleContainerVisibility(container.id);
-                          }}
-                          title={container.visible ? 'Hide Mask' : 'Show Mask'}
-                        >
-                          {container.visible ? <Eye size={16} /> : <EyeOff size={16} />}
-                        </button>
-                        <button
-                          className="p-1.5 rounded-full text-text-secondary hover:text-red-500 hover:bg-red-500/10"
-                          onClick={(e: any) => {
-                            e.stopPropagation();
-                            handleDeleteContainer(container.id);
-                          }}
-                          title="Delete Mask"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))}
-              </AnimatePresence>
+
+        <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col min-h-0">
+            <div className="p-4 pb-2 z-10 flex-shrink-0">
+                <p className="text-sm mb-3 font-semibold text-text-primary">
+                  {activeMaskContainerId ? "Add to Mask" : "Create New Mask"}
+                </p>
+                <div className="grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
+                    {MASK_PANEL_CREATION_TYPES.map((maskType: MaskType) => (
+                    <DraggableGridItem 
+                        key={maskType.type || maskType.id} maskType={maskType} isGeneratingAiMask={isGeneratingAiMask} 
+                        onClick={(e:any) => maskType.id === 'others' ? handleAddOthersMask(e) : handleGridClick(maskType.type)}
+                    />
+                    ))}
+                </div>
             </div>
-          </div>
-        )}
+            
+            <AnimatePresence>
+                {isSettingsPanelEverOpened && (
+                    <motion.div 
+                        ref={setRootDroppableRef}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className={`flex-col px-4 pb-2 space-y-1 transition-colors ${isRootOver ? 'bg-surface' : ''}`}
+                    >
+                        <p className="text-sm my-3 font-semibold text-text-primary">Masks</p>
+                        {isMaskListEmpty && <div className="text-center text-text-secondary text-sm py-4 opacity-70">No masks created.</div>}
+                        
+                        <AnimatePresence 
+                          initial={false} 
+                          mode='popLayout'
+                          onExitComplete={() => {
+                              if (adjustments.masks.length === 0) {
+                                  setIsMaskListEmpty(true);
+                              }
+                          }}
+                        >
+                            {adjustments.masks.map((container) => (
+                               <ContainerRow 
+                                 key={container.id} container={container} 
+                                 isSelected={activeMaskContainerId === container.id && activeMaskId === null}
+                                 hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
+                                 isExpanded={expandedContainers.has(container.id)}
+                                 onToggle={() => handleToggleExpand(container.id)} onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
+                                 renamingId={renamingId} setRenamingId={setRenamingId} tempName={tempName} setTempName={setTempName}
+                                 updateContainer={updateContainer} handleDelete={handleDeleteContainer} handleDuplicate={handleDuplicateContainer} 
+                                 setCopiedMask={setCopiedMask} copiedMask={copiedMask} presets={presets}
+                               >
+                                 <AnimatePresence initial={false}>
+                                    {expandedContainers.has(container.id) && (
+                                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-2 border-l border-border-color/20 ml-[15px]" layout>
+                                            {container.subMasks.length > 0 ? container.subMasks.map((subMask) => (
+                                                <SubMaskRow 
+                                                  key={subMask.id} subMask={subMask} containerId={container.id} isActive={activeMaskId === subMask.id}
+                                                  parentVisible={container.visible}
+                                                  onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
+                                                  updateSubMask={updateSubMask} handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
+                                                />
+                                            )) : (
+                                              <div className="p-4 text-xs text-text-secondary text-center italic">
+                                                No mask components.
+                                              </div>
+                                            )}
+                                        </motion.div>
+                                    )}
+                                 </AnimatePresence>
+                               </ContainerRow>
+                            ))}
+                        </AnimatePresence>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isSettingsPanelEverOpened && (
+                    <motion.div
+                        layout
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeOut' }}
+                        className="flex-1 min-h-0"
+                    >
+                        <p className="text-sm my-3 font-semibold text-text-primary px-4">Mask Adjustments</p>
+                        <SettingsPanel 
+                            container={activeContainer} activeSubMask={activeSubMaskData || null}
+                            aiModelDownloadStatus={aiModelDownloadStatus} brushSettings={brushSettings} setBrushSettings={setBrushSettings}
+                            updateContainer={updateContainer} updateSubMask={updateSubMask} histogram={histogram}
+                            appSettings={appSettings} isGeneratingAiMask={isGeneratingAiMask} setIsMaskControlHovered={setIsMaskControlHovered}
+                            collapsibleState={collapsibleState} setCollapsibleState={setCollapsibleState}
+                            copiedSectionAdjustments={copiedSectionAdjustments} setCopiedSectionAdjustments={setCopiedSectionAdjustments}
+                            onDragStateChange={onDragStateChange} isSettingsSectionOpen={isSettingsSectionOpen} setSettingsSectionOpen={setSettingsSectionOpen}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+
       </div>
+
+      <DragOverlay dropAnimation={{ duration: 150, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
+         {activeDragItem ? (
+            <div className="w-[var(--sidebar-width,280px)] pointer-events-none">
+              {activeDragItem.type === 'Container' && activeDragItem.item && (
+                <div className="flex items-center gap-2 p-2 rounded-md bg-surface shadow-2xl opacity-90 ring-1 ring-black/10">
+                    <div className="text-text-secondary"><FolderIcon size={18}/></div>
+                    <span className="text-sm font-medium text-text-primary flex-1 truncate">{(activeDragItem.item as MaskContainer).name}</span>
+                    <div className="flex gap-1.5 opacity-50">
+                       <Eye size={16} className="text-text-secondary"/>
+                       <Trash2 size={16} className="text-text-secondary"/>
+                    </div>
+                </div>
+              )}
+
+              {activeDragItem.type === 'SubMask' && activeDragItem.item && (
+                 <div className="flex items-center gap-2 p-2 rounded-md bg-surface shadow-2xl opacity-90 ring-1 ring-black/10 ml-[15px]">
+                    {(() => {
+                      const sm = activeDragItem.item as SubMask;
+                      const Icon = MASK_ICON_MAP[sm.type] || Circle;
+                      return <Icon size={16} className="text-text-secondary flex-shrink-0 ml-1" />;
+                    })()}
+                    <span className="text-sm text-text-primary flex-1 truncate">{formatMaskTypeName((activeDragItem.item as SubMask).type)}</span>
+                    <div className="flex gap-1.5 opacity-50">
+                       <Plus size={14} className="text-text-secondary"/>
+                       <Eye size={14} className="text-text-secondary"/>
+                       <Trash2 size={14} className="text-text-secondary"/>
+                    </div>
+                 </div>
+              )}
+
+              {activeDragItem.type === 'Creation' && (
+                 <div className="bg-surface text-text-primary rounded-lg p-2 flex flex-col items-center justify-center gap-1.5 aspect-square w-20 shadow-xl opacity-90">
+                     {(() => {
+                        const maskType = MASK_PANEL_CREATION_TYPES.find(m => m.type === activeDragItem.maskType) 
+                                      || OTHERS_MASK_TYPES.find(m => m.type === activeDragItem.maskType);
+                        const Icon = maskType?.icon || Circle;
+                        return (
+                          <>
+                             <Icon size={24} />
+                             <span className="text-xs text-center">{activeDragItem.maskType ? formatMaskTypeName(activeDragItem.maskType) : 'Mask'}</span>
+                          </>
+                        );
+                     })()}
+                 </div>
+              )}
+            </div>
+         ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function DraggableGridItem({ maskType, isGeneratingAiMask, onClick }: any) {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `create-${maskType.id || maskType.type}`, data: { type: 'Creation', maskType: maskType.type } });
+    return (
+        <button
+            ref={setNodeRef} {...listeners} {...attributes} disabled={maskType.disabled || isGeneratingAiMask} onClick={onClick}
+            className={`bg-surface text-text-primary rounded-lg p-2 flex flex-col items-center justify-center gap-1.5 aspect-square transition-colors 
+                ${maskType.disabled || isGeneratingAiMask ? 'opacity-50 cursor-not-allowed' : 'hover:bg-card-active active:bg-accent/20'} ${isDragging ? 'opacity-50' : ''}`}
+            title={maskType.disabled ? 'Coming Soon' : `Add ${maskType.name}`}
+        >
+            <maskType.icon size={24} /> <span className="text-xs">{maskType.name}</span>
+        </button>
+    );
+}
+
+function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect, children, renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete, handleDuplicate, setCopiedMask, copiedMask, presets }: any) {
+  const { setNodeRef, isOver } = useDroppable({ id: container.id, data: { type: 'Container', item: container } });
+  const { showContextMenu } = useContextMenu();
+
+  const handleRenameSubmit = () => { if (tempName.trim()) updateContainer(container.id, { name: tempName.trim() }); setRenamingId(null); };
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const generatePresetSubmenu = (list: any[]): any[] => list.map(item => {
+        if (item.folder) return { label: item.folder.name, icon: FolderIcon, submenu: generatePresetSubmenu(item.folder.children) };
+        if (item.preset || item.adjustments) return { label: item.name || item.preset.name, onClick: () => { const newAdj = { ...container.adjustments, ...(item.adjustments || item.preset.adjustments) }; newAdj.sectionVisibility = { ...container.adjustments.sectionVisibility, ...newAdj.sectionVisibility }; updateContainer(container.id, { adjustments: newAdj }); } };
+        return null;
+    }).filter(Boolean);
+    showContextMenu(e.clientX, e.clientY, [
+      { label: 'Rename', icon: FileEdit, onClick: () => { setRenamingId(container.id); setTempName(container.name); } },
+      { label: 'Duplicate', icon: PlusSquare, onClick: () => handleDuplicate(container) },
+      { label: 'Copy', icon: Copy, onClick: () => setCopiedMask(container) },
+      { label: 'Paste Adjustments', icon: ClipboardPaste, disabled: !copiedMask, onClick: () => { if (copiedMask) updateContainer(container.id, { adjustments: { ...copiedMask.adjustments } }); }},
+      { label: 'Apply Preset', icon: Bookmark, submenu: generatePresetSubmenu(presets).length ? generatePresetSubmenu(presets) : [{label: 'No presets', disabled: true}] },
+      { type: OPTION_SEPARATOR },
+      { label: 'Delete Mask', icon: Trash2, isDestructive: true, onClick: () => handleDelete(container.id) },
+    ]);
+  };
+
+  return (
+    <motion.div layout="position" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }} ref={setNodeRef} className="mb-0.5 overflow-hidden">
+        <div 
+           className={`flex items-center gap-2 p-2 rounded-md transition-colors group 
+             ${isSelected ? 'bg-surface' : 'hover:bg-card-active'} 
+             ${isOver ? 'bg-card-active' : ''}`}
+           onClick={(e) => { e.stopPropagation(); onSelect(); }}
+           onContextMenu={onContextMenu}
+        >
+            <div onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`p-0.5 rounded transition-colors cursor-pointer ${hasActiveChild ? 'text-text-primary' : isExpanded ? 'text-primary' : 'text-text-secondary'}`}>
+               {isExpanded ? <FolderOpen size={18}/> : <FolderIcon size={18}/>}
+            </div>
+            <div className="flex-1 min-w-0 cursor-pointer" onDoubleClick={(e) => { e.stopPropagation(); onToggle(); }}>
+               {renamingId === container.id ? (
+                  <input autoFocus className="bg-bg-primary text-sm w-full rounded px-1 outline-none border border-accent" value={tempName} onChange={(e) => setTempName(e.target.value)} onBlur={handleRenameSubmit} onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()} onClick={(e) => e.stopPropagation()} />
+               ) : (
+                  <span className={`text-sm font-medium truncate select-none ${isSelected ? 'text-primary' : 'text-text-primary'} ${hasActiveChild ? 'text-text-primary font-bold' : ''}`}>{container.name}</span>
+               )}
+            </div>
+            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+               <button className="p-1 hover:text-text-primary text-text-secondary" onClick={(e) => { e.stopPropagation(); updateContainer(container.id, { visible: !container.visible }); }}>{container.visible ? <Eye size={16}/> : <EyeOff size={16}/>}</button>
+               <button className="p-1 hover:text-red-500 text-text-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(container.id); }}><Trash2 size={16}/></button>
+            </div>
+        </div>
+        {children}
+    </motion.div>
+  );
+}
+
+function SubMaskRow({ subMask, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete }: any) {
+   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
+   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
+   const setCombinedRef = (node: HTMLElement | null) => { setNodeRef(node); setDroppableRef(node); };
+   const MaskIcon = MASK_ICON_MAP[subMask.type] || Circle;
+   const { showContextMenu } = useContextMenu();
+
+   const onContextMenu = (e: React.MouseEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      showContextMenu(e.clientX, e.clientY, [{ label: 'Delete Component', icon: Trash2, isDestructive: true, onClick: handleDelete }]);
+   };
+
+   return (
+      <motion.div layout="position" initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -15, transition: { duration: 0.2 } }}
+         ref={setCombinedRef} {...attributes} {...listeners}
+         className={`flex items-center gap-2 p-2 rounded-md transition-colors group mt-0.5 cursor-pointer 
+            ${isActive ? 'bg-surface' : 'hover:bg-card-active'} 
+            ${isOver ? 'border-b-2 border-accent' : ''} 
+            ${isDragging ? 'opacity-40' : ''}
+            ${parentVisible === false ? 'opacity-50' : ''} transition-opacity duration-300`}
+         onClick={(e) => { e.stopPropagation(); onSelect(); }}
+         onContextMenu={onContextMenu}
+      >
+          <MaskIcon size={16} className="text-text-secondary flex-shrink-0 ml-1" />
+          <span className="text-sm text-text-primary flex-1 truncate select-none">{formatMaskTypeName(subMask.type)}</span>
+          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+             <button className="p-1 hover:bg-bg-primary rounded text-text-secondary" title={subMask.mode === SubMaskMode.Additive ? "Add" : "Subtract"} onClick={(e) => { e.stopPropagation(); updateSubMask(subMask.id, { mode: subMask.mode === SubMaskMode.Additive ? SubMaskMode.Subtractive : SubMaskMode.Additive }); }}>{subMask.mode === SubMaskMode.Additive ? <Plus size={14}/> : <Minus size={14}/>}</button>
+             <button className="p-1 hover:bg-bg-primary rounded text-text-secondary" onClick={(e) => { e.stopPropagation(); updateSubMask(subMask.id, { visible: !subMask.visible }); }}>{subMask.visible ? <Eye size={14}/> : <EyeOff size={14}/>}</button>
+             <button className="p-1 hover:text-red-500 text-text-secondary" onClick={(e) => { e.stopPropagation(); handleDelete(); }}><Trash2 size={14}/></button>
+          </div>
+      </motion.div>
+   );
+}
+
+function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushSettings, setBrushSettings, updateContainer, updateSubMask, histogram, appSettings, isGeneratingAiMask, setIsMaskControlHovered, collapsibleState, setCollapsibleState, copiedSectionAdjustments, setCopiedSectionAdjustments, onDragStateChange, isSettingsSectionOpen, setSettingsSectionOpen }: any) {
+  const { showContextMenu } = useContextMenu();
+  const isActive = !!container;
+  
+  const placeholderContainer = {
+    ...INITIAL_MASK_CONTAINER,
+    adjustments: INITIAL_MASK_ADJUSTMENTS
+  };
+  const displayContainer = container || placeholderContainer;
+
+  const handleMaskPropertyChange = (key: string, value: any) => {
+    if (!isActive) return;
+    updateContainer(container.id, { [key]: value });
+  };
+  
+  const handleSubMaskParameterChange = (key: string, value: number) => { 
+    if (!isActive || !activeSubMask) return;
+    updateSubMask(activeSubMask.id, { parameters: { ...activeSubMask.parameters, [key]: value } }); 
+  };
+  
+  const subMaskConfig = activeSubMask ? SUB_MASK_CONFIG[activeSubMask.type] || {} : {};
+  const isAiMask = activeSubMask && ['ai-subject', 'ai-foreground', 'ai-sky'].includes(activeSubMask.type);
+
+  const setMaskContainerAdjustments = (updater: any) => {
+    if (!isActive) return;
+    const currentAdjustments = container.adjustments;
+    const newAdjustments = typeof updater === 'function' ? updater(currentAdjustments) : updater;
+    updateContainer(container.id, { adjustments: newAdjustments });
+  };
+
+  const handleToggleSection = (section: string) => setCollapsibleState((prev: any) => ({ ...prev, [section]: !prev[section] }));
+  
+  const handleToggleVisibility = (sectionName: string) => {
+     if (!isActive) return;
+     const cur = container.adjustments;
+     const vis = cur.sectionVisibility || INITIAL_MASK_ADJUSTMENTS.sectionVisibility;
+     updateContainer(container.id, { adjustments: { ...cur, sectionVisibility: { ...vis, [sectionName]: !vis[sectionName] } }});
+  };
+
+  const handleSectionContextMenu = (event: any, sectionName: string) => {
+      if (!isActive) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      const sectionKeys = ADJUSTMENT_SECTIONS[sectionName];
+      if (!sectionKeys) return;
+
+      const handleCopy = () => {
+          const adjustmentsToCopy: Record<string, any> = {};
+          for (const key of sectionKeys) {
+              if (container.adjustments && container.adjustments[key] !== undefined) {
+                  adjustmentsToCopy[key] = JSON.parse(JSON.stringify(container.adjustments[key]));
+              }
+          }
+          setCopiedSectionAdjustments({ section: sectionName, values: adjustmentsToCopy });
+      };
+
+      const handlePaste = () => {
+          if (!copiedSectionAdjustments || copiedSectionAdjustments.section !== sectionName) return;
+
+          setMaskContainerAdjustments((prev: any) => ({
+              ...prev,
+              ...copiedSectionAdjustments.values,
+              sectionVisibility: {
+                  ...(prev.sectionVisibility || INITIAL_MASK_ADJUSTMENTS.sectionVisibility),
+                  [sectionName]: true,
+              },
+          }));
+      };
+
+      const handleReset = () => {
+          const resetValues: any = {};
+          for (const key of sectionKeys) {
+              if (INITIAL_MASK_ADJUSTMENTS[key] !== undefined) {
+                  resetValues[key] = JSON.parse(JSON.stringify(INITIAL_MASK_ADJUSTMENTS[key]));
+              }
+          }
+          setMaskContainerAdjustments((prev: any) => ({
+              ...prev,
+              ...resetValues,
+              sectionVisibility: {
+                  ...(prev.sectionVisibility || INITIAL_MASK_ADJUSTMENTS.sectionVisibility),
+                  [sectionName]: true,
+              },
+          }));
+      };
+
+      const isPasteAllowed = copiedSectionAdjustments && copiedSectionAdjustments.section === sectionName;
+      const sectionTitle = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+      
+      const pasteLabel = copiedSectionAdjustments
+        ? `Paste ${copiedSectionAdjustments.section.charAt(0).toUpperCase() + copiedSectionAdjustments.section.slice(1)} Settings`
+        : 'Paste Settings';
+
+      showContextMenu(event.clientX, event.clientY, [
+          {
+              icon: Copy,
+              label: `Copy ${sectionTitle} Settings`,
+              onClick: handleCopy,
+          },
+          { label: pasteLabel, icon: ClipboardPaste, onClick: handlePaste, disabled: !isPasteAllowed },
+          { type: OPTION_SEPARATOR },
+          {
+              icon: RotateCcw,
+              label: `Reset ${sectionTitle} Settings`,
+              onClick: handleReset,
+          },
+      ]);
+  };
+
+  const sectionVisibility = displayContainer.adjustments.sectionVisibility || INITIAL_MASK_ADJUSTMENTS.sectionVisibility;
+
+  return (
+    <div className={`px-4 pb-4 space-y-2 transition-opacity duration-300 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
+         <CollapsibleSection title={'Properties'} isOpen={isSettingsSectionOpen} onToggle={() => setSettingsSectionOpen(!isSettingsSectionOpen)} canToggleVisibility={false} isContentVisible={true}>
+             <div className="space-y-4 pt-2">
+                 <Switch checked={!!displayContainer.invert} label="Invert Mask" onChange={(v) => handleMaskPropertyChange('invert', v)} />
+                 <Slider defaultValue={100} label="Opacity" max={100} min={0} value={displayContainer.opacity ?? 100} onChange={(e: any) => handleMaskPropertyChange('opacity', Number(e.target.value))} step={1} />
+                 {activeSubMask && (
+                    <>
+                        {isAiMask && aiModelDownloadStatus && <div className="text-xs text-accent text-center bg-accent/10 p-1 rounded">Downloading Model: {aiModelDownloadStatus}</div>}
+                        {subMaskConfig.parameters?.map((param: any) => (
+                           <Slider key={param.key} label={param.label} min={param.min} max={param.max} step={param.step} defaultValue={param.defaultValue}
+                              value={(activeSubMask.parameters[param.key] || 0) * (param.multiplier || 1)}
+                              onChange={(e: any) => handleSubMaskParameterChange(param.key, parseFloat(e.target.value) / (param.multiplier || 1))}
+                           />
+                        ))}
+                        {subMaskConfig.showBrushTools && brushSettings && <BrushTools settings={brushSettings} onSettingsChange={setBrushSettings} />}
+                    </>
+                 )}
+             </div>
+         </CollapsibleSection>
+
+         <div onMouseEnter={() => setIsMaskControlHovered(true)} onMouseLeave={() => setIsMaskControlHovered(false)} className="flex flex-col gap-2">
+            {Object.keys(ADJUSTMENT_SECTIONS).map((sectionName) => {
+               const SectionComponent: any = { basic: BasicAdjustments, curves: CurveGraph, color: ColorPanel, details: DetailsPanel, effects: EffectsPanel }[sectionName];
+               const title = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+               return (
+                  <CollapsibleSection
+                     key={sectionName} title={title} isOpen={collapsibleState[sectionName]} isContentVisible={sectionVisibility[sectionName]}
+                     onToggle={() => handleToggleSection(sectionName)} onToggleVisibility={() => handleToggleVisibility(sectionName)}
+                     onContextMenu={(e: any) => handleSectionContextMenu(e, sectionName)}
+                  >
+                     <SectionComponent adjustments={displayContainer.adjustments} setAdjustments={setMaskContainerAdjustments} histogram={histogram} isForMask={true} appSettings={appSettings} onDragStateChange={onDragStateChange} />
+                  </CollapsibleSection>
+               );
+            })}
+         </div>
     </div>
   );
 }

@@ -74,7 +74,6 @@ const Switch = ({
               'bg-text-secondary': !checked,
             },
           )}
-          layout
           transition={spring}
           initial={false}
           animate={{ x: checked ? 20 : 0 }}
