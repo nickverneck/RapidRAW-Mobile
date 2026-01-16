@@ -444,13 +444,19 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     return INITIAL_ADJUSTMENTS;
   }
 
-  const normalizedMasks = (loadedAdjustments.masks || []).map((maskContainer: MaskContainer) => {
-    const containerAdjustments = maskContainer.adjustments || {};
-    const normalizedSubMasks = (maskContainer.subMasks || []).map((subMask: Partial<SubMask>) => ({
+  const normalizeSubMasks = (subMasks: any[]) => {
+    return (subMasks || []).map((subMask: Partial<SubMask>) => ({
       visible: true,
       mode: SubMaskMode.Additive,
+      invert: false,
+      opacity: 100,
       ...subMask,
     }));
+  };
+
+  const normalizedMasks = (loadedAdjustments.masks || []).map((maskContainer: MaskContainer) => {
+    const containerAdjustments = maskContainer.adjustments || {};
+    const normalizedSubMasks = normalizeSubMasks(maskContainer.subMasks);
 
     return {
       ...INITIAL_MASK_CONTAINER,
@@ -474,6 +480,7 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
   const normalizedAiPatches = (loadedAdjustments.aiPatches || []).map((patch: any) => ({
     visible: true,
     ...patch,
+    subMasks: normalizeSubMasks(patch.subMasks),
   }));
 
   return {

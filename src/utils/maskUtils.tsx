@@ -4,7 +4,7 @@ import { ImageDimensions } from '../hooks/useImageRenderSize';
 
 export const createSubMask = (type: Mask, imageDimensions: ImageDimensions) => {
   const { width, height } = imageDimensions || { width: 1000, height: 1000 };
-  const common = { id: uuidv4(), visible: true, mode: SubMaskMode.Additive, type };
+  const common = { id: uuidv4(), visible: true, invert: false, opacity: 100, mode: SubMaskMode.Additive, type };
 
   switch (type) {
     case Mask.Radial:

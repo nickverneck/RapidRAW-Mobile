@@ -23,6 +23,10 @@ pub struct SubMask {
     #[serde(rename = "type")]
     pub mask_type: String,
     pub visible: bool,
+    #[serde(default)]
+    pub invert: bool,
+    #[serde(default = "default_opacity")]
+    pub opacity: f32,
     pub mode: SubMaskMode,
     pub parameters: Value,
 }
@@ -701,9 +705,22 @@ pub fn generate_mask_bitmap(
     let mut subtractive_canvas = GrayImage::new(width, height);
 
     for sub_mask in &mask_def.sub_masks {
-        if let Some(sub_bitmap) =
+        if let Some(mut sub_bitmap) =
             generate_sub_mask_bitmap(sub_mask, width, height, scale, crop_offset)
         {
+            if sub_mask.invert {
+                for p in sub_bitmap.pixels_mut() {
+                    p[0] = 255 - p[0];
+                }
+            }
+
+            let opacity_multiplier = (sub_mask.opacity / 100.0).clamp(0.0, 1.0);
+            if opacity_multiplier < 1.0 {
+                for pixel in sub_bitmap.pixels_mut() {
+                    pixel[0] = (pixel[0] as f32 * opacity_multiplier) as u8;
+                }
+            }
+
             match sub_mask.mode {
                 SubMaskMode::Additive => {
                     for (x, y, pixel) in additive_canvas.enumerate_pixels_mut() {

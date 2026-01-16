@@ -48,7 +48,9 @@ export interface MaskType {
 
 export interface SubMask {
   id: string;
+  invert: boolean;
   mode: SubMaskMode;
+  opacity: number;
   parameters?: any;
   type: Mask;
   visible: boolean;

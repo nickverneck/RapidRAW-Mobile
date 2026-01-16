@@ -730,6 +730,7 @@ function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushS
   
   const subMaskConfig = activeSubMask ? SUB_MASK_CONFIG[activeSubMask.type] || {} : {};
   const isAiMask = activeSubMask && ['ai-subject', 'ai-foreground', 'ai-sky'].includes(activeSubMask.type);
+  const isComponentMode = !!activeSubMask;
 
   const setMaskContainerAdjustments = (updater: any) => {
     if (!isActive) return;
@@ -822,22 +823,38 @@ function SettingsPanel({ container, activeSubMask, aiModelDownloadStatus, brushS
 
   return (
     <div className={`px-4 pb-4 space-y-2 transition-opacity duration-300 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`} onClick={(e) => e.stopPropagation()}>
-         <CollapsibleSection title={'Properties'} isOpen={isSettingsSectionOpen} onToggle={() => setSettingsSectionOpen(!isSettingsSectionOpen)} canToggleVisibility={false} isContentVisible={true}>
+         <CollapsibleSection title={isComponentMode ? "Component Properties" : "Mask Properties"} isOpen={isSettingsSectionOpen} onToggle={() => setSettingsSectionOpen(!isSettingsSectionOpen)} canToggleVisibility={false} isContentVisible={true}>
              <div className="space-y-4 pt-2">
-                 <Switch checked={!!displayContainer.invert} label="Invert Mask" onChange={(v) => handleMaskPropertyChange('invert', v)} />
-                 <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-text-secondary select-none">Apply Preset</span>
-                    <button
-                        ref={presetButtonRef}
-                        onClick={handlePresetSelectClick}
-                        className="text-sm text-text-primary text-right select-none cursor-pointer hover:text-accent transition-colors"
-                        title="Select a preset to apply"
-                    >
-                        Select
-                    </button>
-                </div>
-                 <Slider defaultValue={100} label="Opacity" max={100} min={0} value={displayContainer.opacity ?? 100} onChange={(e: any) => handleMaskPropertyChange('opacity', Number(e.target.value))} step={1} />
-                 {activeSubMask && (
+                 <Switch 
+                     checked={!!(isComponentMode ? activeSubMask.invert : displayContainer.invert)} 
+                     label={isComponentMode ? "Invert Component" : "Invert Mask"} 
+                     onChange={(v) => isComponentMode ? updateSubMask(activeSubMask.id, { invert: v }) : handleMaskPropertyChange('invert', v)} 
+                 />
+                 
+                 {!isComponentMode && (
+                    <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-text-secondary select-none">Apply Preset</span>
+                        <button
+                            ref={presetButtonRef}
+                            onClick={handlePresetSelectClick}
+                            className="text-sm text-text-primary text-right select-none cursor-pointer hover:text-accent transition-colors"
+                            title="Select a preset to apply"
+                        >
+                            Select
+                        </button>
+                    </div>
+                 )}
+
+                 <Slider 
+                    defaultValue={100} 
+                    label="Opacity" 
+                    max={100} min={0} 
+                    value={(isComponentMode ? activeSubMask.opacity : displayContainer.opacity) ?? 100} 
+                    onChange={(e: any) => isComponentMode ? updateSubMask(activeSubMask.id, { opacity: Number(e.target.value) }) : handleMaskPropertyChange('opacity', Number(e.target.value))} 
+                    step={1} 
+                 />
+
+                 {isComponentMode && (
                     <>
                         {isAiMask && aiModelDownloadStatus && <div className="text-xs text-accent text-center bg-accent/10 p-1 rounded">Downloading Model: {aiModelDownloadStatus}</div>}
                         {subMaskConfig.parameters?.map((param: any) => (
