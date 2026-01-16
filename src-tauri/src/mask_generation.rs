@@ -701,8 +701,7 @@ pub fn generate_mask_bitmap(
         return None;
     }
 
-    let mut additive_canvas = GrayImage::new(width, height);
-    let mut subtractive_canvas = GrayImage::new(width, height);
+    let mut final_mask = GrayImage::new(width, height);
 
     for sub_mask in &mask_def.sub_masks {
         if let Some(mut sub_bitmap) =
@@ -723,38 +722,33 @@ pub fn generate_mask_bitmap(
 
             match sub_mask.mode {
                 SubMaskMode::Additive => {
-                    for (x, y, pixel) in additive_canvas.enumerate_pixels_mut() {
+                    for (x, y, pixel) in final_mask.enumerate_pixels_mut() {
                         let sub_pixel = sub_bitmap.get_pixel(x, y);
                         pixel[0] = pixel[0].max(sub_pixel[0]);
                     }
                 }
                 SubMaskMode::Subtractive => {
-                    for (x, y, pixel) in subtractive_canvas.enumerate_pixels_mut() {
+                    for (x, y, pixel) in final_mask.enumerate_pixels_mut() {
                         let sub_pixel = sub_bitmap.get_pixel(x, y);
-                        pixel[0] = pixel[0].max(sub_pixel[0]);
+                        pixel[0] = pixel[0].saturating_sub(sub_pixel[0]);
                     }
                 }
             }
         }
     }
 
-    for (x, y, final_pixel) in additive_canvas.enumerate_pixels_mut() {
-        let subtractive_pixel = subtractive_canvas.get_pixel(x, y);
-        final_pixel[0] = final_pixel[0].saturating_sub(subtractive_pixel[0]);
-    }
-
     if mask_def.invert {
-        for pixel in additive_canvas.pixels_mut() {
+        for pixel in final_mask.pixels_mut() {
             pixel[0] = 255 - pixel[0];
         }
     }
 
     let opacity_multiplier = (mask_def.opacity / 100.0).clamp(0.0, 1.0);
     if opacity_multiplier < 1.0 {
-        for pixel in additive_canvas.pixels_mut() {
+        for pixel in final_mask.pixels_mut() {
             pixel[0] = (pixel[0] as f32 * opacity_multiplier) as u8;
         }
     }
 
-    Some(additive_canvas)
+    Some(final_mask)
 }

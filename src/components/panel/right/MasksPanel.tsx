@@ -162,6 +162,16 @@ export default function MasksPanel({
   
   const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'mask-list-root' });
   
+  // Sort masks alphabetically on mount
+  useEffect(() => {
+    if (adjustments.masks.length > 0) {
+        setAdjustments((prev: Adjustments) => ({
+            ...prev,
+            masks: [...prev.masks].sort((a, b) => a.name.localeCompare(b.name))
+        }));
+    }
+  }, []);
+
   useEffect(() => {
     if (!hasPerformedInitialSelection.current && !activeMaskContainerId && adjustments.masks.length > 0) {
       const lastMask = adjustments.masks[adjustments.masks.length - 1];
@@ -247,10 +257,21 @@ export default function MasksPanel({
     else if (type === Mask.AiSky) onGenerateAiSkyMask(subMask.id);
   };
 
-  const handleAddSubMask = (containerId: string, type: Mask) => {
+  const handleAddSubMask = (containerId: string, type: Mask, insertIndex: number = -1) => {
     const subMask = createMaskLogic(type);
     setAdjustments((prev: Adjustments) => ({
-      ...prev, masks: prev.masks?.map((c: MaskContainer) => c.id === containerId ? { ...c, subMasks: [...c.subMasks, subMask] } : c),
+      ...prev, masks: prev.masks?.map((c: MaskContainer) => {
+          if (c.id === containerId) {
+              const newSubMasks = [...c.subMasks];
+              if (insertIndex >= 0) {
+                  newSubMasks.splice(insertIndex, 0, subMask);
+              } else {
+                  newSubMasks.push(subMask);
+              }
+              return { ...c, subMasks: newSubMasks };
+          }
+          return c;
+      })
     }));
     onSelectContainer(containerId);
     onSelectMask(subMask.id);
@@ -311,9 +332,20 @@ export default function MasksPanel({
     const overData = over?.data.current as DragData;
 
     if (dragData.type === 'Creation' && dragData.maskType) {
-      if (overData?.type === 'Container') handleAddSubMask(overData.item!.id, dragData.maskType);
-      else if (overData?.type === 'SubMask') handleAddSubMask(overData.parentId!, dragData.maskType);
-      else handleAddMaskContainer(dragData.maskType);
+      if (overData?.type === 'Container') {
+          handleAddSubMask(overData.item!.id, dragData.maskType);
+      }
+      else if (overData?.type === 'SubMask') {
+          const container = adjustments.masks.find(m => m.id === overData.parentId);
+          if (container) {
+              // Find index to insert before
+              const targetIndex = container.subMasks.findIndex(sm => sm.id === over.id);
+              handleAddSubMask(overData.parentId!, dragData.maskType, targetIndex);
+          }
+      }
+      else {
+          handleAddMaskContainer(dragData.maskType);
+      }
       return;
     }
 
@@ -356,15 +388,28 @@ export default function MasksPanel({
           const sourceContainer = newMasks.find(m => m.id === sourceContainerId);
           const targetContainer = newMasks.find(m => m.id === targetContainerId);
           if (!sourceContainer || !targetContainer) return prev;
-          const subMaskIndex = sourceContainer.subMasks.findIndex(sm => sm.id === dragData.item!.id);
-          if (subMaskIndex === -1) return prev;
-          const [movedSubMask] = sourceContainer.subMasks.splice(subMaskIndex, 1);
+          
+          const sourceSubMaskIndex = sourceContainer.subMasks.findIndex(sm => sm.id === dragData.item!.id);
+          if (sourceSubMaskIndex === -1) return prev;
+          
+          const [movedSubMask] = sourceContainer.subMasks.splice(sourceSubMaskIndex, 1);
+          
           if (sourceContainerId === targetContainerId) {
-            const overSubMaskIndex = sourceContainer.subMasks.findIndex(sm => sm.id === over.id);
-            const insertIndex = overSubMaskIndex >= 0 ? overSubMaskIndex : sourceContainer.subMasks.length;
-            sourceContainer.subMasks.splice(insertIndex, 0, movedSubMask);
+            if (overData?.type === 'SubMask') {
+                const overSubMaskIndex = sourceContainer.subMasks.findIndex(sm => sm.id === over.id);
+                const insertIndex = overSubMaskIndex >= 0 ? overSubMaskIndex : sourceContainer.subMasks.length;
+                sourceContainer.subMasks.splice(insertIndex, 0, movedSubMask);
+            } else {
+                sourceContainer.subMasks.push(movedSubMask);
+            }
           } else {
-            targetContainer.subMasks.push(movedSubMask);
+            if (overData?.type === 'SubMask') {
+               const overSubMaskIndex = targetContainer.subMasks.findIndex(sm => sm.id === over.id);
+               const insertIndex = overSubMaskIndex >= 0 ? overSubMaskIndex : targetContainer.subMasks.length;
+               targetContainer.subMasks.splice(insertIndex, 0, movedSubMask);
+            } else {
+               targetContainer.subMasks.push(movedSubMask);
+            }
             setExpandedContainers(p => new Set(p).add(targetContainerId!));
           }
           return { ...prev, masks: newMasks };
@@ -455,19 +500,25 @@ export default function MasksPanel({
                                  renamingId={renamingId} setRenamingId={setRenamingId} tempName={tempName} setTempName={setTempName}
                                  updateContainer={updateContainer} handleDelete={handleDeleteContainer} handleDuplicate={handleDuplicateContainer} 
                                  setCopiedMask={setCopiedMask} copiedMask={copiedMask} presets={presets}
+                                 setAdjustments={setAdjustments}
                                >
                                  <AnimatePresence initial={false}>
                                     {expandedContainers.has(container.id) && (
                                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden pl-2 border-l border-border-color/20 ml-[15px]" layout>
-                                            {container.subMasks.length > 0 ? container.subMasks.map((subMask) => (
+                                            {container.subMasks.length > 0 ? container.subMasks.map((subMask, index) => (
                                                 <SubMaskRow 
-                                                  key={subMask.id} subMask={subMask} containerId={container.id} isActive={activeMaskId === subMask.id}
+                                                  key={subMask.id} 
+                                                  subMask={subMask} 
+                                                  index={index + 1}
+                                                  totalCount={container.subMasks.length}
+                                                  containerId={container.id} 
+                                                  isActive={activeMaskId === subMask.id}
                                                   parentVisible={container.visible}
                                                   onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
                                                   updateSubMask={updateSubMask} handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
                                                 />
                                             )) : (
-                                              <div className="p-4 text-xs text-text-secondary text-center italic">
+                                              <div className="p-3 text-xs text-text-secondary text-center italic">
                                                 No mask components.
                                               </div>
                                             )}
@@ -575,11 +626,20 @@ function DraggableGridItem({ maskType, isGeneratingAiMask, onClick }: any) {
     );
 }
 
-function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect, children, renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete, handleDuplicate, setCopiedMask, copiedMask, presets }: any) {
+function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect, children, renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete, handleDuplicate, setCopiedMask, copiedMask, presets, setAdjustments }: any) {
   const { setNodeRef, isOver } = useDroppable({ id: container.id, data: { type: 'Container', item: container } });
   const { showContextMenu } = useContextMenu();
 
-  const handleRenameSubmit = () => { if (tempName.trim()) updateContainer(container.id, { name: tempName.trim() }); setRenamingId(null); };
+  const handleRenameSubmit = () => { 
+      if (tempName.trim()) {
+          const newName = tempName.trim();
+          setAdjustments((prev: any) => {
+              const updatedMasks = prev.masks.map((m: any) => m.id === container.id ? { ...m, name: newName } : m);
+              return { ...prev, masks: updatedMasks.sort((a: any, b: any) => a.name.localeCompare(b.name)) };
+          });
+      }
+      setRenamingId(null); 
+  };
 
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -629,30 +689,82 @@ function ContainerRow({ container, isSelected, hasActiveChild, isExpanded, onTog
   );
 }
 
-function SubMaskRow({ subMask, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete }: any) {
+function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete }: any) {
    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
    const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
    const setCombinedRef = (node: HTMLElement | null) => { setNodeRef(node); setDroppableRef(node); };
    const MaskIcon = MASK_ICON_MAP[subMask.type] || Circle;
    const { showContextMenu } = useContextMenu();
+   const [isHovered, setIsHovered] = useState(false);
+   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+   const handleMouseEnter = () => {
+       if (hoverTimeoutRef.current) {
+           clearTimeout(hoverTimeoutRef.current);
+           hoverTimeoutRef.current = null;
+       }
+       setIsHovered(true);
+   };
+
+   const handleMouseLeave = () => {
+       hoverTimeoutRef.current = setTimeout(() => {
+           setIsHovered(false);
+       }, 1000);
+   };
+
+   useEffect(() => {
+       return () => {
+           if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+       };
+   }, []);
 
    const onContextMenu = (e: React.MouseEvent) => {
       e.preventDefault(); e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [{ label: 'Delete Component', icon: Trash2, isDestructive: true, onClick: handleDelete }]);
    };
 
+   const showNumber = isHovered && totalCount > 1;
+
    return (
       <motion.div layout="position" initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -15, transition: { duration: 0.2 } }}
          ref={setCombinedRef} {...attributes} {...listeners}
+         onMouseEnter={handleMouseEnter}
+         onMouseLeave={handleMouseLeave}
          className={`flex items-center gap-2 p-2 rounded-md transition-colors group mt-0.5 cursor-pointer 
             ${isActive ? 'bg-surface' : 'hover:bg-card-active'} 
-            ${isOver ? 'border-b-2 border-accent' : ''} 
+            ${isOver ? 'border-t-2 border-accent' : ''} 
             ${isDragging ? 'opacity-40' : ''}
             ${parentVisible === false ? 'opacity-50' : ''} transition-opacity duration-300`}
          onClick={(e) => { e.stopPropagation(); onSelect(); }}
          onContextMenu={onContextMenu}
       >
-          <MaskIcon size={16} className="text-text-secondary flex-shrink-0 ml-1" />
+          <div className="relative w-4 h-4 ml-1 flex-shrink-0 flex items-center justify-center">
+             <AnimatePresence mode="wait" initial={false}>
+                {showNumber ? (
+                    <motion.span 
+                        key="number"
+                        initial={{ opacity: 0, scale: 0.5 }} 
+                        animate={{ opacity: 1, scale: 1 }} 
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ duration: 0.15 }}
+                        className="text-xs font-bold text-text-secondary absolute"
+                    >
+                        {index}
+                    </motion.span>
+                ) : (
+                    <motion.div
+                        key="icon"
+                        initial={{ opacity: 0, scale: 0.5 }} 
+                        animate={{ opacity: 1, scale: 1 }} 
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute"
+                    >
+                       <MaskIcon size={16} className="text-text-secondary" />
+                    </motion.div>
+                )}
+             </AnimatePresence>
+          </div>
           <span className="text-sm text-text-primary flex-1 truncate select-none">{formatMaskTypeName(subMask.type)}</span>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
              <button className="p-1 hover:bg-bg-primary rounded text-text-secondary" title={subMask.mode === SubMaskMode.Additive ? "Add" : "Subtract"} onClick={(e) => { e.stopPropagation(); updateSubMask(subMask.id, { mode: subMask.mode === SubMaskMode.Additive ? SubMaskMode.Subtractive : SubMaskMode.Additive }); }}>{subMask.mode === SubMaskMode.Additive ? <Plus size={14}/> : <Minus size={14}/>}</button>
