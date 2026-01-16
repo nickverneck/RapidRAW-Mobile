@@ -486,6 +486,8 @@ const ImageCanvas = memo(
     const cropImageRef = useRef<HTMLImageElement>(null);
     const imagePathRef = useRef<string | null>(null);
     const latestEditedUrlRef = useRef<string | null>(null);
+    const [displayedMaskUrl, setDisplayedMaskUrl] = useState<string | null>(null);
+    const [maskOpacity, setMaskOpacity] = useState(0);
 
     const isDrawing = useRef(false);
     const drawingStageRef = useRef<any>(null);
@@ -530,6 +532,24 @@ const ImageCanvas = memo(
       (isMasking || isAiEditing) &&
       (activeSubMask?.type === Mask.AiSubject || activeSubMask?.type === Mask.QuickEraser);
     const isToolActive = isBrushActive || isAiSubjectActive;
+
+    useEffect(() => {
+      if (maskOverlayUrl && (isMasking || isAiEditing)) {
+        setDisplayedMaskUrl(maskOverlayUrl);
+        requestAnimationFrame(() => {
+          setMaskOpacity(1);
+        });
+      } else {
+        setMaskOpacity(0);
+      }
+    }, [maskOverlayUrl, isMasking, isAiEditing]);
+
+    const handleMaskTransitionEnd = useCallback(() => {
+      if (maskOpacity === 0) {
+        setDisplayedMaskUrl(null);
+      }
+    }, [maskOpacity]);
+
 
     useEffect(() => {
       if (isToolActive) {
@@ -1091,18 +1111,19 @@ const ImageCanvas = memo(
                   />
                 ) : null,
               )}
-              {(isMasking || isAiEditing) && maskOverlayUrl && (
+              {displayedMaskUrl && (
                 <img
                   alt="Mask Overlay"
                   className="absolute object-contain pointer-events-none"
-                  src={maskOverlayUrl}
+                  src={displayedMaskUrl}
                   decoding="async"
+                  onTransitionEnd={handleMaskTransitionEnd}
                   style={{
                     height: `${imageRenderSize.height}px`,
                     left: `${imageRenderSize.offsetX}px`,
-                    opacity: showOriginal || isMaskControlHovered ? 0 : 1,
+                    opacity: showOriginal || isMaskControlHovered ? 0 : maskOpacity,
                     top: `${imageRenderSize.offsetY}px`,
-                    transition: 'opacity 125ms ease-in-out',
+                    transition: 'opacity 200ms ease-in-out',
                     width: `${imageRenderSize.width}px`,
                   }}
                 />
