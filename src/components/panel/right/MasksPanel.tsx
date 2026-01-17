@@ -156,6 +156,7 @@ export default function MasksPanel({
   const [isSettingsPanelEverOpened, setIsSettingsPanelEverOpened] = useState(false);
   const hasPerformedInitialSelection = useRef(false);
   const [isMaskListEmpty, setIsMaskListEmpty] = useState(adjustments.masks.length === 0);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const { showContextMenu } = useContextMenu();
   const { presets } = usePresets(adjustments);
@@ -315,13 +316,38 @@ export default function MasksPanel({
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setActiveDragItem(null);
-    if (onDragStateChange) onDragStateChange(false);
-
     const dragData = active.data.current as DragData;
     const overData = over?.data.current as DragData;
 
-    // Handle Mask Container Reordering
+    if (dragData.type === 'Creation' && dragData.maskType) {
+        const creationFn = () => {
+            if (overData?.type === 'Container') {
+                handleAddSubMask(overData.item!.id, dragData.maskType);
+            } else if (overData?.type === 'SubMask') {
+                const container = adjustments.masks.find(m => m.id === overData.parentId);
+                if (container) {
+                    const targetIndex = container.subMasks.findIndex(sm => sm.id === over.id);
+                    handleAddSubMask(overData.parentId!, dragData.maskType, targetIndex);
+                }
+            } else {
+                handleAddMaskContainer(dragData.maskType);
+            }
+        };
+
+        if (!isMaskListEmpty) {
+            setPendingAction(() => creationFn);
+        } else {
+            creationFn();
+        }
+
+        setActiveDragItem(null);
+        if (onDragStateChange) onDragStateChange(false);
+        return;
+    }
+    
+    setActiveDragItem(null);
+    if (onDragStateChange) onDragStateChange(false);
+
     if (dragData.type === 'Container') {
       const overId = over?.id;
       if (!overId || active.id === overId) return;
@@ -331,12 +357,10 @@ export default function MasksPanel({
         let newIndex = -1;
 
         if (overId === 'mask-list-root') {
-             // Dropped to the end if over the root container
              newIndex = prev.masks.length - 1;
         } else if (overData?.type === 'Container') {
              newIndex = prev.masks.findIndex(m => m.id === overId);
         } else if (overData?.type === 'SubMask') {
-             // If dropped on a submask, find the parent container index
              newIndex = prev.masks.findIndex(m => m.id === overData.parentId);
         }
 
@@ -348,24 +372,6 @@ export default function MasksPanel({
         }
         return prev;
       });
-      return;
-    }
-
-    if (dragData.type === 'Creation' && dragData.maskType) {
-      if (overData?.type === 'Container') {
-          handleAddSubMask(overData.item!.id, dragData.maskType);
-      }
-      else if (overData?.type === 'SubMask') {
-          const container = adjustments.masks.find(m => m.id === overData.parentId);
-          if (container) {
-              // Find index to insert before
-              const targetIndex = container.subMasks.findIndex(sm => sm.id === over.id);
-              handleAddSubMask(overData.parentId!, dragData.maskType, targetIndex);
-          }
-      }
-      else {
-          handleAddMaskContainer(dragData.maskType);
-      }
       return;
     }
 
@@ -481,8 +487,11 @@ export default function MasksPanel({
                 <div className="grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                     {MASK_PANEL_CREATION_TYPES.map((maskType: MaskType) => (
                     <DraggableGridItem 
-                        key={maskType.type || maskType.id} maskType={maskType} isGeneratingAiMask={isGeneratingAiMask} 
+                        key={maskType.type || maskType.id} 
+                        maskType={maskType} 
+                        isGeneratingAiMask={isGeneratingAiMask} 
                         onClick={(e:any) => maskType.id === 'others' ? handleAddOthersMask(e) : handleGridClick(maskType.type)}
+                        isDraggable={maskType.id !== 'others'}
                     />
                     ))}
                 </div>
@@ -538,6 +547,20 @@ export default function MasksPanel({
                               />
                             ))}
                         </AnimatePresence>
+
+                        <AnimatePresence
+                            onExitComplete={() => {
+                                if (pendingAction) {
+                                    pendingAction();
+                                    setPendingAction(null);
+                                }
+                            }}
+                        >
+                            {activeDragItem?.type === 'Creation' && !isMaskListEmpty && (
+                                <NewMaskDropZone isOver={isRootOver} />
+                            )}
+                        </AnimatePresence>
+
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -622,8 +645,29 @@ export default function MasksPanel({
   );
 }
 
-function DraggableGridItem({ maskType, isGeneratingAiMask, onClick }: any) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `create-${maskType.id || maskType.type}`, data: { type: 'Creation', maskType: maskType.type } });
+function NewMaskDropZone({ isOver }: { isOver: boolean }) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, height: 0, marginTop: 0 }}
+      animate={{ opacity: 1, height: 'auto', marginTop: '4px' }}
+      exit={{ opacity: 0, height: 0, marginTop: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className={`p-4 rounded-lg text-center`}
+    >
+      <p className="text-sm font-medium text-text-secondary">
+        Drop here to create a new mask
+      </p>
+    </motion.div>
+  );
+}
+
+function DraggableGridItem({ maskType, isGeneratingAiMask, onClick, isDraggable }: any) {
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ 
+        id: `create-${maskType.id || maskType.type}`, 
+        data: { type: 'Creation', maskType: maskType.type },
+        disabled: !isDraggable
+    });
     return (
         <button
             ref={setNodeRef} {...listeners} {...attributes} disabled={maskType.disabled || isGeneratingAiMask} onClick={onClick}
