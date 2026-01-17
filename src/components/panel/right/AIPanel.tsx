@@ -82,8 +82,6 @@ interface DragData {
   parentId?: string;
 }
 
-// --- Constants & Helpers ---
-
 function formatMaskTypeName(type: string) {
   if (type === Mask.AiSubject) return 'AI Subject';
   if (type === Mask.AiForeground) return 'AI Foreground';
@@ -217,8 +215,6 @@ const ConnectionStatus = ({ isConnected }: ConnectionStatusProps) => {
   );
 };
 
-// --- Main Component ---
-
 export default function AIPanel({
   adjustments,
   setAdjustments,
@@ -249,7 +245,6 @@ export default function AIPanel({
   const [isSettingsPanelEverOpened, setIsSettingsPanelEverOpened] = useState(false);
   const hasPerformedInitialSelection = useRef(false);
 
-  // Collapsible states for settings panel
   const [collapsibleState, setCollapsibleState] = useState({
     generative: true,
     properties: true,
@@ -259,15 +254,14 @@ export default function AIPanel({
   const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'ai-list-root' });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // --- Effects ---
-
   useEffect(() => {
-    // If there are patches, ensure the settings panel is rendered (initially hidden/disabled if no selection)
-    if ((adjustments.aiPatches || []).length > 0) {
+    const hasPatches = (adjustments.aiPatches || []).length > 0;
+
+    if (hasPatches) {
       setIsSettingsPanelEverOpened(true);
+      setIsPatchListEmpty(false);
     }
 
-    // Handle auto-expansion of active container
     if (activePatchContainerId) {
       const shouldAutoExpand = !hasPerformedInitialSelection.current || activeSubMaskId;
       if (shouldAutoExpand) {
@@ -300,8 +294,6 @@ export default function AIPanel({
     onSelectSubMask,
     setCustomEscapeHandler,
   ]);
-
-  // --- Logic Methods ---
 
   const handleDeselect = () => {
     onSelectPatchContainer(null);
@@ -446,8 +438,6 @@ export default function AIPanel({
     }));
   };
 
-  // --- Drag & Drop ---
-
   const handleDragStart = (event: DragStartEvent) => {
     setActiveDragItem(event.active.data.current as DragData);
     if (onDragStateChange) onDragStateChange(true);
@@ -461,7 +451,6 @@ export default function AIPanel({
     setActiveDragItem(null);
     if (onDragStateChange) onDragStateChange(false);
 
-    // 1. Handling Creation Drop
     if (dragData.type === 'Creation' && dragData.maskType) {
       const creationFn = () => {
         if (overData?.type === 'Container') {
@@ -482,7 +471,6 @@ export default function AIPanel({
       return;
     }
 
-    // 2. Handling Container Reorder
     if (dragData.type === 'Container') {
       const overId = over?.id;
       if (!overId || active.id === overId) return;
@@ -507,12 +495,10 @@ export default function AIPanel({
       return;
     }
 
-    // 3. Handling SubMask Reorder/Move
     if (dragData.type === 'SubMask') {
       const sourceContainerId = dragData.parentId;
       if (!sourceContainerId) return;
 
-      // Drop to root (create new patch from submask)
       if (over?.id === 'ai-list-root' || !over) {
         setAdjustments((prev: Adjustments) => {
           const newPatches = JSON.parse(JSON.stringify(prev.aiPatches));
@@ -546,7 +532,6 @@ export default function AIPanel({
         return;
       }
 
-      // Drop onto another container or submask
       let targetContainerId: string | null = null;
       if (overData?.type === 'Container') targetContainerId = overData.item!.id;
       else if (overData?.type === 'SubMask') targetContainerId = overData.parentId || null;
@@ -563,7 +548,6 @@ export default function AIPanel({
           const [movedSubMask] = sourceContainer.subMasks.splice(sourceIndex, 1);
 
           if (sourceContainerId === targetContainerId) {
-            // Reorder within same
             if (overData?.type === 'SubMask') {
               const overIndex = sourceContainer.subMasks.findIndex((sm) => sm.id === over.id);
               const insertIndex = overIndex >= 0 ? overIndex : sourceContainer.subMasks.length;
@@ -572,7 +556,6 @@ export default function AIPanel({
               sourceContainer.subMasks.push(movedSubMask);
             }
           } else {
-            // Move to different container
             if (overData?.type === 'SubMask') {
               const overIndex = targetContainer.subMasks.findIndex((sm) => sm.id === over.id);
               const insertIndex = overIndex >= 0 ? overIndex : targetContainer.subMasks.length;
@@ -599,7 +582,6 @@ export default function AIPanel({
       collisionDetection={pointerWithin}
     >
       <div className="flex flex-col h-full select-none overflow-hidden" onClick={handleDeselect}>
-        {/* Header */}
         <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface h-[69px]">
           <h2 className="text-xl font-bold text-primary text-shadow-shiny">AI Tools</h2>
           <button
@@ -612,7 +594,6 @@ export default function AIPanel({
           </button>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col min-h-0">
           <div className="p-4 pb-2 z-10 flex-shrink-0">
             {!selectedImage && <p className="text-center text-text-tertiary mt-4">No image selected.</p>}
@@ -625,9 +606,7 @@ export default function AIPanel({
                 </p>
                 <div className="grid grid-cols-3 gap-2" onClick={(e) => e.stopPropagation()}>
                   {AI_PANEL_CREATION_TYPES.map((maskType: MaskType) => {
-                    // Logic to determine what to show based on state
                     const isComponentMode = !!activePatchContainerId;
-                    // If a patch is selected, show component types, otherwise show patch creation types
                     const typeToRender = isComponentMode
                       ? AI_SUB_MASK_COMPONENT_TYPES.find((t) => t.type === maskType.type)
                       : maskType;
@@ -664,7 +643,7 @@ export default function AIPanel({
               >
                 <p className="text-sm my-3 font-semibold text-text-primary">Edits</p>
 
-                {isPatchListEmpty && (
+                {isPatchListEmpty && (adjustments.aiPatches || []).length === 0 && (
                   <div className="text-center text-text-secondary text-sm py-4 opacity-70">
                     No generative edits created.
                   </div>
@@ -800,8 +779,6 @@ export default function AIPanel({
     </DndContext>
   );
 }
-
-// --- Sub-Components ---
 
 function NewMaskDropZone({ isOver }: { isOver: boolean }) {
   return (
@@ -1221,7 +1198,6 @@ function SettingsPanel({
   const isActive = !!container;
   const isComponentMode = !!activeSubMask;
 
-  // Use the placeholder if container is null to safely render UI in disabled state
   const displayContainer = container || PLACEHOLDER_PATCH;
 
   const [prompt, setPrompt] = useState(displayContainer.prompt || '');
@@ -1229,12 +1205,10 @@ function SettingsPanel({
   const [showAnalyzingMessage, setShowAnalyzingMessage] = useState(false);
   const analyzingTimeoutRef = useRef<number>(null);
 
-  // Sync prompt with container changes
   useEffect(() => {
     if (container) setPrompt(container.prompt || '');
   }, [container?.id]);
 
-  // Sync Fast Inpaint defaults
   const isQuickErasePatch = displayContainer.subMasks?.some((sm: SubMask) => sm.type === Mask.QuickEraser);
   useEffect(() => {
     if (container) {
@@ -1242,18 +1216,14 @@ function SettingsPanel({
     }
   }, [isAIConnectorConnected, container, isQuickErasePatch]);
 
-  // Sync AI Analyzing state
   useEffect(() => {
     if (isGeneratingAiMask) {
-      // @ts-ignore
       analyzingTimeoutRef.current = setTimeout(() => setShowAnalyzingMessage(true), 1000);
     } else {
-      // @ts-ignore
       if (analyzingTimeoutRef.current) clearTimeout(analyzingTimeoutRef.current);
       setShowAnalyzingMessage(false);
     }
     return () => {
-      // @ts-ignore
       if (analyzingTimeoutRef.current) clearTimeout(analyzingTimeoutRef.current);
     };
   }, [isGeneratingAiMask]);
@@ -1267,7 +1237,6 @@ function SettingsPanel({
 
   const handleGenerateClick = () => {
     if (!container) return;
-    // Save current prompt to container before generating
     updateContainer(container.id, { prompt });
     onGenerativeReplace(container.id, prompt, useFastInpaint);
   };
