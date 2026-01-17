@@ -173,21 +173,25 @@ export default function MasksPanel({
     }
 
     if (activeMaskContainerId) {
-      hasPerformedInitialSelection.current = true;
+      const shouldAutoExpand = !hasPerformedInitialSelection.current || activeMaskId;
 
-      setExpandedContainers(prev => {
-        if (prev.has(activeMaskContainerId)) {
-          return prev;
-        }
-        return new Set(prev).add(activeMaskContainerId);
-      });
+      if (shouldAutoExpand) {
+        setExpandedContainers(prev => {
+          if (prev.has(activeMaskContainerId)) {
+            return prev;
+          }
+          return new Set(prev).add(activeMaskContainerId);
+        });
+      }
+
+      hasPerformedInitialSelection.current = true;
     }
 
     if (activeMaskContainerId || adjustments.masks.length > 0) {
       setIsSettingsPanelEverOpened(true);
     }
     
-  }, [activeMaskContainerId, adjustments.masks, onSelectContainer, onSelectMask]);
+  }, [activeMaskContainerId, activeMaskId, adjustments.masks, onSelectContainer, onSelectMask]);
 
 
   useEffect(() => {
