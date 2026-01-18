@@ -64,6 +64,8 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2026-01-18:** Implement image geometry transformation utils
+*   **2026-01-17:** Refactor AI panel to correctly work with the new masking system
 *   **2026-01-16:** Major masking system overhaul with drag & drop, per-mask opacity/invert & UI improvements
 *   **2026-01-13:** New python middleware client for external generative AI integration (ComfyUI)
 *   **2026-01-12:** Created a RapidRAW community discord server
@@ -72,15 +74,16 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
 *   **2026-01-05:** Collage maker upgrade (drag & drop, zoom, ratio options)
 *   **2026-01-05:** 'Prefer RAW' filter option added to library
+
+
+<details>
+<summary><strong>Expand further</strong></summary>
+
 *   **2026-01-05:** Support for uppercase file extensions
 *   **2026-01-05:** Flush thumbnail cache on folder switch
 *   **2025-12-27:** Fix LUT banding issues with improved sampling
 *   **2025-12-26:** AI masking stability improvements under load
 *   **2025-12-23:** Metadata card in toolbar & context menu export
-
-<details>
-<summary><strong>Expand further</strong></summary>
-
 *   **2025-12-23:** Monochromatic grain & white balance picker improvements
 *   **2025-12-22:** BM3D Denoising with comparison slider
 *   **2025-12-20:** Batch export stability improvements & RAM optimization
