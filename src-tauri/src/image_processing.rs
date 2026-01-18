@@ -2,6 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec2, Vec3};
 use image::{DynamicImage, GenericImageView, Rgba, Rgb32FImage};
 use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
+use nalgebra::{Matrix3 as NaMatrix3, Vector3 as NaVector3};
 use rawler::decoders::Orientation;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,33 @@ pub struct Crop {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct GeometryParams {
+    pub distortion: f32,
+    pub vertical: f32,
+    pub horizontal: f32,
+    pub rotate: f32,
+    pub aspect: f32,
+    pub scale: f32,
+    pub x_offset: f32,
+    pub y_offset: f32,
+}
+
+impl Default for GeometryParams {
+    fn default() -> Self {
+        Self {
+            distortion: 0.0,
+            vertical: 0.0,
+            horizontal: 0.0,
+            rotate: 0.0,
+            aspect: 0.0,
+            scale: 100.0,
+            x_offset: 0.0,
+            y_offset: 0.0,
+        }
+    }
 }
 
 pub fn downscale_f32_image(image: &DynamicImage, nwidth: u32, nheight: u32) -> DynamicImage {
@@ -96,6 +124,125 @@ pub fn downscale_f32_image(image: &DynamicImage, nwidth: u32, nheight: u32) -> D
         }
     }
     DynamicImage::ImageRgb32F(out)
+}
+
+pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> DynamicImage {
+    let src_img = image.to_rgb32f();
+    let (width, height) = src_img.dimensions();
+    let mut out_buffer = vec![0.0f32; (width * height * 3) as usize];
+
+    let ref_dim = 2000.0;
+    let p_vert = (params.vertical / 100000.0) * (ref_dim / height as f32);
+    let p_horiz = (-params.horizontal / 100000.0) * (ref_dim / width as f32);
+
+    let theta = params.rotate.to_radians();
+
+    let aspect_factor = if params.aspect >= 0.0 {
+        1.0 + params.aspect / 100.0
+    } else {
+        1.0 / (1.0 + params.aspect.abs() / 100.0)
+    };
+
+    let scale_factor = params.scale / 100.0;
+    let off_x = (params.x_offset / 100.0) * width as f32;
+    let off_y = (params.y_offset / 100.0) * height as f32;
+
+    let cx = width as f32 / 2.0;
+    let cy = height as f32 / 2.0;
+
+    let max_radius_sq = cx * cx + cy * cy;
+    let k_distortion = params.distortion / 100.0;
+
+    let t_center = NaMatrix3::new(1.0, 0.0, cx, 0.0, 1.0, cy, 0.0, 0.0, 1.0);
+    let t_uncenter = NaMatrix3::new(1.0, 0.0, -cx, 0.0, 1.0, -cy, 0.0, 0.0, 1.0);
+    let m_perspective = NaMatrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p_horiz, p_vert, 1.0);
+    
+    let (sin_t, cos_t) = theta.sin_cos();
+    let m_rotate = NaMatrix3::new(cos_t, -sin_t, 0.0, sin_t, cos_t, 0.0, 0.0, 0.0, 1.0);
+    let m_scale = NaMatrix3::new(scale_factor * aspect_factor, 0.0, 0.0, 0.0, scale_factor, 0.0, 0.0, 0.0, 1.0);
+    let m_offset = NaMatrix3::new(1.0, 0.0, off_x, 0.0, 1.0, off_y, 0.0, 0.0, 1.0);
+
+    let forward_transform = t_center * m_offset * m_perspective * m_rotate * m_scale * t_uncenter;
+    let inv = forward_transform.try_inverse().unwrap_or(NaMatrix3::identity());
+
+    let step_vec = NaVector3::new(inv[(0, 0)], inv[(1, 0)], inv[(2, 0)]);
+
+    let src_raw = src_img.as_raw();
+    let src_stride = (width * 3) as usize;
+    let max_x = width as f32 - 1.0;
+    let max_y = height as f32 - 1.0;
+
+    out_buffer
+        .par_chunks_exact_mut((width * 3) as usize)
+        .enumerate()
+        .for_each(|(y, row_pixel_data)| {
+            let y_f = y as f32;
+
+            let mut current_vec = NaVector3::new(
+                inv[(0, 1)] * y_f + inv[(0, 2)],
+                inv[(1, 1)] * y_f + inv[(1, 2)],
+                inv[(2, 1)] * y_f + inv[(2, 2)],
+            );
+
+            for pixel in row_pixel_data.chunks_exact_mut(3) {
+                if current_vec.z.abs() > 1e-6 {
+                    let inv_z = 1.0 / current_vec.z;
+                    let mut src_x = current_vec.x * inv_z;
+                    let mut src_y = current_vec.y * inv_z;
+
+                    if k_distortion.abs() > 1e-5 {
+                        let dx = src_x - cx;
+                        let dy = src_y - cy;
+                        let r2 = (dx * dx + dy * dy) / max_radius_sq;
+
+                        let f = 1.0 + k_distortion * r2;
+                        
+                        src_x = cx + dx * f;
+                        src_y = cy + dy * f;
+                    }
+
+                    if src_x >= 0.0 && src_x < max_x && src_y >= 0.0 && src_y < max_y {
+                        let x0 = src_x.floor() as u32;
+                        let y0 = src_y.floor() as u32;
+
+                        let wx = src_x - x0 as f32;
+                        let wy = src_y - y0 as f32;
+                        let one_minus_wx = 1.0 - wx;
+                        let one_minus_wy = 1.0 - wy;
+
+                        let idx_row0 = (y0 as usize) * src_stride;
+                        let idx_row1 = idx_row0 + src_stride;
+                        let idx_p00 = idx_row0 + (x0 as usize) * 3;
+                        let idx_p10 = idx_p00 + 3;
+                        let idx_p01 = idx_row1 + (x0 as usize) * 3;
+                        let idx_p11 = idx_p01 + 3;
+
+                        unsafe {
+                            let p00 = src_raw.get_unchecked(idx_p00..idx_p00+3);
+                            let p10 = src_raw.get_unchecked(idx_p10..idx_p10+3);
+                            let p01 = src_raw.get_unchecked(idx_p01..idx_p01+3);
+                            let p11 = src_raw.get_unchecked(idx_p11..idx_p11+3);
+
+                            let top_r = p00[0] * one_minus_wx + p10[0] * wx;
+                            let top_g = p00[1] * one_minus_wx + p10[1] * wx;
+                            let top_b = p00[2] * one_minus_wx + p10[2] * wx;
+
+                            let bot_r = p01[0] * one_minus_wx + p11[0] * wx;
+                            let bot_g = p01[1] * one_minus_wx + p11[1] * wx;
+                            let bot_b = p01[2] * one_minus_wx + p11[2] * wx;
+
+                            pixel[0] = top_r * one_minus_wy + bot_r * wy;
+                            pixel[1] = top_g * one_minus_wy + bot_g * wy;
+                            pixel[2] = top_b * one_minus_wy + bot_b * wy;
+                        }
+                    } 
+                }
+                current_vec += step_vec;
+            }
+        });
+
+    let out_img = Rgb32FImage::from_vec(width, height, out_buffer).unwrap();
+    DynamicImage::ImageRgb32F(out_img)
 }
 
 pub fn apply_cpu_default_raw_processing(image: &mut DynamicImage) {
@@ -183,6 +330,42 @@ pub fn apply_crop(mut image: DynamicImage, crop_value: &Value) -> DynamicImage {
         }
     }
     image
+}
+
+pub fn apply_geometry_warp(
+    image: &DynamicImage,
+    adjustments: &serde_json::Value,
+) -> DynamicImage {
+    let transform_distortion = adjustments["transformDistortion"].as_f64().unwrap_or(0.0) as f32;
+    let transform_vertical = adjustments["transformVertical"].as_f64().unwrap_or(0.0) as f32;
+    let transform_horizontal = adjustments["transformHorizontal"].as_f64().unwrap_or(0.0) as f32;
+    let transform_rotate = adjustments["transformRotate"].as_f64().unwrap_or(0.0) as f32;
+    let transform_aspect = adjustments["transformAspect"].as_f64().unwrap_or(0.0) as f32;
+    let transform_scale = adjustments["transformScale"].as_f64().unwrap_or(100.0) as f32;
+    let transform_x_offset = adjustments["transformXOffset"].as_f64().unwrap_or(0.0) as f32;
+    let transform_y_offset = adjustments["transformYOffset"].as_f64().unwrap_or(0.0) as f32;
+    
+    let has_transform = 
+        transform_vertical != 0.0 || transform_horizontal != 0.0 ||
+        transform_rotate != 0.0 || transform_aspect != 0.0 ||
+        transform_scale != 100.0 || transform_x_offset != 0.0 ||
+        transform_y_offset != 0.0 || transform_distortion != 0.0;
+
+    if has_transform {
+        let geometry_params = GeometryParams {
+            distortion: transform_distortion,
+            vertical: transform_vertical,
+            horizontal: transform_horizontal,
+            rotate: transform_rotate,
+            aspect: transform_aspect,
+            scale: transform_scale,
+            x_offset: transform_x_offset,
+            y_offset: transform_y_offset,
+        };
+        warp_image_geometry(image, geometry_params)
+    } else {
+        image.clone()
+    }
 }
 
 pub fn apply_flip(image: DynamicImage, horizontal: bool, vertical: bool) -> DynamicImage {

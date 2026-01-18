@@ -73,7 +73,7 @@ use crate::image_loader::{
 use crate::image_processing::{
     Crop, GpuContext, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
     get_all_adjustments_from_json, get_or_init_gpu_context, process_and_get_dynamic_image,
-    downscale_f32_image, apply_cpu_default_raw_processing,
+    downscale_f32_image, apply_cpu_default_raw_processing, GeometryParams, warp_image_geometry, apply_geometry_warp
 };
 use crate::lut_processing::Lut;
 use crate::mask_generation::{AiPatchDefinition, MaskDefinition, generate_mask_bitmap};
@@ -132,6 +132,8 @@ pub struct AppState {
     preview_worker_tx: Mutex<Option<Sender<PreviewJob>>>,
     pub mask_cache: Mutex<HashMap<u64, GrayImage>>,
     pub patch_cache: Mutex<HashMap<String, serde_json::Value>>,
+    pub geometry_cache: Mutex<HashMap<u64, DynamicImage>>, 
+    pub thumbnail_geometry_cache: Mutex<HashMap<String, (u64, DynamicImage, f32)>>,
 }
 
 #[derive(serde::Serialize)]
@@ -219,12 +221,14 @@ fn apply_all_transformations(
 ) -> (DynamicImage, (f32, f32)) {
     let start_time = std::time::Instant::now();
 
+    let warped_image = apply_geometry_warp(image, adjustments);
+
     let orientation_steps = adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
     let rotation_degrees = adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
     let flip_horizontal = adjustments["flipHorizontal"].as_bool().unwrap_or(false);
     let flip_vertical = adjustments["flipVertical"].as_bool().unwrap_or(false);
 
-    let coarse_rotated_image = apply_coarse_rotation(image.clone(), orientation_steps);
+    let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
     let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
     let rotated_image = apply_rotation(&flipped_image, rotation_degrees);
 
@@ -237,6 +241,53 @@ fn apply_all_transformations(
     let duration = start_time.elapsed();
     log::info!("apply_all_transformations took: {:?}", duration);
     (cropped_image, unscaled_crop_offset)
+}
+
+pub fn calculate_geometry_hash(adjustments: &serde_json::Value) -> u64 {
+    let mut hasher = DefaultHasher::new();
+
+    if let Some(patches) = adjustments.get("aiPatches") {
+        patches.to_string().hash(&mut hasher);
+    }
+
+    adjustments["orientationSteps"].as_u64().hash(&mut hasher);
+
+    let geo_keys = [
+        "transformDistortion", "transformVertical", "transformHorizontal",
+        "transformRotate", "transformAspect", "transformScale", 
+        "transformXOffset", "transformYOffset"
+    ];
+
+    for key in geo_keys {
+        if let Some(val) = adjustments.get(key) {
+            val.to_string().hash(&mut hasher); 
+        }
+    }
+
+    hasher.finish()
+}
+
+fn calculate_visual_hash(path: &str, adjustments: &serde_json::Value) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+
+    if let Some(obj) = adjustments.as_object() {
+        for (key, value) in obj {
+            match key.as_str() {
+                "transformDistortion" | "transformVertical" | "transformHorizontal" | "transformRotate" |
+                "transformAspect" | "transformScale" | "transformXOffset" | "transformYOffset" => (),
+
+                "crop" | "rotation" | "orientationSteps" | "flipHorizontal" | "flipVertical" => (),
+
+                _ => {
+                    key.hash(&mut hasher);
+                    value.to_string().hash(&mut hasher);
+                }
+            }
+        }
+    }
+
+    hasher.finish()
 }
 
 fn calculate_transform_hash(adjustments: &serde_json::Value) -> u64 {
@@ -259,6 +310,23 @@ fn calculate_transform_hash(adjustments: &serde_json::Value) -> u64 {
             crop_val.to_string().hash(&mut hasher);
         }
     }
+
+    let transform_distortion = adjustments["transformDistortion"].as_f64().unwrap_or(0.0);
+    (transform_distortion.to_bits()).hash(&mut hasher);
+    let transform_vertical = adjustments["transformVertical"].as_f64().unwrap_or(0.0);
+    (transform_vertical.to_bits()).hash(&mut hasher);
+    let transform_horizontal = adjustments["transformHorizontal"].as_f64().unwrap_or(0.0);
+    (transform_horizontal.to_bits()).hash(&mut hasher);
+    let transform_rotate = adjustments["transformRotate"].as_f64().unwrap_or(0.0);
+    (transform_rotate.to_bits()).hash(&mut hasher);
+    let transform_aspect = adjustments["transformAspect"].as_f64().unwrap_or(0.0);
+    (transform_aspect.to_bits()).hash(&mut hasher);
+    let transform_scale = adjustments["transformScale"].as_f64().unwrap_or(100.0);
+    (transform_scale.to_bits()).hash(&mut hasher);
+    let transform_x_offset = adjustments["transformXOffset"].as_f64().unwrap_or(0.0);
+    (transform_x_offset.to_bits()).hash(&mut hasher);
+    let transform_y_offset = adjustments["transformYOffset"].as_f64().unwrap_or(0.0);
+    (transform_y_offset.to_bits()).hash(&mut hasher);
 
     if let Some(patches_val) = adjustments.get("aiPatches") {
         if let Some(patches_arr) = patches_val.as_array() {
@@ -501,6 +569,7 @@ async fn load_image(
     *state.gpu_image_cache.lock().unwrap() = None;
     state.mask_cache.lock().unwrap().clear();
     state.patch_cache.lock().unwrap().clear();
+    state.geometry_cache.lock().unwrap().clear();
 
     *state.original_image.lock().unwrap() = Some(LoadedImage {
         path: source_path_str.clone(),
@@ -870,8 +939,10 @@ fn generate_uncropped_preview(
                 }
             };
 
+        let warped_image = apply_geometry_warp(&patched_image, &adjustments_clone);
+
         let orientation_steps = adjustments_clone["orientationSteps"].as_u64().unwrap_or(0) as u8;
-        let coarse_rotated_image = apply_coarse_rotation(patched_image, orientation_steps);
+        let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
 
         let settings = load_settings(app_handle.clone()).unwrap_or_default();
         let preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
@@ -981,6 +1052,106 @@ fn generate_original_transformed_preview(
         .map_err(|e| e.to_string())?;
 
     Ok(Response::new(buf.into_inner()))
+}
+
+#[tauri::command]
+async fn preview_geometry_transform(
+    params: GeometryParams,
+    js_adjustments: serde_json::Value,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    let loaded_image_path = state.original_image.lock().unwrap()
+        .as_ref().ok_or("No image loaded")?.path.clone();
+    let visual_hash = calculate_visual_hash(&loaded_image_path, &js_adjustments);
+
+    let base_image_to_warp = {
+        let maybe_cached_image = state.geometry_cache.lock().unwrap().get(&visual_hash).cloned();
+
+        if let Some(cached_image) = maybe_cached_image {
+            cached_image
+        } else {
+            let context = get_or_init_gpu_context(&state)?;
+            
+            let (original_image, is_raw) = {
+                let guard = state.original_image.lock().unwrap();
+                let loaded = guard.as_ref().ok_or("No image loaded")?;
+                (loaded.image.clone(), loaded.is_raw)
+            };
+
+            let settings = load_settings(app_handle.clone()).unwrap_or_default();
+            let hq_live = settings.enable_high_quality_live_previews.unwrap_or(false);
+            let interactive_divisor = if hq_live { 1.5 } else { 2.0 };
+            let final_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
+            let target_dim = (final_preview_dim as f32 / interactive_divisor) as u32;
+
+            let preview_base = tokio::task::spawn_blocking(move || -> DynamicImage {
+                downscale_f32_image(&original_image, target_dim, target_dim)
+            }).await.map_err(|e| e.to_string())?;
+
+            let mut temp_adjustments = js_adjustments.clone();
+            hydrate_adjustments(&state, &mut temp_adjustments);
+
+            if let Some(obj) = temp_adjustments.as_object_mut() {
+                obj.insert("crop".to_string(), serde_json::Value::Null);
+                obj.insert("rotation".to_string(), serde_json::json!(0.0));
+                obj.insert("orientationSteps".to_string(), serde_json::json!(0));
+                obj.insert("flipHorizontal".to_string(), serde_json::json!(false));
+                obj.insert("flipVertical".to_string(), serde_json::json!(false));
+                obj.insert("transformDistortion".to_string(), serde_json::json!(0.0));
+                obj.insert("transformVertical".to_string(), serde_json::json!(0.0));
+                obj.insert("transformHorizontal".to_string(), serde_json::json!(0.0));
+                obj.insert("transformRotate".to_string(), serde_json::json!(0.0));
+                obj.insert("transformAspect".to_string(), serde_json::json!(0.0));
+                obj.insert("transformScale".to_string(), serde_json::json!(100.0));
+                obj.insert("transformXOffset".to_string(), serde_json::json!(0.0));
+                obj.insert("transformYOffset".to_string(), serde_json::json!(0.0));
+            }
+
+            let all_adjustments = get_all_adjustments_from_json(&temp_adjustments, is_raw);
+            let lut_path = temp_adjustments["lutPath"].as_str();
+            let lut = lut_path.and_then(|p| get_or_load_lut(&state, p).ok());
+            let mask_bitmaps = Vec::new();
+
+            let processed_base = process_and_get_dynamic_image(
+                &context,
+                &state,
+                &preview_base,
+                visual_hash,
+                all_adjustments,
+                &mask_bitmaps,
+                lut,
+                "preview_geometry_transform_base_gen",
+            )?;
+
+            let mut cache = state.geometry_cache.lock().unwrap();
+            if cache.len() > 5 {
+                cache.clear();
+            }
+            cache.insert(visual_hash, processed_base.clone());
+
+            processed_base
+        }
+    };
+
+    let final_image = tokio::task::spawn_blocking(move || -> DynamicImage {
+        let warped_image = warp_image_geometry(&base_image_to_warp, params);
+        let orientation_steps = js_adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+        let flip_horizontal = js_adjustments["flipHorizontal"].as_bool().unwrap_or(false);
+        let flip_vertical = js_adjustments["flipVertical"].as_bool().unwrap_or(false);
+
+        let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
+        let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
+
+        flipped_image
+    }).await.map_err(|e| e.to_string())?;
+
+    let mut buf = Cursor::new(Vec::new());
+    
+    final_image.to_rgb8().write_with_encoder(JpegEncoder::new_with_quality(&mut buf, 75)).map_err(|e| e.to_string())?;
+    
+    let base64_str = general_purpose::STANDARD.encode(buf.get_ref());
+    Ok(format!("data:image/jpeg;base64,{}", base64_str))
 }
 
 fn get_full_image_for_processing(
@@ -1521,7 +1692,6 @@ async fn estimate_export_size(
         .ok_or("No original image loaded")?;
     let is_raw = loaded_image.is_raw;
 
-    // HYDRATE
     let mut adjustments_clone = js_adjustments.clone();
     hydrate_adjustments(&state, &mut adjustments_clone);
 
@@ -2065,6 +2235,7 @@ fn generate_mask_overlay(
 
 #[tauri::command]
 async fn generate_ai_foreground_mask(
+    js_adjustments: serde_json::Value,
     rotation: f32,
     flip_horizontal: bool,
     flip_vertical: bool,
@@ -2077,8 +2248,9 @@ async fn generate_ai_foreground_mask(
         .map_err(|e| e.to_string())?;
 
     let (full_image, _) = get_full_image_for_processing(&state)?;
+    let warped_image = apply_geometry_warp(&full_image, &js_adjustments);
     let full_mask_image =
-        run_u2netp_model(&full_image, &models.u2netp).map_err(|e| e.to_string())?;
+        run_u2netp_model(&warped_image, &models.u2netp).map_err(|e| e.to_string())?;
     let base64_data = encode_to_base64_png(&full_mask_image)?;
 
     Ok(AiForegroundMaskParameters {
@@ -2092,6 +2264,7 @@ async fn generate_ai_foreground_mask(
 
 #[tauri::command]
 async fn generate_ai_sky_mask(
+    js_adjustments: serde_json::Value,
     rotation: f32,
     flip_horizontal: bool,
     flip_vertical: bool,
@@ -2104,8 +2277,9 @@ async fn generate_ai_sky_mask(
         .map_err(|e| e.to_string())?;
 
     let (full_image, _) = get_full_image_for_processing(&state)?;
+    let warped_image = apply_geometry_warp(&full_image, &js_adjustments);
     let full_mask_image =
-        run_sky_seg_model(&full_image, &models.sky_seg).map_err(|e| e.to_string())?;
+        run_sky_seg_model(&warped_image, &models.sky_seg).map_err(|e| e.to_string())?;
     let base64_data = encode_to_base64_png(&full_mask_image)?;
 
     Ok(AiSkyMaskParameters {
@@ -2119,6 +2293,7 @@ async fn generate_ai_sky_mask(
 
 #[tauri::command]
 async fn generate_ai_subject_mask(
+    js_adjustments: serde_json::Value,
     path: String,
     start_point: (f64, f64),
     end_point: (f64, f64),
@@ -2133,29 +2308,42 @@ async fn generate_ai_subject_mask(
         .await
         .map_err(|e| e.to_string())?;
 
+    let (full_image, _) = get_full_image_for_processing(&state)?;
+    let warped_image = apply_geometry_warp(&full_image, &js_adjustments);
+
     let embeddings = {
         let mut ai_state_lock = state.ai_state.lock().unwrap();
         let ai_state = ai_state_lock.as_mut().unwrap();
 
         let mut hasher = blake3::Hasher::new();
         hasher.update(path.as_bytes());
+        let mut geo_hasher = DefaultHasher::new();
+        js_adjustments["transformDistortion"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformVertical"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformHorizontal"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformRotate"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformAspect"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformScale"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformXOffset"].to_string().hash(&mut geo_hasher);
+        js_adjustments["transformYOffset"].to_string().hash(&mut geo_hasher);
+        hasher.update(&geo_hasher.finish().to_le_bytes());
+
+
         let path_hash = hasher.finalize().to_hex().to_string();
 
         if let Some(cached_embeddings) = &ai_state.embeddings {
             if cached_embeddings.path_hash == path_hash {
                 cached_embeddings.clone()
             } else {
-                let (full_image, _) = get_full_image_for_processing(&state)?;
                 let mut new_embeddings =
-                    generate_image_embeddings(&full_image, &models.sam_encoder)
+                    generate_image_embeddings(&warped_image, &models.sam_encoder)
                         .map_err(|e| e.to_string())?;
                 new_embeddings.path_hash = path_hash;
                 ai_state.embeddings = Some(new_embeddings.clone());
                 new_embeddings
             }
         } else {
-            let (full_image, _) = get_full_image_for_processing(&state)?;
-            let mut new_embeddings = generate_image_embeddings(&full_image, &models.sam_encoder)
+            let mut new_embeddings = generate_image_embeddings(&warped_image, &models.sam_encoder)
                 .map_err(|e| e.to_string())?;
             new_embeddings.path_hash = path_hash;
             ai_state.embeddings = Some(new_embeddings.clone());
@@ -2375,8 +2563,10 @@ async fn invoke_generative_replace_with_mask_def(
     }
 
     let (base_image, _) = get_full_image_for_processing(&state)?;
-    let source_image = composite_patches_on_image(&base_image, &source_image_adjustments)
+    let patched_image = composite_patches_on_image(&base_image, &source_image_adjustments)
         .map_err(|e| format!("Failed to prepare source image: {}", e))?;
+
+    let source_image = apply_geometry_warp(&patched_image, &current_adjustments);
 
     let (img_w, img_h) = source_image.dimensions();
     let mask_def_for_generation = MaskDefinition {
@@ -3257,6 +3447,8 @@ fn main() {
             preview_worker_tx: Mutex::new(None),
             mask_cache: Mutex::new(HashMap::new()),
             patch_cache: Mutex::new(HashMap::new()),
+            geometry_cache: Mutex::new(HashMap::new()),
+            thumbnail_geometry_cache: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             load_image,
@@ -3271,6 +3463,7 @@ fn main() {
             generate_original_transformed_preview,
             generate_preset_preview,
             generate_uncropped_preview,
+            preview_geometry_transform,
             generate_mask_overlay,
             generate_ai_subject_mask,
             generate_ai_foreground_mask,

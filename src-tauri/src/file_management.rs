@@ -35,12 +35,13 @@ use crate::gpu_processing;
 use crate::image_loader;
 use crate::image_processing::GpuContext;
 use crate::image_processing::{
-    Crop, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
+    Crop, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation, apply_geometry_warp,
     auto_results_to_json, get_all_adjustments_from_json, perform_auto_analysis, apply_cpu_default_raw_processing,
 };
 use crate::mask_generation::MaskDefinition;
 use crate::preset_converter;
 use crate::tagging::COLOR_TAG_PREFIX;
+use crate::calculate_geometry_hash;
 
 const THUMBNAIL_WIDTH: u32 = 640;
 
@@ -685,51 +686,65 @@ pub fn generate_thumbnail_data(
         .as_ref()
         .map_or(serde_json::Value::Null, |m| m.adjustments.clone());
 
-    let settings = crate::file_management::load_settings(app_handle.clone()).unwrap_or_default();
-    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
-
-    let composite_image = if let Some(img) = preloaded_image {
-        image_loader::composite_patches_on_image(img, &adjustments)?
-    } else {
-        match read_file_mapped(&source_path) {
-            Ok(mmap) => image_loader::load_and_composite(
-                &mmap,
-                &source_path_str,
-                &adjustments,
-                true,
-                highlight_compression,
-            )?,
-            Err(e) => {
-                log::warn!(
-                    "Failed to memory-map file '{}': {}. Falling back to standard read.",
-                    source_path_str,
-                    e
-                );
-                let file_bytes = fs::read(&source_path).map_err(|io_err| {
-                    anyhow::anyhow!("Fallback read failed for {}: {}", source_path_str, io_err)
-                })?;
-                image_loader::load_and_composite(
-                    &file_bytes,
-                    &source_path_str,
-                    &adjustments,
-                    true,
-                    highlight_compression,
-                )?
-            }
-        }
-    };
-
     if let (Some(context), Some(meta)) = (gpu_context, metadata) {
         if !meta.adjustments.is_null() {
             let state = app_handle.state::<AppState>();
             const THUMBNAIL_PROCESSING_DIM: u32 = 1280;
-            let orientation_steps =
-                meta.adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
-            let coarse_rotated_image = apply_coarse_rotation(composite_image, orientation_steps);
-            let (full_w, full_h) = coarse_rotated_image.dimensions();
 
-            let (processing_base, scale_for_gpu) =
-                if full_w > THUMBNAIL_PROCESSING_DIM || full_h > THUMBNAIL_PROCESSING_DIM {
+            let geometry_hash = calculate_geometry_hash(&meta.adjustments);
+            let cached_base: Option<(DynamicImage, f32)> = {
+                let cache = state.thumbnail_geometry_cache.lock().unwrap();
+                if let Some((cached_hash, img, scale)) = cache.get(path_str) {
+                    if *cached_hash == geometry_hash {
+                        Some((img.clone(), *scale))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            let (processing_base, scale_for_gpu) = if let Some(hit) = cached_base {
+                hit
+            } else {
+                
+                let settings = crate::file_management::load_settings(app_handle.clone()).unwrap_or_default();
+                let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
+                let composite_image = if let Some(img) = preloaded_image {
+                    image_loader::composite_patches_on_image(img, &adjustments)?
+                } else {
+                    match read_file_mapped(&source_path) {
+                        Ok(mmap) => image_loader::load_and_composite(
+                            &mmap,
+                            &source_path_str,
+                            &adjustments,
+                            true,
+                            highlight_compression,
+                        )?,
+                        Err(_) => {
+                            let file_bytes = fs::read(&source_path).map_err(|io_err| {
+                                anyhow::anyhow!("Fallback read failed for {}: {}", source_path_str, io_err)
+                            })?;
+                            image_loader::load_and_composite(
+                                &file_bytes,
+                                &source_path_str,
+                                &adjustments,
+                                true,
+                                highlight_compression,
+                            )?
+                        }
+                    }
+                };
+
+                let warped_image = apply_geometry_warp(&composite_image, &meta.adjustments);
+                let orientation_steps = meta.adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
+                let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
+                
+                let (full_w, full_h) = coarse_rotated_image.dimensions();
+
+                let (base, scale) = if full_w > THUMBNAIL_PROCESSING_DIM || full_h > THUMBNAIL_PROCESSING_DIM {
                     let base = crate::image_processing::downscale_f32_image(
                         &coarse_rotated_image,
                         THUMBNAIL_PROCESSING_DIM,
@@ -745,17 +760,21 @@ pub fn generate_thumbnail_data(
                     (coarse_rotated_image.clone(), 1.0)
                 };
 
+                let mut cache = state.thumbnail_geometry_cache.lock().unwrap();
+                if cache.len() > 30 { cache.clear(); }
+                cache.insert(path_str.to_string(), (geometry_hash, base.clone(), scale));
+
+                (base, scale)
+            };
+            
             let rotation_degrees = meta.adjustments["rotation"].as_f64().unwrap_or(0.0) as f32;
-            let flip_horizontal = meta.adjustments["flipHorizontal"]
-                .as_bool()
-                .unwrap_or(false);
+            let flip_horizontal = meta.adjustments["flipHorizontal"].as_bool().unwrap_or(false);
             let flip_vertical = meta.adjustments["flipVertical"].as_bool().unwrap_or(false);
 
             let flipped_image = apply_flip(processing_base, flip_horizontal, flip_vertical);
             let rotated_image = apply_rotation(&flipped_image, rotation_degrees);
 
-            let crop_data: Option<Crop> =
-                serde_json::from_value(meta.adjustments["crop"].clone()).ok();
+            let crop_data: Option<Crop> = serde_json::from_value(meta.adjustments["crop"].clone()).ok();
             let scaled_crop_json = if let Some(c) = &crop_data {
                 serde_json::to_value(Crop {
                     x: c.x * scale_for_gpu as f64,
@@ -770,7 +789,6 @@ pub fn generate_thumbnail_data(
 
             let cropped_preview = apply_crop(rotated_image, &scaled_crop_json);
             let (preview_w, preview_h) = cropped_preview.dimensions();
-
             let unscaled_crop_offset = crop_data.map_or((0.0, 0.0), |c| (c.x as f32, c.y as f32));
 
             let mask_definitions: Vec<MaskDefinition> = meta
@@ -833,7 +851,33 @@ pub fn generate_thumbnail_data(
         }
     }
 
-    let mut final_image = composite_image;
+    let settings = crate::file_management::load_settings(app_handle.clone()).unwrap_or_default();
+    let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
+
+    let mut final_image = if let Some(img) = preloaded_image {
+        image_loader::composite_patches_on_image(img, &adjustments)?
+    } else {
+         match read_file_mapped(&source_path) {
+            Ok(mmap) => image_loader::load_and_composite(
+                &mmap,
+                &source_path_str,
+                &adjustments,
+                true,
+                highlight_compression,
+            )?,
+            Err(e) => {
+                log::warn!("Fallback read for {}: {}", source_path_str, e);
+                let bytes = fs::read(&source_path)?;
+                image_loader::load_and_composite(
+                    &bytes,
+                    &source_path_str,
+                    &adjustments,
+                    true,
+                    highlight_compression,
+                )?
+            }
+        }
+    };
 
     if is_raw && adjustments.is_null() {
         apply_cpu_default_raw_processing(&mut final_image);

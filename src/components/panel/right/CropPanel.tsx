@@ -7,11 +7,13 @@ import {
   RotateCcw,
   RotateCw,
   Ruler,
+  Scan,
   X,
 } from 'lucide-react';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../../../utils/adjustments';
 import clsx from 'clsx';
 import { Orientation, SelectedImage } from '../../ui/AppProperties';
+import TransformModal from '../../modals/TransformModal';
 
 const BASE_RATIO = 1.618;
 const ORIGINAL_RATIO = 0;
@@ -20,7 +22,7 @@ interface CropPanelProps {
   adjustments: Adjustments;
   isStraightenActive: boolean;
   selectedImage: SelectedImage;
-  setAdjustments(adjustments: Partial<Adjustments>): void;
+  setAdjustments(adjustments: Partial<Adjustments> | ((prev: Adjustments) => Adjustments)): void;
   setIsStraightenActive(active: any): void;
 }
 
@@ -50,6 +52,7 @@ export default function CropPanel({
 }: CropPanelProps) {
   const [customW, setCustomW] = useState('');
   const [customH, setCustomH] = useState('');
+  const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
 
   const { aspectRatio, rotation = 0, flipHorizontal = false, flipVertical = false, orientationSteps = 0 } = adjustments;
 
@@ -117,7 +120,7 @@ export default function CropPanel({
     if (activePreset?.value === ORIGINAL_RATIO) {
       const newOriginalRatio = getEffectiveOriginalRatio();
       if (newOriginalRatio !== null && aspectRatio && Math.abs(aspectRatio - newOriginalRatio) > 0.001) {
-        setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, aspectRatio: newOriginalRatio, crop: null }));
+        setAdjustments((prev: Adjustments) => ({ ...prev, aspectRatio: newOriginalRatio, crop: null }));
       }
     }
   }, [orientationSteps, activePreset, aspectRatio, getEffectiveOriginalRatio, setAdjustments]);
@@ -138,7 +141,7 @@ export default function CropPanel({
     if (numW > 0 && numH > 0) {
       const newAspectRatio = numW / numH;
       if (adjustments?.aspectRatio && Math.abs(adjustments.aspectRatio - newAspectRatio) > 0.001) {
-        setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, aspectRatio: newAspectRatio, crop: null }));
+        setAdjustments((prev: Adjustments) => ({ ...prev, aspectRatio: newAspectRatio, crop: null }));
       }
     }
   };
@@ -153,7 +156,7 @@ export default function CropPanel({
 
   const handlePresetClick = (preset: CropPreset) => {
     if (preset.value === ORIGINAL_RATIO) {
-      setAdjustments((prev: Partial<Adjustments>) => ({
+      setAdjustments((prev: Adjustments) => ({
         ...prev,
         aspectRatio: getEffectiveOriginalRatio(),
         crop: null,
@@ -163,7 +166,7 @@ export default function CropPanel({
 
     let targetRatio = preset.value;
     if (activePreset === preset && targetRatio && targetRatio !== 1) {
-      setAdjustments((prev: Partial<Adjustments>) => ({
+      setAdjustments((prev: Adjustments) => ({
         ...prev,
         aspectRatio: 1 / (prev.aspectRatio ? prev.aspectRatio : 1),
         crop: null,
@@ -196,14 +199,22 @@ export default function CropPanel({
     const originalAspectRatio =
       selectedImage?.width && selectedImage?.height ? selectedImage.width / selectedImage.height : null;
 
-    setAdjustments((prev: Partial<Adjustments>) => ({
+    setAdjustments((prev: Adjustments) => ({
       ...prev,
       aspectRatio: originalAspectRatio,
       crop: INITIAL_ADJUSTMENTS.crop,
-      flipHorizontal: INITIAL_ADJUSTMENTS.flipHorizontal || false,
-      flipVertical: INITIAL_ADJUSTMENTS.flipVertical || false,
-      orientationSteps: INITIAL_ADJUSTMENTS.orientationSteps || 0,
-      rotation: INITIAL_ADJUSTMENTS.rotation || 0,
+      flipHorizontal: INITIAL_ADJUSTMENTS.flipHorizontal ?? false,
+      flipVertical: INITIAL_ADJUSTMENTS.flipVertical ?? false,
+      orientationSteps: INITIAL_ADJUSTMENTS.orientationSteps ?? 0,
+      rotation: INITIAL_ADJUSTMENTS.rotation ?? 0,
+      transformDistortion: INITIAL_ADJUSTMENTS.transformDistortion ?? 0,
+      transformVertical: INITIAL_ADJUSTMENTS.transformVertical ?? 0,
+      transformHorizontal: INITIAL_ADJUSTMENTS.transformHorizontal ?? 0,
+      transformRotate: INITIAL_ADJUSTMENTS.transformRotate ?? 0,
+      transformAspect: INITIAL_ADJUSTMENTS.transformAspect ?? 0,
+      transformScale: INITIAL_ADJUSTMENTS.transformScale ?? 1,
+      transformXOffset: INITIAL_ADJUSTMENTS.transformXOffset ?? 0,
+      transformYOffset: INITIAL_ADJUSTMENTS.transformYOffset ?? 0,
     }));
   };
 
@@ -216,12 +227,12 @@ export default function CropPanel({
 
   const handleFineRotationChange = (e: any) => {
     const newFineRotation = parseFloat(e.target.value);
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, rotation: newFineRotation }));
+    setAdjustments((prev: Adjustments) => ({ ...prev, rotation: newFineRotation }));
   };
 
   const handleStepRotate = (degrees: number) => {
     const increment = degrees > 0 ? 1 : 3;
-    setAdjustments((prev: Partial<Adjustments>) => {
+    setAdjustments((prev: Adjustments) => {
       const newAspectRatio = prev.aspectRatio && prev.aspectRatio !== 0 ? 1 / prev.aspectRatio : null;
       return {
         ...prev,
@@ -383,7 +394,7 @@ export default function CropPanel({
                       : 'bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary',
                   )}
                   onClick={() =>
-                    setAdjustments((prev: Partial<Adjustments>) => ({
+                    setAdjustments((prev: Adjustments) => ({
                       ...prev,
                       flipHorizontal: !prev.flipHorizontal,
                     }))
@@ -400,7 +411,7 @@ export default function CropPanel({
                       : 'bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary',
                   )}
                   onClick={() =>
-                    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, flipVertical: !prev.flipVertical }))
+                    setAdjustments((prev: Adjustments) => ({ ...prev, flipVertical: !prev.flipVertical }))
                   }
                 >
                   <FlipVertical size={20} className="transition-none" />
@@ -417,7 +428,7 @@ export default function CropPanel({
                     setIsStraightenActive((isActive: boolean) => {
                       const willBeActive = !isActive;
                       if (willBeActive) {
-                        setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, rotation: 0 }));
+                        setAdjustments((prev: Adjustments) => ({ ...prev, rotation: 0 }));
                       }
                       return willBeActive;
                     });
@@ -438,6 +449,14 @@ export default function CropPanel({
                     </span>
                   </span>
                 </button>
+                
+                <button
+                  className="flex flex-col items-center justify-center p-3 rounded-lg transition-colors bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary group"
+                  onClick={() => setIsTransformModalOpen(true)}
+                >
+                  <Scan size={20} className="transition-none" />
+                  <span className="text-xs mt-1.5 transition-none">Transform</span>
+                </button>
               </div>
             </div>
           </>
@@ -445,6 +464,26 @@ export default function CropPanel({
           <p className="text-center text-text-tertiary mt-4">No image selected.</p>
         )}
       </div>
+      
+      <TransformModal 
+        isOpen={isTransformModalOpen} 
+        onClose={() => setIsTransformModalOpen(false)}
+        onApply={(newParams) => {
+           setAdjustments((prev: Adjustments) => ({
+               ...prev,
+               transformDistortion: newParams.distortion,
+               transformVertical: newParams.vertical,
+               transformHorizontal: newParams.horizontal,
+               transformRotate: newParams.rotate,
+               transformAspect: newParams.aspect,
+               transformScale: newParams.scale,
+               transformXOffset: newParams.x_offset,
+               transformYOffset: newParams.y_offset,
+               crop: null 
+           }));
+        }}
+        currentAdjustments={adjustments}
+      />
     </div>
   );
 }
