@@ -1101,7 +1101,7 @@ const ImageCanvas = memo(
                     src={layer.url}
                     style={{
                       opacity: layer.opacity,
-                      transition: 'opacity 150ms ease-in-out',
+                      transition: 'opacity 100ms linear',
                       willChange: 'opacity, transform',
                       imageRendering: 'high-quality',
                       WebkitImageRendering: 'high-quality',

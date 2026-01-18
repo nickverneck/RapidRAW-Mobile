@@ -2858,7 +2858,7 @@ function App() {
         (currentAdjustments) => {
           applyAdjustments(currentAdjustments, true);
         },
-        120, 
+        100, 
         { leading: true, trailing: true }
       ),
     [applyAdjustments]
