@@ -17,7 +17,7 @@ export const THEMES: Array<ThemeProps> = [
       '--opacity-bg-primary': '0.6',
       '--color-bg-secondary-rgb': '34, 34, 34',
       '--opacity-bg-secondary': '0.75',
-      '--color-surface': '30 30 30',
+      '--color-surface': '28 28 28',
       '--color-card-active': '43 43 43',
       '--color-button-text': '0 0 0',
       '--color-text-primary': '232 234 237',
