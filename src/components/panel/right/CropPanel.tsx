@@ -53,8 +53,27 @@ export default function CropPanel({
   const [customW, setCustomW] = useState('');
   const [customH, setCustomH] = useState('');
   const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
+  const [isRotationActive, setIsRotationActive] = useState(false);
 
   const { aspectRatio, rotation = 0, flipHorizontal = false, flipVertical = false, orientationSteps = 0 } = adjustments;
+
+  useEffect(() => {
+    const handleDragEndGlobal = () => {
+      if (isRotationActive) {
+        setIsRotationActive(false);
+      }
+    };
+
+    if (isRotationActive) {
+      window.addEventListener('mouseup', handleDragEndGlobal);
+      window.addEventListener('touchend', handleDragEndGlobal);
+    }
+
+    return () => {
+      window.removeEventListener('mouseup', handleDragEndGlobal);
+      window.removeEventListener('touchend', handleDragEndGlobal);
+    };
+  }, [isRotationActive]);
 
   const getEffectiveOriginalRatio = useCallback(() => {
     if (!selectedImage?.width || !selectedImage?.height) {
@@ -248,6 +267,14 @@ export default function CropPanel({
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, rotation: 0 }));
   };
 
+  const handleRotationMouseDown = () => {
+    setIsRotationActive(true);
+  };
+
+  const handleRotationMouseUp = () => {
+    setIsRotationActive(false);
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface">
@@ -346,27 +373,43 @@ export default function CropPanel({
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <p className="text-sm mb-3 font-semibold text-text-primary">Rotation</p>
-              <div className="flex justify-between items-center">
-                <span className="font-mono text-lg text-text-primary">{rotation.toFixed(1)}°</span>
-                <button
-                  className="p-1.5 rounded-full hover:bg-surface"
-                  onClick={resetFineRotation}
-                  title="Reset Fine Rotation"
-                >
-                  <RotateCcw size={14} />
-                </button>
+              <div className="bg-surface px-4 py-3 pb-4 rounded-lg">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="font-mono text-lg text-text-primary">{rotation.toFixed(1)}°</span>
+                  <button
+                    className="p-1.5 rounded-md hover:bg-card-active text-text-secondary hover:text-text-primary transition-colors"
+                    onClick={resetFineRotation}
+                    title="Reset Fine Rotation"
+                    disabled={rotation === 0}
+                  >
+                    <RotateCcw size={14} />
+                  </button>
+                </div>
+
+                <div className="relative w-full h-5">
+                  <div className="absolute top-1/2 left-0 w-full h-1.5 -translate-y-1/4 bg-card-active rounded-full pointer-events-none" />
+                  <input
+                    className={clsx(
+                      'absolute top-1/2 left-0 w-full h-1.5 appearance-none bg-transparent cursor-pointer m-0 p-0 slider-input z-10',
+                      isRotationActive && 'slider-thumb-active',
+                    )}
+                    style={{ margin: 0 }}
+                    max="45"
+                    min="-45"
+                    onChange={handleFineRotationChange}
+                    onDoubleClick={resetFineRotation}
+                    onMouseDown={handleRotationMouseDown}
+                    onMouseUp={handleRotationMouseUp}
+                    onTouchStart={handleRotationMouseDown}
+                    onTouchEnd={handleRotationMouseUp}
+                    step="0.1"
+                    type="range"
+                    value={fineRotation}
+                  />
+                </div>
               </div>
-              <input
-                className="w-full h-2 bg-surface rounded-lg appearance-none cursor-pointer accent-accent"
-                max="45"
-                min="-45"
-                onChange={handleFineRotationChange}
-                step="0.1"
-                type="range"
-                value={fineRotation}
-              />
             </div>
 
             <div className="space-y-4">
@@ -449,7 +492,7 @@ export default function CropPanel({
                     </span>
                   </span>
                 </button>
-                
+
                 <button
                   className="flex flex-col items-center justify-center p-3 rounded-lg transition-colors bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary group"
                   onClick={() => setIsTransformModalOpen(true)}
@@ -464,23 +507,23 @@ export default function CropPanel({
           <p className="text-center text-text-tertiary mt-4">No image selected.</p>
         )}
       </div>
-      
-      <TransformModal 
-        isOpen={isTransformModalOpen} 
+
+      <TransformModal
+        isOpen={isTransformModalOpen}
         onClose={() => setIsTransformModalOpen(false)}
         onApply={(newParams) => {
-           setAdjustments((prev: Adjustments) => ({
-               ...prev,
-               transformDistortion: newParams.distortion,
-               transformVertical: newParams.vertical,
-               transformHorizontal: newParams.horizontal,
-               transformRotate: newParams.rotate,
-               transformAspect: newParams.aspect,
-               transformScale: newParams.scale,
-               transformXOffset: newParams.x_offset,
-               transformYOffset: newParams.y_offset,
-               crop: null 
-           }));
+          setAdjustments((prev: Adjustments) => ({
+            ...prev,
+            transformDistortion: newParams.distortion,
+            transformVertical: newParams.vertical,
+            transformHorizontal: newParams.horizontal,
+            transformRotate: newParams.rotate,
+            transformAspect: newParams.aspect,
+            transformScale: newParams.scale,
+            transformXOffset: newParams.x_offset,
+            transformYOffset: newParams.y_offset,
+            crop: null,
+          }));
         }}
         currentAdjustments={adjustments}
       />

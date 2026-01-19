@@ -164,6 +164,16 @@ export default function MasksPanel({
   const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'mask-list-root' });
   
   useEffect(() => {
+    if (activeMaskContainerId) {
+      const containerExists = adjustments.masks.some(m => m.id === activeMaskContainerId);
+      if (!containerExists) {
+        onSelectContainer(null);
+        onSelectMask(null);
+      }
+    }
+  }, [adjustments.masks, activeMaskContainerId, onSelectContainer, onSelectMask]);
+
+  useEffect(() => {
     if (!hasPerformedInitialSelection.current && !activeMaskContainerId && adjustments.masks.length > 0) {
       const lastMask = adjustments.masks[adjustments.masks.length - 1];
       if (lastMask) {
