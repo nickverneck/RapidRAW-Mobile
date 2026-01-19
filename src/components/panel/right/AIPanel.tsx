@@ -255,6 +255,16 @@ export default function AIPanel({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
+    if (activePatchContainerId) {
+      const patchExists = adjustments.aiPatches?.some(p => p.id === activePatchContainerId);
+      if (!patchExists) {
+        onSelectPatchContainer(null);
+        onSelectSubMask(null);
+      }
+    }
+  }, [adjustments.aiPatches, activePatchContainerId, onSelectPatchContainer, onSelectSubMask]);
+
+  useEffect(() => {
     const hasPatches = (adjustments.aiPatches || []).length > 0;
 
     if (hasPatches) {
