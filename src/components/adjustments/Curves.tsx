@@ -21,7 +21,7 @@ interface ColorData {
 interface CurveGraphProps {
   adjustments: Adjustments;
   histogram: ChannelConfig | null;
-  isMasksView?: boolean;
+  isForMask?: boolean;
   setAdjustments(updater: (prev: any) => any): void;
   theme: string;
   onDragStateChange?: (isDragging: boolean) => void;
@@ -133,7 +133,7 @@ export default function CurveGraph({
   setAdjustments,
   histogram,
   theme,
-  isMasksView,
+  isForMask,
   onDragStateChange,
 }: CurveGraphProps) {
   const [activeChannel, setActiveChannel] = useState<ActiveChannel>(ActiveChannel.Luma);
@@ -337,7 +337,7 @@ export default function CurveGraph({
             </button>
           ))}
         </div>
-        {!isMasksView && (
+        {!isForMask && (
           <button
             className={clsx(
               'w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-all opacity-0 group-hover:opacity-100',
