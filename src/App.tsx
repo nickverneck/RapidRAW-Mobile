@@ -450,6 +450,12 @@ function App() {
   const isProgrammaticZoom = useRef(false);
   const isInitialMount = useRef(true);
   const currentFolderPathRef = useRef<string>(currentFolderPath);
+  const preloadedDataRef = useRef<{
+    tree?: Promise<any>;
+    images?: Promise<ImageFile[]>;
+    rootPath?: string;
+    currentPath?: string;
+  }>({});
 
   const [exportState, setExportState] = useState<ExportState>({
     errorMessage: '',
@@ -1382,6 +1388,9 @@ function App() {
         if (settings?.uiVisibility) {
           setUiVisibility((prev) => ({ ...prev, ...settings.uiVisibility }));
         }
+        if (settings?.libraryViewMode) {
+          setLibraryViewMode(settings.libraryViewMode);
+        }
         if (settings?.thumbnailSize) {
           setThumbnailSize(settings.thumbnailSize);
         }
@@ -1399,6 +1408,24 @@ function App() {
             console.error('Failed to load pinned folder trees:', err);
           }
         }
+
+        if (settings.lastRootPath) {
+          const root = settings.lastRootPath;
+          const currentPath = settings.lastFolderState?.currentFolderPath || root;
+          
+          const command =
+            settings.libraryViewMode === LibraryViewMode.Recursive
+              ? Invokes.ListImagesRecursive
+              : Invokes.ListImagesInDir;
+          
+          preloadedDataRef.current = {
+            rootPath: root,
+            currentPath: currentPath,
+            tree: invoke(Invokes.GetFolderTree, { path: root }),
+            images: invoke(command, { path: currentPath })
+          };
+        }
+
         invoke('frontend_ready').catch(e => console.error("Failed to notify backend of readiness:", e));
       })
       .catch((err) => {
@@ -1440,6 +1467,15 @@ function App() {
       handleSettingsChange({ ...appSettings, thumbnailAspectRatio });
     }
   }, [thumbnailAspectRatio, appSettings, handleSettingsChange]);
+
+  useEffect(() => {
+    if (isInitialMount.current || !appSettings) {
+      return;
+    }
+    if (appSettings.libraryViewMode !== libraryViewMode) {
+      handleSettingsChange({ ...appSettings, libraryViewMode });
+    }
+  }, [libraryViewMode, appSettings, handleSettingsChange]);
 
   useEffect(() => {
     invoke(Invokes.GetSupportedFileTypes)
@@ -1570,7 +1606,7 @@ function App() {
   };
 
   const handleSelectSubfolder = useCallback(
-    async (path: string | null, isNewRoot = false) => {
+    async (path: string | null, isNewRoot = false, preloadedImages?: ImageFile[]) => {
       await invoke('cancel_thumbnail_generation');
       setIsViewLoading(true);
       setSearchCriteria({ tags: [], text: '', mode: 'OR' });
@@ -1640,7 +1676,13 @@ function App() {
         const command =
           libraryViewMode === LibraryViewMode.Recursive ? Invokes.ListImagesRecursive : Invokes.ListImagesInDir;
 
-        const files: ImageFile[] = await invoke(command, { path });
+        let files: ImageFile[];
+        if (preloadedImages) {
+          files = preloadedImages;
+        } else {
+          files = await invoke(command, { path });
+        }
+
         const exifSortKeys = ['date_taken', 'iso', 'shutter_speed', 'aperture', 'focal_length'];
         const isExifSortActive = exifSortKeys.includes(sortCriteria.key);
         const shouldReadExif = appSettings?.enableExifReading ?? false;
@@ -2956,7 +2998,13 @@ function App() {
 
       setIsTreeLoading(true);
       try {
-        const treeData = await invoke(Invokes.GetFolderTree, { path: root });
+        let treeData;
+        if (preloadedDataRef.current.rootPath === root && preloadedDataRef.current.tree) {
+           treeData = await preloadedDataRef.current.tree;
+           console.log('Preload cache hit for folder tree.');
+        } else {
+           treeData = await invoke(Invokes.GetFolderTree, { path: root });
+        }
         setFolderTree(treeData);
       } catch (err) {
         console.error('Failed to restore folder tree:', err);
@@ -2964,7 +3012,20 @@ function App() {
         setIsTreeLoading(false);
       }
 
-      await handleSelectSubfolder(pathToSelect, false);
+      let preloadedImages: ImageFile[] | undefined = undefined;
+      if (
+        preloadedDataRef.current.currentPath === pathToSelect && 
+        preloadedDataRef.current.images
+      ) {
+         try {
+           preloadedImages = await preloadedDataRef.current.images;
+           console.log('Preload cache hit for image list.');
+         } catch(e) {
+           console.error("Failed to retrieve preloaded images", e);
+         }
+      }
+
+      await handleSelectSubfolder(pathToSelect, false, preloadedImages);
     };
     restore().catch((err) => {
       console.error('Failed to restore session, folder might be missing:', err);

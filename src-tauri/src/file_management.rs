@@ -185,7 +185,6 @@ fn default_tagging_shortcuts_option() -> Option<Vec<String>> {
         "event".to_string(),
     ])
 }
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -229,6 +228,8 @@ pub struct AppSettings {
     pub processing_backend: Option<String>,
     #[serde(default)]
     pub linux_gpu_optimization: Option<bool>,
+    #[serde(default)]
+    pub library_view_mode: Option<String>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -281,6 +282,7 @@ impl Default for AppSettings {
             linux_gpu_optimization: Some(true),
             #[cfg(not(target_os = "linux"))]
             linux_gpu_optimization: Some(false),
+            library_view_mode: Some("flat".to_string()),
         }
     }
 }
