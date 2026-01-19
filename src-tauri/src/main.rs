@@ -44,6 +44,9 @@ use image::{
     DynamicImage, GenericImageView, GrayImage, ImageBuffer, ImageFormat, Luma, Rgb, RgbImage, Rgba,
     RgbaImage, imageops,
 };
+use imageproc::drawing::draw_line_segment_mut;
+use imageproc::edges::canny;
+use imageproc::hough::{detect_lines, LineDetectionOptions};
 use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
@@ -1058,6 +1061,7 @@ fn generate_original_transformed_preview(
 async fn preview_geometry_transform(
     params: GeometryParams,
     js_adjustments: serde_json::Value,
+    show_lines: bool, // New parameter to control line generation
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
@@ -1080,8 +1084,7 @@ async fn preview_geometry_transform(
             };
 
             let settings = load_settings(app_handle.clone()).unwrap_or_default();
-            let hq_live = settings.enable_high_quality_live_previews.unwrap_or(false);
-            let interactive_divisor = if hq_live { 1.5 } else { 2.0 };
+            let interactive_divisor = 1.5; 
             let final_preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
             let target_dim = (final_preview_dim as f32 / interactive_divisor) as u32;
 
@@ -1143,7 +1146,65 @@ async fn preview_geometry_transform(
         let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
         let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
 
-        flipped_image
+        if show_lines {
+            let gray_image = flipped_image.to_luma8();
+            let mut visualization = flipped_image.to_rgba8();
+            let edges = canny(&gray_image, 50.0, 100.0);
+            
+            let min_dim = gray_image.width().min(gray_image.height());
+            
+            let options = LineDetectionOptions {
+                vote_threshold: (min_dim as f32 * 0.24) as u32, 
+                suppression_radius: 15,
+            };
+            
+            let lines = detect_lines(&edges, options);
+
+            for line in lines {
+                let angle_deg = line.angle_in_degrees as f32;
+                let angle_norm = angle_deg % 180.0;
+                let alignment_threshold = 0.5;
+                let is_vertical = angle_norm < alignment_threshold || angle_norm > (180.0 - alignment_threshold);
+                let is_horizontal = (angle_norm - 90.0).abs() < alignment_threshold;
+                
+                let color = if is_vertical || is_horizontal {
+                    Rgba([0, 255, 0, 255]) 
+                } else {
+                    Rgba([255, 0, 0, 255])
+                };
+
+                let r = line.r;
+                let theta_rad = angle_deg.to_radians();
+                let a = theta_rad.cos();
+                let b = theta_rad.sin();
+                let x0 = a * r;
+                let y0 = b * r;
+                
+                let dist = (visualization.width().max(visualization.height()) * 2) as f32;
+                
+                let x1 = x0 + dist * (-b);
+                let y1 = y0 + dist * (a);
+                let x2 = x0 - dist * (-b);
+                let y2 = y0 - dist * (a);
+
+                draw_line_segment_mut(
+                    &mut visualization,
+                    (x1, y1),
+                    (x2, y2),
+                    color,
+                );
+                draw_line_segment_mut(
+                    &mut visualization,
+                    (x1 + a, y1 + b),
+                    (x2 + a, y2 + b),
+                    color,
+                );
+            }
+
+            DynamicImage::ImageRgba8(visualization)
+        } else {
+            flipped_image
+        }
     }).await.map_err(|e| e.to_string())?;
 
     let mut buf = Cursor::new(Vec::new());

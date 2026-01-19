@@ -6,7 +6,8 @@ import {
   Grid3X3, 
   Eye,
   EyeOff,
-  Info
+  Info,
+  LineChart,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../ui/Button';
@@ -49,11 +50,28 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
+  const [showLines, setShowLines] = useState(false);
   const [isCompareActive, setIsCompareActive] = useState(false);
   
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
 
+  const updatePreview = useCallback(
+    throttle(async (currentParams: GeometryParams, linesEnabled: boolean) => {
+      try {
+        const result: string = await invoke('preview_geometry_transform', { 
+            params: currentParams,
+            jsAdjustments: currentAdjustments,
+            showLines: linesEnabled,
+        });
+        setPreviewUrl(result);
+      } catch (e) {
+        console.error("Preview transform failed", e);
+      }
+    }, 30),
+    [currentAdjustments]
+  );
+  
   useEffect(() => {
     if (isOpen) {
       setIsMounted(true);
@@ -70,7 +88,8 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
         y_offset: currentAdjustments.transformYOffset ?? 0,
       };
       setParams(initParams);
-      updatePreview(initParams);
+      setShowLines(false);
+      updatePreview(initParams, false);
 
       return () => clearTimeout(timer);
     } else {
@@ -82,27 +101,13 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, currentAdjustments]);
+  }, [isOpen, currentAdjustments, updatePreview]);
 
-  const updatePreview = useCallback(
-    throttle(async (currentParams: GeometryParams) => {
-      try {
-        const result: string = await invoke('preview_geometry_transform', { 
-            params: currentParams,
-            jsAdjustments: currentAdjustments 
-        });
-        setPreviewUrl(result);
-      } catch (e) {
-        console.error("Preview transform failed", e);
-      }
-    }, 30),
-    [currentAdjustments]
-  );
 
   const handleChange = (key: keyof GeometryParams, value: number) => {
     const newParams = { ...params, [key]: value };
     setParams(newParams);
-    updatePreview(newParams);
+    updatePreview(newParams, showLines);
   };
 
   const handleApply = () => {
@@ -118,7 +123,13 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
 
   const handleReset = () => {
       setParams(DEFAULT_PARAMS);
-      updatePreview(DEFAULT_PARAMS);
+      updatePreview(DEFAULT_PARAMS, showLines);
+  };
+
+  const handleShowLinesToggle = () => {
+    const newShowLines = !showLines;
+    setShowLines(newShowLines);
+    updatePreview(params, newShowLines);
   };
 
   const toggleCompare = async (active: boolean) => {
@@ -126,11 +137,12 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
       if (active) {
           const result: string = await invoke('preview_geometry_transform', { 
             params: DEFAULT_PARAMS,
-            jsAdjustments: currentAdjustments 
+            jsAdjustments: currentAdjustments,
+            showLines: false,
         });
         setPreviewUrl(result);
       } else {
-          updatePreview(params);
+          updatePreview(params, showLines);
       }
   };
 
@@ -260,7 +272,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     )}
                     
                     {isCompareActive && (
-                        <div className="absolute top-4 left-4 bg-accent text-white text-xs font-bold px-2 py-1 rounded shadow-lg">
+                        <div className="absolute top-4 left-4 bg-accent text-button-text text-xs px-2 py-1 rounded shadow-lg">
                             ORIGINAL
                         </div>
                     )}
@@ -274,9 +286,19 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                         "p-2 rounded-full transition-colors",
                         showGrid ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
                     )}
-                    title="Toggle Grid (G)"
+                    title="Toggle Grid"
                 >
                     <Grid3X3 size={18} />
+                </button>
+                 <button 
+                    onClick={handleShowLinesToggle}
+                    className={clsx(
+                        "p-2 rounded-full transition-colors",
+                        showLines ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
+                    )}
+                    title="Toggle Helper Lines"
+                >
+                    <LineChart size={18} />
                 </button>
                 <div className="w-px bg-white/20 mx-1 my-1"></div>
                 <button 

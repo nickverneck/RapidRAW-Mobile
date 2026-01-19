@@ -139,11 +139,15 @@ export default function CurveGraph({
   const [activeChannel, setActiveChannel] = useState<ActiveChannel>(ActiveChannel.Luma);
   const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
   const [localPoints, setLocalPoints] = useState<Array<Coord> | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const activeChannelRef = useRef(activeChannel);
   const draggingIndexRef = useRef<number | null>(null);
   const localPointsRef = useRef<Array<Coord> | null>(null);
   const propPointsRef = useRef<Array<Coord> | undefined>(undefined);
+  const isHoveredRef = useRef(false);
 
   useEffect(() => {
     activeChannelRef.current = activeChannel;
@@ -167,6 +171,33 @@ export default function CurveGraph({
     onDragStateChange?.(isDragging);
     draggingIndexRef.current = draggingPointIndex;
   }, [draggingPointIndex, onDragStateChange]);
+
+  // Robust hover detection using global coordinates to handle scrollbar/overflow issues
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      
+      const rect = containerRef.current.getBoundingClientRect();
+      
+      const isInside =
+        e.clientX >= rect.left &&
+        e.clientX <= rect.right &&
+        e.clientY >= rect.top &&
+        e.clientY <= rect.bottom;
+
+      // Only update state if the boolean value actually changes to prevent re-renders
+      if (isInside !== isHoveredRef.current) {
+        isHoveredRef.current = isInside;
+        setIsHovered(isInside);
+      }
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove, { passive: true });
+    
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+    };
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: any) => {
@@ -311,8 +342,14 @@ export default function CurveGraph({
     }));
   };
 
+  // We consider the control hovered if the mouse is inside OR if the user is currently dragging a point
+  const shouldShowControls = adjustments.showClipping || isHovered || draggingPointIndex !== null;
+
   return (
-    <div className="select-none">
+    <div 
+      className="select-none" 
+      ref={containerRef}
+    >
       <div className="flex items-center justify-between gap-1 mb-2 mt-2">
         <div className="flex items-center gap-1">
           {Object.keys(channelConfig).map((channel: any) => (
@@ -340,11 +377,12 @@ export default function CurveGraph({
         {!isForMask && (
           <button
             className={clsx(
-              'w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-all opacity-0 group-hover:opacity-100',
+              'w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center transition-all',
               {
-                'ring-2 ring-offset-2 ring-offset-surface ring-accent bg-accent text-button-text !opacity-100':
+                'opacity-100 ring-2 ring-offset-2 ring-offset-surface ring-accent bg-accent text-button-text':
                   adjustments.showClipping,
-                'bg-surface-secondary text-text-primary': !adjustments.showClipping,
+                'opacity-100 bg-surface-secondary text-text-primary': !adjustments.showClipping && shouldShowControls,
+                'opacity-0': !adjustments.showClipping && !shouldShowControls,
               },
             )}
             key="clipping"
