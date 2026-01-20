@@ -17,6 +17,7 @@ import TransformModal from '../../modals/TransformModal';
 
 const BASE_RATIO = 1.618;
 const ORIGINAL_RATIO = 0;
+const RATIO_TOLERANCE = 0.01;
 
 interface CropPanelProps {
   adjustments: Adjustments;
@@ -92,7 +93,10 @@ export default function CropPanel({
 
     const numericPresetMatch = PRESETS.find(
       (p: CropPreset) =>
-        p.value && (Math.abs(aspectRatio - p.value) < 0.001 || Math.abs(aspectRatio - 1 / p.value) < 0.001),
+        p.value &&
+        p.value !== ORIGINAL_RATIO &&
+        (Math.abs(aspectRatio - p.value) < RATIO_TOLERANCE ||
+          Math.abs(aspectRatio - 1 / p.value) < RATIO_TOLERANCE),
     );
 
     if (numericPresetMatch) {
@@ -100,7 +104,7 @@ export default function CropPanel({
     }
 
     const originalRatio = getEffectiveOriginalRatio();
-    if (originalRatio && Math.abs(aspectRatio - originalRatio) < 0.001) {
+    if (originalRatio && Math.abs(aspectRatio - originalRatio) < RATIO_TOLERANCE) {
       return PRESETS.find((p: CropPreset) => p.value === ORIGINAL_RATIO);
     }
 
@@ -113,7 +117,7 @@ export default function CropPanel({
     if (activePreset.value === ORIGINAL_RATIO) {
       baseRatio = getEffectiveOriginalRatio();
     }
-    if (baseRatio && aspectRatio && Math.abs(aspectRatio - baseRatio) > 0.001) {
+    if (baseRatio && aspectRatio && Math.abs(aspectRatio - baseRatio) > RATIO_TOLERANCE) {
       orientation = Orientation.Vertical;
     }
   }
@@ -123,7 +127,7 @@ export default function CropPanel({
   useEffect(() => {
     if (isCustomActive && aspectRatio) {
       const currentInputRatio = parseFloat(customW) / parseFloat(customH);
-      if (isNaN(currentInputRatio) || Math.abs(currentInputRatio - aspectRatio) > 0.001) {
+      if (isNaN(currentInputRatio) || Math.abs(currentInputRatio - aspectRatio) > RATIO_TOLERANCE) {
         const h = 100;
         const w = aspectRatio * h;
         setCustomW(w.toFixed(1).replace(/\.0$/, ''));
@@ -133,12 +137,16 @@ export default function CropPanel({
       setCustomW('');
       setCustomH('');
     }
-  }, [isCustomActive, aspectRatio]);
+  }, [isCustomActive, aspectRatio, customW, customH]);
 
   useEffect(() => {
     if (activePreset?.value === ORIGINAL_RATIO) {
       const newOriginalRatio = getEffectiveOriginalRatio();
-      if (newOriginalRatio !== null && aspectRatio && Math.abs(aspectRatio - newOriginalRatio) > 0.001) {
+      if (
+        newOriginalRatio !== null &&
+        aspectRatio &&
+        Math.abs(aspectRatio - newOriginalRatio) > RATIO_TOLERANCE
+      ) {
         setAdjustments((prev: Adjustments) => ({ ...prev, aspectRatio: newOriginalRatio, crop: null }));
       }
     }
@@ -159,7 +167,10 @@ export default function CropPanel({
 
     if (numW > 0 && numH > 0) {
       const newAspectRatio = numW / numH;
-      if (adjustments?.aspectRatio && Math.abs(adjustments.aspectRatio - newAspectRatio) > 0.001) {
+      if (
+        adjustments?.aspectRatio &&
+        Math.abs(adjustments.aspectRatio - newAspectRatio) > RATIO_TOLERANCE
+      ) {
         setAdjustments((prev: Adjustments) => ({ ...prev, aspectRatio: newAspectRatio, crop: null }));
       }
     }
@@ -288,8 +299,8 @@ export default function CropPanel({
         {selectedImage ? (
           <>
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-sm mb-3 font-semibold text-text-primary">Aspect Ratio</p>
+              <div className="flex justify-between items-center mb-3">
+                <p className="text-sm font-semibold text-text-primary">Aspect Ratio</p>
                 <button
                   className="p-1.5 rounded-md hover:bg-surface disabled:text-text-tertiary disabled:cursor-not-allowed"
                   disabled={isOrientationToggleDisabled}

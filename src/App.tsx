@@ -3210,14 +3210,15 @@ function App() {
         let initialAdjusts;
         if (loadImageResult.metadata.adjustments && !loadImageResult.metadata.adjustments.is_null) {
             initialAdjusts = normalizeLoadedAdjustments(loadImageResult.metadata.adjustments);
+
+            if (!initialAdjusts.aspectRatio && !initialAdjusts.crop) {
+              initialAdjusts.aspectRatio = loadImageResult.width / loadImageResult.height;
+            }
         } else {
             initialAdjusts = {
             ...INITIAL_ADJUSTMENTS,
             aspectRatio: loadImageResult.width / loadImageResult.height,
             };
-        }
-        if (loadImageResult.metadata.adjustments && !loadImageResult.metadata.adjustments.is_null) {
-            initialAdjusts = normalizeLoadedAdjustments(loadImageResult.metadata.adjustments);
         }
         setLiveAdjustments(initialAdjusts);
         resetAdjustmentsHistory(initialAdjusts);
@@ -3327,7 +3328,16 @@ function App() {
           }
           if (selectedImage && pathsToReset.includes(selectedImage.path)) {
             const currentRating = adjustments.rating;
-            resetAdjustmentsHistory({ ...INITIAL_ADJUSTMENTS, rating: currentRating, aiPatches: [] });
+
+            const originalAspectRatio =
+              selectedImage.width && selectedImage.height ? selectedImage.width / selectedImage.height : null;
+            
+            resetAdjustmentsHistory({ 
+                ...INITIAL_ADJUSTMENTS, 
+                aspectRatio: originalAspectRatio,
+                rating: currentRating, 
+                aiPatches: [] 
+            });
           }
         })
         .catch((err) => {
@@ -3458,7 +3468,18 @@ function App() {
         onClick: () => {
           debouncedSetHistory.cancel();
           const currentRating = adjustments.rating;
-          resetAdjustmentsHistory({ ...INITIAL_ADJUSTMENTS, rating: currentRating, aiPatches: [] });
+
+          const originalAspectRatio =
+            selectedImage.width && selectedImage.height 
+              ? selectedImage.width / selectedImage.height 
+              : null;
+
+          resetAdjustmentsHistory({ 
+            ...INITIAL_ADJUSTMENTS, 
+            aspectRatio: originalAspectRatio,
+            rating: currentRating, 
+            aiPatches: [] 
+          });
         },
       },
     ];
