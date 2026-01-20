@@ -231,29 +231,31 @@ export default function BottomBar({
           className={clsx(
             'overflow-hidden',
             !isResizing && 'transition-all duration-300 ease-in-out',
-            isFilmstripVisible ? 'p-2' : 'p-0',
           )}
           style={{ height: isFilmstripVisible ? `${filmstripHeight}px` : '0px' }}
         >
-          <Filmstrip
-            imageList={imageList}
-            imageRatings={imageRatings}
-            isLoading={isLoading}
-            multiSelectedPaths={multiSelectedPaths}
-            onClearSelection={onClearSelection}
-            onContextMenu={onContextMenu}
-            onImageSelect={onImageSelect}
-            selectedImage={selectedImage}
-            thumbnails={thumbnails}
-            thumbnailAspectRatio={thumbnailAspectRatio}
-          />
+          <div className="w-full p-2" style={{ height: `${filmstripHeight}px` }}>
+            <Filmstrip
+              imageList={imageList}
+              imageRatings={imageRatings}
+              isLoading={isLoading}
+              multiSelectedPaths={multiSelectedPaths}
+              onClearSelection={onClearSelection}
+              onContextMenu={onContextMenu}
+              onImageSelect={onImageSelect}
+              selectedImage={selectedImage}
+              thumbnails={thumbnails}
+              thumbnailAspectRatio={thumbnailAspectRatio}
+            />
+          </div>
         </div>
       )}
 
       <div
         className={clsx(
           'flex-shrink-0 h-10 flex items-center justify-between px-3',
-          !isLibraryView && isFilmstripVisible && 'border-t border-surface',
+          !isLibraryView && 'border-t', 
+          (!isLibraryView && isFilmstripVisible) ? 'border-surface' : 'border-transparent'
         )}
       >
         <div className="flex items-center gap-4">

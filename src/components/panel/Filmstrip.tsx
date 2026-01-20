@@ -254,6 +254,7 @@ export default function Filmstrip({
   thumbnailAspectRatio,
 }: FilmStripProps) {
   const filmstripRef = useRef<HTMLDivElement>(null);
+  const lastScrolledPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     const element = filmstripRef.current;
@@ -280,20 +281,19 @@ export default function Filmstrip({
 
   useEffect(() => {
     if (selectedImage && filmstripRef.current) {
-      const selectedIndex = imageList.findIndex((img: ImageFile) => img.path === selectedImage.path);
+      const activeElement = filmstripRef.current.querySelector(`[data-path="${CSS.escape(selectedImage.path)}"]`);
 
-      if (selectedIndex !== -1) {
-        const activeElement = filmstripRef.current.querySelector(`[data-path="${CSS.escape(selectedImage.path)}"]`);
+      if (activeElement && lastScrolledPathRef.current !== selectedImage.path) {
+        const timer = setTimeout(() => {
+          activeElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center',
+          });
+          lastScrolledPathRef.current = selectedImage.path;
+        }, 320);
 
-        if (activeElement) {
-          setTimeout(() => {
-            activeElement.scrollIntoView({
-              behavior: 'smooth',
-              block: 'nearest',
-              inline: 'center',
-            });
-          }, 320);
-        }
+        return () => clearTimeout(timer);
       }
     }
   }, [selectedImage, imageList]);
