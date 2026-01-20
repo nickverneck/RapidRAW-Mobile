@@ -225,7 +225,7 @@ fn run_bm3d_step_joint(
         if c % 200 == 0 {
              let pct = (c as f32 / total_work as f32) * 100.0;
              let step_str = if is_step_1 { "Step 1/2" } else { "Step 2/2" };
-             let msg = format!("{} - {:.1}%", step_str, pct);
+             let msg = format!("{} - {:.0}%", step_str, pct);
              let _ = app_handle.emit("denoise-progress", msg);
         }
 
