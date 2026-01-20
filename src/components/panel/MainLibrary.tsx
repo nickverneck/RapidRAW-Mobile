@@ -937,7 +937,6 @@ function Thumbnail({
       }}
       onContextMenu={onContextMenu}
       onDoubleClick={() => onImageDoubleClick(path)}
-      title={path.split(/[\\/]/).pop()}
     >
       {layers.length > 0 && (
         <div className="absolute inset-0 w-full h-full">
