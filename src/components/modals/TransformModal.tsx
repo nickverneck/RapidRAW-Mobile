@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Check, 
@@ -8,6 +8,9 @@ import {
   EyeOff,
   Info,
   LineChart,
+  ZoomIn,
+  ZoomOut,
+  Maximize
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../ui/Button';
@@ -52,9 +55,71 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
   const [showGrid, setShowGrid] = useState(true);
   const [showLines, setShowLines] = useState(false);
   const [isCompareActive, setIsCompareActive] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastMousePos = useRef({ x: 0, y: 0 });
   
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - lastMousePos.current.x;
+      const dy = e.clientY - lastMousePos.current.y;
+      setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handleWindowMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+    if (!containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - rect.width / 2;
+    const mouseY = e.clientY - rect.top - rect.height / 2;
+
+    const delta = -e.deltaY * 0.001;
+    const newZoom = Math.min(Math.max(0.1, zoom + delta), 8); 
+    
+    const scaleRatio = newZoom / zoom;
+    const mouseFromCenterX = mouseX - pan.x;
+    const mouseFromCenterY = mouseY - pan.y;
+
+    const newPanX = mouseX - (mouseFromCenterX * scaleRatio);
+    const newPanY = mouseY - (mouseFromCenterY * scaleRatio);
+
+    setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
+  };
+
+  const handleResetZoom = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
 
   const updatePreview = useCallback(
     throttle(async (currentParams: GeometryParams, linesEnabled: boolean) => {
@@ -89,6 +154,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
       };
       setParams(initParams);
       setShowLines(false);
+      handleResetZoom();
       updatePreview(initParams, false);
 
       return () => clearTimeout(timer);
@@ -147,12 +213,12 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
   };
 
   const renderControls = () => (
-    <div className="w-80 flex-shrink-0 bg-bg-secondary flex flex-col border-l border-surface h-full">
+    <div className="w-80 flex-shrink-0 bg-bg-secondary flex flex-col border-l border-surface h-full z-10">
         <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface">
             <h2 className="text-xl font-bold text-primary text-shadow-shiny">Transform</h2>
             <button 
                 onClick={handleReset} 
-                title="Reset All" 
+                title="Reset All Parameters" 
                 className="p-2 rounded-full hover:bg-surface transition-colors"
             >
               <RotateCcw size={18} />
@@ -244,77 +310,135 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
     </div>
   );
 
+  const imageTransformStyle = {
+    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+    transformOrigin: 'center center'
+  };
+
   const renderContent = () => (
-      <div className="flex flex-row h-full w-full">
-         <div className="flex-grow flex items-center justify-center p-4 relative min-h-0 bg-[#0f0f0f] overflow-hidden">
-            <div className="absolute inset-0 opacity-20 pointer-events-none" 
-                style={{ 
-                    backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', 
-                    backgroundSize: '24px 24px' 
-                }}>
-            </div>
+      <div className="flex flex-row h-full w-full overflow-hidden">
+         <div className="flex-grow flex flex-col relative min-h-0 bg-[#0f0f0f] overflow-hidden">
 
-            {previewUrl && (
-                 <div className="relative max-w-full max-h-full">
-                    <img 
-                        src={previewUrl} 
-                        className="max-w-full max-h-full object-contain shadow-2xl ring-1 ring-white/10" 
-                        alt="Transform Preview" 
-                    />
-                    
-                     {showGrid && !isCompareActive && (
-                        <div className="absolute inset-0 border border-white/40 pointer-events-none shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-                            <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30"></div>
-                            <div className="absolute right-1/3 top-0 bottom-0 w-px bg-white/30"></div>
-                            <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30"></div>
-                            <div className="absolute bottom-1/3 left-0 right-0 h-px bg-white/30"></div>
+            <div 
+                ref={containerRef}
+                className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing select-none"
+                onMouseDown={handleMouseDown}
+                onWheel={handleWheel}
+            >
+                <div className="absolute inset-0 opacity-20 pointer-events-none" 
+                    style={{ 
+                        backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', 
+                        backgroundSize: '24px 24px' 
+                    }}>
+                </div>
+
+                {previewUrl && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="origin-center" style={imageTransformStyle}>
+                            <div className="relative inline-block shadow-2xl">
+                                <img 
+                                    src={previewUrl} 
+                                    className="block object-contain"
+                                    style={{ 
+                                        maxWidth: '100%', 
+                                        maxHeight: '100%', 
+                                        width: 'auto',
+                                        height: 'auto'
+                                    }}
+                                    alt="Transform Preview"
+                                    draggable={false}
+                                />
+
+                                {showGrid && !isCompareActive && (
+                                    <div className="absolute inset-0 border border-white/40 pointer-events-none shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+                                        <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30"></div>
+                                        <div className="absolute right-1/3 top-0 bottom-0 w-px bg-white/30"></div>
+                                        <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30"></div>
+                                        <div className="absolute bottom-1/3 left-0 right-0 h-px bg-white/30"></div>
+                                    </div>
+                                )}
+                                
+                                {isCompareActive && (
+                                    <div className="absolute top-4 left-4 bg-accent text-button-text text-xs px-2 py-1 rounded shadow-lg z-20">
+                                        ORIGINAL
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    )}
+                    </div>
+                )}
+
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/70 backdrop-blur-md p-1.5 rounded-full border border-white/10 shadow-xl z-20 pointer-events-auto" onMouseDown={e => e.stopPropagation()}>
+
+                    <button 
+                        onClick={() => setShowGrid(!showGrid)}
+                        className={clsx(
+                            "p-2 rounded-full transition-colors",
+                            showGrid ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
+                        )}
+                        title="Toggle Grid"
+                    >
+                        <Grid3X3 size={18} />
+                    </button>
+                    <button 
+                        onClick={handleShowLinesToggle}
+                        className={clsx(
+                            "p-2 rounded-full transition-colors",
+                            showLines ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
+                        )}
+                        title="Toggle Helper Lines"
+                    >
+                        <LineChart size={18} />
+                    </button>
                     
-                    {isCompareActive && (
-                        <div className="absolute top-4 left-4 bg-accent text-button-text text-xs px-2 py-1 rounded shadow-lg">
-                            ORIGINAL
-                        </div>
-                    )}
-                 </div>
-            )}
+                    <div className="w-px h-5 bg-white/20 mx-1"></div>
 
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-2 bg-black/60 backdrop-blur-md p-1.5 rounded-full border border-white/10 shadow-xl z-20">
-                <button 
-                    onClick={() => setShowGrid(!showGrid)}
-                    className={clsx(
-                        "p-2 rounded-full transition-colors",
-                        showGrid ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
-                    )}
-                    title="Toggle Grid"
-                >
-                    <Grid3X3 size={18} />
-                </button>
-                 <button 
-                    onClick={handleShowLinesToggle}
-                    className={clsx(
-                        "p-2 rounded-full transition-colors",
-                        showLines ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
-                    )}
-                    title="Toggle Helper Lines"
-                >
-                    <LineChart size={18} />
-                </button>
-                <div className="w-px bg-white/20 mx-1 my-1"></div>
-                <button 
-                    onMouseDown={() => toggleCompare(true)}
-                    onMouseUp={() => toggleCompare(false)}
-                    onMouseLeave={() => toggleCompare(false)}
-                    className={clsx(
-                        "p-2 rounded-full transition-colors select-none",
-                        isCompareActive ? "bg-accent text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
-                    )}
-                    title="Hold to Compare"
-                >
-                    {isCompareActive ? <Eye size={18} /> : <EyeOff size={18} />}
-                </button>
+                    <button 
+                        onClick={() => setZoom(z => Math.max(0.1, z - 0.25))} 
+                        className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
+                        title="Zoom Out"
+                    >
+                        <ZoomOut size={18} />
+                    </button>
+                    
+                    <span className="text-xs font-mono text-white/90 w-12 text-center select-none pointer-events-none">
+                        {Math.round(zoom * 100)}%
+                    </span>
+
+                    <button 
+                        onClick={() => setZoom(z => Math.min(8, z + 0.25))} 
+                        className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
+                        title="Zoom In"
+                    >
+                        <ZoomIn size={18} />
+                    </button>
+
+                    <button 
+                        onClick={handleResetZoom} 
+                        className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
+                        title="Reset Zoom"
+                    >
+                        <Maximize size={16} />
+                    </button>
+
+                    <div className="w-px h-5 bg-white/20 mx-1"></div>
+
+                    <button 
+                        onMouseDown={() => toggleCompare(true)}
+                        onMouseUp={() => toggleCompare(false)}
+                        onMouseLeave={() => toggleCompare(false)}
+                        className={clsx(
+                            "p-2 rounded-full transition-colors select-none",
+                            isCompareActive ? "bg-accent text-white" : "text-white/60 hover:bg-white/10 hover:text-white"
+                        )}
+                        title="Hold to Compare"
+                    >
+                        {isCompareActive ? <Eye size={18} /> : <EyeOff size={18} />}
+                    </button>
+                </div>
+
             </div>
-
          </div>
          {renderControls()}
       </div>
@@ -338,7 +462,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="flex-grow min-h-0 overflow-hidden">{renderContent()}</div>
-                <div className="flex-shrink-0 p-4 flex justify-end gap-3 border-t border-surface bg-bg-secondary">
+                <div className="flex-shrink-0 p-4 flex justify-end gap-3 border-t border-surface bg-bg-secondary z-20">
                      <button 
                         onClick={onClose}
                         className="px-4 py-2 rounded-md text-text-secondary hover:bg-surface transition-colors"
