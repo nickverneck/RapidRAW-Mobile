@@ -1,4 +1,5 @@
 import React from 'react';
+import { ExportPreset } from './ExportImportProperties';
 import { Adjustments, Color } from '../../utils/adjustments';
 import { ToolType } from '../panel/right/Masks';
 
@@ -142,6 +143,7 @@ export interface AppSettings {
   rawHighlightCompression?: number;
   processingBackend?: string;
   linuxGpuOptimization?: boolean;
+  exportPresets?: ExportPreset[];
 }
 
 export interface BrushSettings {

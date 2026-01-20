@@ -91,7 +91,7 @@ import {
   IMPORT_TIMEOUT,
   ImportState,
   Status,
-} from './components/panel/right/ExportImportProperties';
+} from './components/ui/ExportImportProperties';
 import {
   AppSettings,
   BrushSettings,
@@ -4387,6 +4387,8 @@ function App() {
                           multiSelectedPaths={multiSelectedPaths}
                           selectedImage={selectedImage}
                           setExportState={setExportState}
+                          appSettings={appSettings}
+                          onSettingsChange={handleSettingsChange}
                         />
                       )}
                       {renderedRightPanel === Panel.Ai && (
@@ -4477,6 +4479,8 @@ function App() {
               multiSelectedPaths={multiSelectedPaths}
               onClose={() => setIsLibraryExportPanelVisible(false)}
               setExportState={setExportState}
+              appSettings={appSettings}
+              onSettingsChange={handleSettingsChange}
             />
           </div>
         </div>

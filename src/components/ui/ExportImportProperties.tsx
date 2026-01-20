@@ -1,5 +1,5 @@
 import React from 'react';
-import { Progress } from '../../ui/AppProperties';
+import { Progress } from './AppProperties';
 
 export const EXPORT_TIMEOUT = 4000;
 export const IMPORT_TIMEOUT = 5000;
@@ -85,4 +85,24 @@ export enum Status {
   Idle = 'idle',
   Importing = 'importing',
   Success = 'success',
+}
+
+export interface ExportPreset {
+  id: string;
+  name: string;
+  fileFormat: string;
+  jpegQuality: number;
+  enableResize: boolean;
+  resizeMode: string;
+  resizeValue: number;
+  dontEnlarge: boolean;
+  keepMetadata: boolean;
+  stripGps: boolean;
+  filenameTemplate: string;
+  enableWatermark: boolean;
+  watermarkPath: string | null;
+  watermarkAnchor: string;
+  watermarkScale: number;
+  watermarkSpacing: number;
+  watermarkOpacity: number;
 }

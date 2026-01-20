@@ -16,8 +16,10 @@ import {
   ExportState,
   FileFormats,
   WatermarkAnchor,
-} from './ExportImportProperties';
-import { Invokes, ImageFile } from '../../ui/AppProperties';
+} from '../../ui/ExportImportProperties';
+import { Invokes, ImageFile, AppSettings } from '../../ui/AppProperties';
+import ExportPresetsList from '../../ui/ExportPresetsList';
+import { useExportSettings } from '../../../hooks/useExportSettings';
 
 interface LibraryExportPanelProps {
   exportState: ExportState;
@@ -26,6 +28,8 @@ interface LibraryExportPanelProps {
   onClose(): void;
   setExportState(state: any): void;
   imageList: ImageFile[];
+  appSettings: AppSettings | null;
+  onSettingsChange: (settings: AppSettings) => void;
 }
 
 interface SectionProps {
@@ -36,7 +40,7 @@ interface SectionProps {
 function Section({ title, children }: SectionProps) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-text-primary mb-3 border-b border-surface pb-2">{title}</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-3 border-surface pb-2">{title}</h3>
       <div className="space-y-4">{children}</div>
     </div>
   );
@@ -163,24 +167,46 @@ export default function LibraryExportPanel({
   onClose,
   setExportState,
   imageList,
+  appSettings,
+  onSettingsChange,
 }: LibraryExportPanelProps) {
-  const [fileFormat, setFileFormat] = useState('jpeg');
-  const [jpegQuality, setJpegQuality] = useState(90);
-  const [enableResize, setEnableResize] = useState(false);
-  const [resizeMode, setResizeMode] = useState('longEdge');
-  const [resizeValue, setResizeValue] = useState(2048);
-  const [dontEnlarge, setDontEnlarge] = useState(true);
-  const [keepMetadata, setKeepMetadata] = useState(true);
-  const [stripGps, setStripGps] = useState(true);
-  const [filenameTemplate, setFilenameTemplate] = useState('{original_filename}_edited');
+  const {
+    fileFormat,
+    setFileFormat,
+    jpegQuality,
+    setJpegQuality,
+    enableResize,
+    setEnableResize,
+    resizeMode,
+    setResizeMode,
+    resizeValue,
+    setResizeValue,
+    dontEnlarge,
+    setDontEnlarge,
+    keepMetadata,
+    setKeepMetadata,
+    stripGps,
+    setStripGps,
+    filenameTemplate,
+    setFilenameTemplate,
+    enableWatermark,
+    setEnableWatermark,
+    watermarkPath,
+    setWatermarkPath,
+    watermarkAnchor,
+    setWatermarkAnchor,
+    watermarkScale,
+    setWatermarkScale,
+    watermarkSpacing,
+    setWatermarkSpacing,
+    watermarkOpacity,
+    setWatermarkOpacity,
+    handleApplyPreset,
+    currentSettingsObject,
+  } = useExportSettings();
+
   const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
   const [isEstimating, setIsEstimating] = useState<boolean>(false);
-  const [enableWatermark, setEnableWatermark] = useState<boolean>(false);
-  const [watermarkPath, setWatermarkPath] = useState<string | null>(null);
-  const [watermarkAnchor, setWatermarkAnchor] = useState<WatermarkAnchor>(WatermarkAnchor.BottomRight);
-  const [watermarkScale, setWatermarkScale] = useState<number>(10);
-  const [watermarkSpacing, setWatermarkSpacing] = useState<number>(5);
-  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(75);
   const [watermarkImageAspectRatio, setWatermarkImageAspectRatio] = useState(1);
   const filenameInputRef = useRef<HTMLInputElement>(null);
 
@@ -191,24 +217,31 @@ export default function LibraryExportPanel({
   const [imageAspectRatio, setImageAspectRatio] = useState(3 / 2);
 
   useEffect(() => {
-    if (!enableWatermark) {
-      return;
-    }
-
-    if (multiSelectedPaths.length > 0) {
-      const firstPath = multiSelectedPaths[0];
-      const image = imageList.find((img) => img.path === firstPath);
-
-      if (image && image.width > 0 && image.height > 0) {
-        setImageAspectRatio(image.width / image.height);
+    const fetchFirstImageDims = async () => {
+      if (multiSelectedPaths.length > 0) {
+        try {
+          const firstPath = multiSelectedPaths[0];
+          const dimensions: { width: number; height: number } = await invoke('get_image_dimensions', {
+            path: firstPath,
+          });
+          if (dimensions.width > 0 && dimensions.height > 0) {
+            setImageAspectRatio(dimensions.width / dimensions.height);
+          } else {
+            setImageAspectRatio(3 / 2);
+          }
+        } catch (error) {
+          console.warn(`Could not get dimensions for preview, using default aspect ratio.`);
+          setImageAspectRatio(3 / 2);
+        }
       } else {
-        console.warn(`Dimensions for ${firstPath} not found in imageList, using default aspect ratio for preview.`);
-        setImageAspectRatio(3 / 2);
+        setImageAspectRatio(16 / 9);
       }
-    } else {
-      setImageAspectRatio(16 / 9);
+    };
+
+    if (isVisible && enableWatermark) {
+      fetchFirstImageDims();
     }
-  }, [multiSelectedPaths, imageList, enableWatermark]);
+  }, [multiSelectedPaths, isVisible, enableWatermark]);
 
   useEffect(() => {
     const fetchWatermarkDimensions = async () => {
@@ -263,7 +296,7 @@ export default function LibraryExportPanel({
           setIsEstimating(false);
         }
       }, 500),
-    [],
+    []
   );
 
   useEffect(() => {
@@ -406,7 +439,7 @@ export default function LibraryExportPanel({
     <div className="h-full bg-bg-secondary rounded-lg flex flex-col">
       <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface">
         <h2 className="text-xl font-bold text-primary text-shadow-shiny">
-          Export {numImages > 1 ? `(${numImages})` : ''}
+          Export
         </h2>
         <button
           onClick={onClose}
@@ -418,6 +451,12 @@ export default function LibraryExportPanel({
       <div className="flex-grow overflow-y-auto p-4 text-text-secondary space-y-6">
         {canExport ? (
           <>
+            <ExportPresetsList
+              appSettings={appSettings}
+              onSettingsChange={onSettingsChange}
+              currentSettings={currentSettingsObject}
+              onApplyPreset={handleApplyPreset}
+            />
             <Section title="File Settings">
               <div className="grid grid-cols-3 gap-2">
                 {FILE_FORMATS.map((format: FileFormat) => (
@@ -531,7 +570,11 @@ export default function LibraryExportPanel({
                   {watermarkPath && (
                     <>
                       <div className={`w-full ${isExporting ? 'opacity-50 pointer-events-none' : ''}`}>
-                        <Dropdown options={anchorOptions} value={watermarkAnchor} onChange={setWatermarkAnchor} />
+                        <Dropdown
+                          options={anchorOptions}
+                          value={watermarkAnchor}
+                          onChange={(val) => setWatermarkAnchor(val as WatermarkAnchor)}
+                        />
                       </div>
                       <Slider
                         label="Scale"

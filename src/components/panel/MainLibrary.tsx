@@ -40,7 +40,7 @@ import {
   ThumbnailAspectRatio,
 } from '../ui/AppProperties';
 import { Color, COLOR_LABELS } from '../../utils/adjustments';
-import { ImportState, Status } from './right/ExportImportProperties';
+import { ImportState, Status } from '../ui/ExportImportProperties';
 
 interface DropdownMenuProps {
   buttonContent: any;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Switch from '../ui/Switch';
-import { FILENAME_VARIABLES } from '../panel/right/ExportImportProperties';
+import { FILENAME_VARIABLES } from '../ui/ExportImportProperties';
 
 interface ImportSettingsModalProps {
   fileCount: number;

@@ -17,8 +17,10 @@ import {
   ExportState,
   FileFormats,
   WatermarkAnchor,
-} from './ExportImportProperties';
-import { Invokes, SelectedImage } from '../../ui/AppProperties';
+} from '../../ui/ExportImportProperties';
+import { Invokes, SelectedImage, AppSettings } from '../../ui/AppProperties';
+import ExportPresetsList from '../../ui/ExportPresetsList';
+import { useExportSettings } from '../../../hooks/useExportSettings';
 
 interface ExportPanelProps {
   adjustments: Adjustments;
@@ -26,6 +28,8 @@ interface ExportPanelProps {
   multiSelectedPaths: Array<string>;
   selectedImage: SelectedImage;
   setExportState(state: any): void;
+  appSettings: AppSettings | null;
+  onSettingsChange: (settings: AppSettings) => void;
 }
 
 interface SectionProps {
@@ -36,7 +40,7 @@ interface SectionProps {
 function Section({ title, children }: SectionProps) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-text-primary mb-3 border-b border-surface pb-2">{title}</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-3 border-surface pb-2">{title}</h3>
       <div className="space-y-4">{children}</div>
     </div>
   );
@@ -162,24 +166,46 @@ export default function ExportPanel({
   multiSelectedPaths,
   selectedImage,
   setExportState,
+  appSettings,
+  onSettingsChange,
 }: ExportPanelProps) {
-  const [fileFormat, setFileFormat] = useState<string>('jpeg');
-  const [jpegQuality, setJpegQuality] = useState<number>(90);
-  const [enableResize, setEnableResize] = useState<boolean>(false);
-  const [resizeMode, setResizeMode] = useState<string>('longEdge');
-  const [resizeValue, setResizeValue] = useState<number>(2048);
-  const [dontEnlarge, setDontEnlarge] = useState<boolean>(true);
-  const [keepMetadata, setKeepMetadata] = useState<boolean>(true);
-  const [stripGps, setStripGps] = useState<boolean>(true);
-  const [filenameTemplate, setFilenameTemplate] = useState<string>('{original_filename}_edited');
+  const {
+    fileFormat,
+    setFileFormat,
+    jpegQuality,
+    setJpegQuality,
+    enableResize,
+    setEnableResize,
+    resizeMode,
+    setResizeMode,
+    resizeValue,
+    setResizeValue,
+    dontEnlarge,
+    setDontEnlarge,
+    keepMetadata,
+    setKeepMetadata,
+    stripGps,
+    setStripGps,
+    filenameTemplate,
+    setFilenameTemplate,
+    enableWatermark,
+    setEnableWatermark,
+    watermarkPath,
+    setWatermarkPath,
+    watermarkAnchor,
+    setWatermarkAnchor,
+    watermarkScale,
+    setWatermarkScale,
+    watermarkSpacing,
+    setWatermarkSpacing,
+    watermarkOpacity,
+    setWatermarkOpacity,
+    handleApplyPreset,
+    currentSettingsObject,
+  } = useExportSettings();
+
   const [estimatedSize, setEstimatedSize] = useState<number | null>(null);
   const [isEstimating, setIsEstimating] = useState<boolean>(false);
-  const [enableWatermark, setEnableWatermark] = useState<boolean>(false);
-  const [watermarkPath, setWatermarkPath] = useState<string | null>(null);
-  const [watermarkAnchor, setWatermarkAnchor] = useState<WatermarkAnchor>(WatermarkAnchor.BottomRight);
-  const [watermarkScale, setWatermarkScale] = useState<number>(10);
-  const [watermarkSpacing, setWatermarkSpacing] = useState<number>(5);
-  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(75);
   const [watermarkImageAspectRatio, setWatermarkImageAspectRatio] = useState(1);
   const filenameInputRef = useRef<HTMLInputElement>(null);
 
@@ -261,7 +287,7 @@ export default function ExportPanel({
           setIsEstimating(false);
         }
       }, 500),
-    [selectedImage?.path],
+    [selectedImage?.path]
   );
 
   useEffect(() => {
@@ -416,12 +442,19 @@ export default function ExportPanel({
     <div className="flex flex-col h-full">
       <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface">
         <h2 className="text-xl font-bold text-primary text-shadow-shiny">
-          Export {numImages > 1 ? `(${numImages})` : ''}
+          Export
         </h2>
       </div>
       <div className="flex-grow overflow-y-auto p-4 text-text-secondary space-y-6">
         {canExport ? (
           <>
+            <ExportPresetsList
+              appSettings={appSettings}
+              onSettingsChange={onSettingsChange}
+              currentSettings={currentSettingsObject}
+              onApplyPreset={handleApplyPreset}
+            />
+
             <Section title="File Settings">
               <div className="grid grid-cols-3 gap-2">
                 {FILE_FORMATS.map((format: FileFormat) => (
@@ -537,7 +570,11 @@ export default function ExportPanel({
                   {watermarkPath && (
                     <>
                       <div className={`w-full ${isExporting ? 'opacity-50 pointer-events-none' : ''}`}>
-                        <Dropdown options={anchorOptions} value={watermarkAnchor} onChange={setWatermarkAnchor} />
+                        <Dropdown
+                          options={anchorOptions}
+                          value={watermarkAnchor}
+                          onChange={(val) => setWatermarkAnchor(val as WatermarkAnchor)}
+                        />
                       </div>
                       <Slider
                         label="Scale"

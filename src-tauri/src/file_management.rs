@@ -172,6 +172,71 @@ impl Default for CopyPasteSettings {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportPreset {
+    pub id: String,
+    pub name: String,
+    pub file_format: String,
+    pub jpeg_quality: u8,
+    pub enable_resize: bool,
+    pub resize_mode: String,
+    pub resize_value: u32,
+    pub dont_enlarge: bool,
+    pub keep_metadata: bool,
+    pub strip_gps: bool,
+    pub filename_template: String,
+    pub enable_watermark: bool,
+    pub watermark_path: Option<String>,
+    pub watermark_anchor: Option<String>,
+    pub watermark_scale: u32,
+    pub watermark_spacing: u32,
+    pub watermark_opacity: u32,
+}
+
+fn default_export_presets() -> Vec<ExportPreset> {
+    vec![
+        ExportPreset {
+            id: "default-hq".to_string(),
+            name: "High Quality".to_string(),
+            file_format: "jpeg".to_string(),
+            jpeg_quality: 95,
+            enable_resize: false,
+            resize_mode: "longEdge".to_string(),
+            resize_value: 2048,
+            dont_enlarge: true,
+            keep_metadata: true,
+            strip_gps: false,
+            filename_template: "{original_filename}".to_string(),
+            enable_watermark: false,
+            watermark_path: None,
+            watermark_anchor: Some("bottomRight".to_string()),
+            watermark_scale: 10,
+            watermark_spacing: 5,
+            watermark_opacity: 75,
+        },
+        ExportPreset {
+            id: "default-fast".to_string(),
+            name: "Fast (Web)".to_string(),
+            file_format: "jpeg".to_string(),
+            jpeg_quality: 80,
+            enable_resize: true,
+            resize_mode: "width".to_string(),
+            resize_value: 2048,
+            dont_enlarge: true,
+            keep_metadata: false,
+            strip_gps: true,
+            filename_template: "{original_filename}_web".to_string(),
+            enable_watermark: false,
+            watermark_path: None,
+            watermark_anchor: Some("bottomRight".to_string()),
+            watermark_scale: 10,
+            watermark_spacing: 5,
+            watermark_opacity: 75,
+        },
+    ]
+}
+
 fn default_tagging_shortcuts_option() -> Option<Vec<String>> {
     Some(vec![
         "portrait".to_string(),
@@ -230,6 +295,8 @@ pub struct AppSettings {
     pub linux_gpu_optimization: Option<bool>,
     #[serde(default)]
     pub library_view_mode: Option<String>,
+    #[serde(default = "default_export_presets")]
+    pub export_presets: Vec<ExportPreset>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -283,6 +350,7 @@ impl Default for AppSettings {
             #[cfg(not(target_os = "linux"))]
             linux_gpu_optimization: Some(false),
             library_view_mode: Some("flat".to_string()),
+            export_presets: default_export_presets(),
         }
     }
 }
