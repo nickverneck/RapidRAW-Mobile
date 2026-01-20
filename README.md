@@ -64,6 +64,8 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2026-01-20:** Export preset management for saving export settings 
+*   **2026-01-19:** Preload library for faster startup & automatic geometry transformation helper lines
 *   **2026-01-18:** Implement image geometry transformation utils
 *   **2026-01-17:** Refactor AI panel to correctly work with the new masking system
 *   **2026-01-16:** Major masking system overhaul with drag & drop, per-mask opacity/invert & UI improvements
@@ -72,13 +74,13 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2026-01-11:** Separate preview worker, optional high-quality live previews & mask/ai patch caching
 *   **2026-01-10:** Enhanced EXIF UI, optimized color wheels/curves & rawler update
 *   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
-*   **2026-01-05:** Collage maker upgrade (drag & drop, zoom, ratio options)
-*   **2026-01-05:** 'Prefer RAW' filter option added to library
 
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2026-01-05:** Collage maker upgrade (drag & drop, zoom, ratio options)
+*   **2026-01-05:** 'Prefer RAW' filter option added to library
 *   **2026-01-05:** Support for uppercase file extensions
 *   **2026-01-05:** Flush thumbnail cache on folder switch
 *   **2025-12-27:** Fix LUT banding issues with improved sampling
