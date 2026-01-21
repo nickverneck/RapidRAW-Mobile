@@ -50,6 +50,7 @@ use imageproc::hough::{detect_lines, LineDetectionOptions};
 use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
 use little_exif::metadata::Metadata;
+use little_exif::rational::{uR64, iR64};
 use rayon::prelude::*;
 use reqwest;
 use serde::{Deserialize, Serialize};
@@ -2095,8 +2096,6 @@ fn write_image_with_metadata(
         let exifreader = exif::Reader::new();
 
         if let Ok(exif_obj) = exifreader.read_from_container(&mut bufreader) {
-            
-            use little_exif::rational::{uR64, iR64};
 
             let to_ur64 = |val: &exif::Rational| -> uR64 {
                 uR64 { nominator: val.num, denominator: val.denom }
@@ -2246,15 +2245,8 @@ fn write_image_with_metadata(
     metadata.set_tag(ExifTag::Orientation(vec![1u16]));
     metadata.set_tag(ExifTag::ColorSpace(vec![1u16]));
 
-    // little_exif has a bug where writing a Metadata object causes a panic, even if you do everything else right - see https://github.com/TechnikTobi/little_exif/issues/76
-    let write_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        metadata.write_to_vec(image_bytes, file_type)
-    }));
-
-    match write_result {
-        Ok(Ok(_)) => {},
-        Ok(Err(e)) => log::warn!("Failed to write metadata: {}", e),
-        Err(_) => log::error!("Recovered from little_exif library panic. Saving image without metadata."),
+    if let Err(e) = metadata.write_to_vec(image_bytes, file_type) {
+        log::warn!("Failed to write metadata: {}", e);
     }
 
     Ok(())
