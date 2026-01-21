@@ -23,6 +23,7 @@ import {
   FileEdit,
   FolderOpen,
   Folder as FolderIcon,
+  Loader2,
   Minus,
   Plus,
   PlusSquare,
@@ -157,12 +158,31 @@ export default function MasksPanel({
   const hasPerformedInitialSelection = useRef(false);
   const [isMaskListEmpty, setIsMaskListEmpty] = useState(adjustments.masks.length === 0);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [analyzingSubMaskId, setAnalyzingSubMaskId] = useState<string | null>(null);
 
   const { showContextMenu } = useContextMenu();
   const { presets } = usePresets(adjustments);
   
   const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'mask-list-root' });
   
+  const activeContainer = adjustments.masks.find(m => m.id === activeMaskContainerId);
+  const activeSubMaskData = activeContainer?.subMasks.find(sm => sm.id === activeMaskId);
+  const isAiMask = activeSubMaskData && [Mask.AiSubject, Mask.AiForeground, Mask.AiSky].includes(activeSubMaskData.type);
+
+  useEffect(() => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      if (isGeneratingAiMask && isAiMask) {
+          timer = setTimeout(() => {
+              setAnalyzingSubMaskId(activeMaskId);
+          }, 200);
+      } else {
+          setAnalyzingSubMaskId(null);
+      }
+      return () => {
+          if (timer) clearTimeout(timer);
+      };
+  }, [isGeneratingAiMask, isAiMask, activeMaskId]);
+
   useEffect(() => {
     if (activeMaskContainerId) {
       const containerExists = adjustments.masks.some(m => m.id === activeMaskContainerId);
@@ -479,9 +499,6 @@ export default function MasksPanel({
       ]);
   };
 
-  const activeContainer = adjustments.masks.find(m => m.id === activeMaskContainerId);
-  const activeSubMaskData = activeContainer?.subMasks.find(sm => sm.id === activeMaskId);
-
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd} collisionDetection={pointerWithin}>
       <div className="flex flex-col h-full select-none overflow-hidden" onClick={handleDeselect} onContextMenu={handlePanelContextMenu}>
@@ -503,7 +520,6 @@ export default function MasksPanel({
                     <DraggableGridItem 
                         key={maskType.type || maskType.id} 
                         maskType={maskType} 
-                        isGeneratingAiMask={isGeneratingAiMask} 
                         onClick={(e:any) => maskType.id === 'others' ? handleAddOthersMask(e) : handleGridClick(maskType.type)}
                         isDraggable={maskType.id !== 'others'}
                     />
@@ -558,6 +574,7 @@ export default function MasksPanel({
                                   onSelectMask={onSelectMask}
                                   updateSubMask={updateSubMask}
                                   handleDeleteSubMask={handleDeleteSubMask}
+                                  analyzingSubMaskId={analyzingSubMaskId}
                               />
                             ))}
                         </AnimatePresence>
@@ -676,7 +693,7 @@ function NewMaskDropZone({ isOver }: { isOver: boolean }) {
   );
 }
 
-function DraggableGridItem({ maskType, isGeneratingAiMask, onClick, isDraggable }: any) {
+function DraggableGridItem({ maskType, onClick, isDraggable }: any) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ 
         id: `create-${maskType.id || maskType.type}`, 
         data: { type: 'Creation', maskType: maskType.type },
@@ -684,9 +701,9 @@ function DraggableGridItem({ maskType, isGeneratingAiMask, onClick, isDraggable 
     });
     return (
         <button
-            ref={setNodeRef} {...listeners} {...attributes} disabled={maskType.disabled || isGeneratingAiMask} onClick={onClick}
+            ref={setNodeRef} {...listeners} {...attributes} disabled={maskType.disabled} onClick={onClick}
             className={`bg-surface text-text-primary rounded-lg p-2 flex flex-col items-center justify-center gap-1.5 aspect-square transition-colors 
-                ${maskType.disabled || isGeneratingAiMask ? 'opacity-50 cursor-not-allowed' : 'hover:bg-card-active active:bg-accent/20'} ${isDragging ? 'opacity-50' : ''}`}
+                ${maskType.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-card-active active:bg-accent/20'} ${isDragging ? 'opacity-50' : ''}`}
             title={maskType.disabled ? 'Coming Soon' : `Add ${maskType.name}`}
         >
             <maskType.icon size={24} /> <span className="text-xs">{maskType.name}</span>
@@ -698,7 +715,7 @@ function ContainerRow({
   container, isSelected, hasActiveChild, isExpanded, onToggle, onSelect,
   renamingId, setRenamingId, tempName, setTempName, updateContainer, handleDelete,
   handleDuplicate, setCopiedMask, copiedMask, presets, setAdjustments,
-  activeDragItem, activeMaskId, onSelectContainer, onSelectMask, updateSubMask, handleDeleteSubMask,
+  activeDragItem, activeMaskId, onSelectContainer, onSelectMask, updateSubMask, handleDeleteSubMask, analyzingSubMaskId,
 }: any) {
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: container.id, data: { type: 'Container', item: container } });
   const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({ id: container.id, data: { type: 'Container', item: container } });
@@ -824,6 +841,7 @@ function ContainerRow({
                     onSelect={() => { onSelectContainer(container.id); onSelectMask(subMask.id); }}
                     updateSubMask={updateSubMask}
                     handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
+                    analyzingSubMaskId={analyzingSubMaskId}
                   />
                 ))}
               </AnimatePresence>
@@ -844,7 +862,7 @@ function ContainerRow({
   );
 }
 
-function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete, activeDragItem }: any) {
+function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentVisible, onSelect, updateSubMask, handleDelete, activeDragItem, analyzingSubMaskId }: any) {
    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
    const { setNodeRef: setDroppableRef, isOver } = useDroppable({ id: subMask.id, data: { type: 'SubMask', item: subMask, parentId: containerId } });
    const setCombinedRef = (node: HTMLElement | null) => { setNodeRef(node); setDroppableRef(node); };
@@ -854,6 +872,7 @@ function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentV
    const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
    const isDraggingContainer = activeDragItem?.type === 'Container';
+   const isAnalyzing = subMask.id === analyzingSubMaskId;
 
    const handleMouseEnter = () => {
        if (hoverTimeoutRef.current) {
@@ -903,7 +922,18 @@ function SubMaskRow({ subMask, index, totalCount, containerId, isActive, parentV
       >
           <div className="relative w-4 h-4 ml-1 flex-shrink-0 flex items-center justify-center">
              <AnimatePresence mode="wait" initial={false}>
-                {showNumber ? (
+                {isAnalyzing ? (
+                    <motion.div 
+                        key="analyzing"
+                        initial={{ opacity: 0, scale: 0.5 }} 
+                        animate={{ opacity: 1, scale: 1 }} 
+                        exit={{ opacity: 0, scale: 0.5 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute"
+                    >
+                       <Loader2 size={16} className="text-text-secondary animate-spin" />
+                    </motion.div>
+                ) : showNumber ? (
                     <motion.span 
                         key="number"
                         initial={{ opacity: 0, scale: 0.5 }} 

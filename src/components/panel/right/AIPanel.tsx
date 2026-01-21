@@ -244,6 +244,7 @@ export default function AIPanel({
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [isSettingsPanelEverOpened, setIsSettingsPanelEverOpened] = useState(false);
   const hasPerformedInitialSelection = useRef(false);
+  const [analyzingSubMaskId, setAnalyzingSubMaskId] = useState<string | null>(null);
 
   const [collapsibleState, setCollapsibleState] = useState({
     generative: true,
@@ -253,6 +254,24 @@ export default function AIPanel({
   const { showContextMenu } = useContextMenu();
   const { setNodeRef: setRootDroppableRef, isOver: isRootOver } = useDroppable({ id: 'ai-list-root' });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  
+  const activeContainer = (adjustments.aiPatches || []).find((p) => p.id === activePatchContainerId);
+  const activeSubMaskData = activeContainer?.subMasks.find((sm) => sm.id === activeSubMaskId);
+  const isAiMask = activeSubMaskData && [Mask.AiSubject, Mask.AiForeground, Mask.AiSky].includes(activeSubMaskData.type);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (isGeneratingAiMask && isAiMask) {
+        timer = setTimeout(() => {
+            setAnalyzingSubMaskId(activeSubMaskId);
+        }, 200);
+    } else {
+        setAnalyzingSubMaskId(null);
+    }
+    return () => {
+        if (timer) clearTimeout(timer);
+    };
+  }, [isGeneratingAiMask, isAiMask, activeSubMaskId]);
 
   useEffect(() => {
     if (activePatchContainerId) {
@@ -581,9 +600,6 @@ export default function AIPanel({
     }
   };
 
-  const activeContainer = (adjustments.aiPatches || []).find((p) => p.id === activePatchContainerId);
-  const activeSubMaskData = activeContainer?.subMasks.find((sm) => sm.id === activeSubMaskId);
-
   return (
     <DndContext
       sensors={sensors}
@@ -627,7 +643,7 @@ export default function AIPanel({
                       <DraggableGridItem
                         key={typeToRender.type}
                         maskType={typeToRender}
-                        isGenerating={isGeneratingAi || isGeneratingAiMask}
+                        isGenerating={isGeneratingAi}
                         onClick={() =>
                           isComponentMode
                             ? handleAddSubMask(activePatchContainerId, typeToRender.type)
@@ -691,6 +707,7 @@ export default function AIPanel({
                       onSelectSubMask={onSelectSubMask}
                       updateSubMask={updateSubMask}
                       handleDeleteSubMask={handleDeleteSubMask}
+                      analyzingSubMaskId={analyzingSubMaskId}
                     />
                   ))}
                 </AnimatePresence>
@@ -847,6 +864,7 @@ function ContainerRow({
   onSelectSubMask,
   updateSubMask,
   handleDeleteSubMask,
+  analyzingSubMaskId,
 }: any) {
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: container.id,
@@ -1025,6 +1043,7 @@ function ContainerRow({
                   }}
                   updateSubMask={updateSubMask}
                   handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
+                  analyzingSubMaskId={analyzingSubMaskId}
                 />
               ))}
             </AnimatePresence>
@@ -1056,6 +1075,7 @@ function SubMaskRow({
   updateSubMask,
   handleDelete,
   activeDragItem,
+  analyzingSubMaskId,
 }: any) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: subMask.id,
@@ -1074,6 +1094,7 @@ function SubMaskRow({
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingContainer = activeDragItem?.type === 'Container';
+  const isAnalyzing = subMask.id === analyzingSubMaskId;
 
   const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) {
@@ -1126,7 +1147,18 @@ function SubMaskRow({
     >
       <div className="relative w-4 h-4 ml-1 flex-shrink-0 flex items-center justify-center">
         <AnimatePresence mode="wait" initial={false}>
-          {showNumber ? (
+          {isAnalyzing ? (
+            <motion.div
+              key="analyzing"
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ duration: 0.15 }}
+              className="absolute"
+            >
+              <Loader2 size={16} className="text-text-secondary animate-spin" />
+            </motion.div>
+          ) : showNumber ? (
             <motion.span
               key="number"
               initial={{ opacity: 0, scale: 0.5 }}
@@ -1203,9 +1235,7 @@ function SettingsPanel({
 
   const [prompt, setPrompt] = useState(displayContainer.prompt || '');
   const [useFastInpaint, setUseFastInpaint] = useState(!isAIConnectorConnected);
-  const [showAnalyzingMessage, setShowAnalyzingMessage] = useState(false);
-  const analyzingTimeoutRef = useRef<number>(null);
-
+  
   useEffect(() => {
     if (container) setPrompt(container.prompt || '');
   }, [container?.id]);
@@ -1216,18 +1246,6 @@ function SettingsPanel({
       setUseFastInpaint(isQuickErasePatch || !isAIConnectorConnected);
     }
   }, [isAIConnectorConnected, container, isQuickErasePatch]);
-
-  useEffect(() => {
-    if (isGeneratingAiMask) {
-      analyzingTimeoutRef.current = setTimeout(() => setShowAnalyzingMessage(true), 1000);
-    } else {
-      if (analyzingTimeoutRef.current) clearTimeout(analyzingTimeoutRef.current);
-      setShowAnalyzingMessage(false);
-    }
-    return () => {
-      if (analyzingTimeoutRef.current) clearTimeout(analyzingTimeoutRef.current);
-    };
-  }, [isGeneratingAiMask]);
 
   const subMaskConfig = activeSubMask ? SUB_MASK_CONFIG[activeSubMask.type] || {} : {};
   const isAiMask =
@@ -1358,10 +1376,7 @@ function SettingsPanel({
                   Downloading Model: {aiModelDownloadStatus}
                 </div>
               )}
-              {showAnalyzingMessage && !aiModelDownloadStatus && (
-                <div className="text-xs text-text-secondary text-center animate-pulse">Analyzing Image...</div>
-              )}
-
+              
               {subMaskConfig.parameters?.map((param: any) => (
                 <Slider
                   key={param.key}
