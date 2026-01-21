@@ -75,7 +75,7 @@ use crate::image_loader::{
 };
 use crate::image_processing::{
     Crop, GpuContext, ImageMetadata, apply_coarse_rotation, apply_crop, apply_flip, apply_rotation,
-    get_all_adjustments_from_json, get_or_init_gpu_context, process_and_get_dynamic_image,
+    get_all_adjustments_from_json, get_or_init_gpu_context, process_and_get_dynamic_image, apply_unwarp_geometry,
     downscale_f32_image, apply_cpu_default_raw_processing, GeometryParams, warp_image_geometry, apply_geometry_warp
 };
 use crate::lut_processing::Lut;
@@ -2624,10 +2624,8 @@ async fn invoke_generative_replace_with_mask_def(
     }
 
     let (base_image, _) = get_full_image_for_processing(&state)?;
-    let patched_image = composite_patches_on_image(&base_image, &source_image_adjustments)
+    let source_image = composite_patches_on_image(&base_image, &source_image_adjustments)
         .map_err(|e| format!("Failed to prepare source image: {}", e))?;
-
-    let source_image = apply_geometry_warp(&patched_image, &current_adjustments);
 
     let (img_w, img_h) = source_image.dimensions();
     let mask_def_for_generation = MaskDefinition {
@@ -2642,6 +2640,10 @@ async fn invoke_generative_replace_with_mask_def(
 
     let mask_bitmap = generate_mask_bitmap(&mask_def_for_generation, img_w, img_h, 1.0, (0.0, 0.0))
         .ok_or("Failed to generate mask bitmap for AI replace")?;
+
+    let mask_dynamic = DynamicImage::ImageLuma8(mask_bitmap);
+    let unwarped_dynamic = apply_unwarp_geometry(&mask_dynamic, &current_adjustments);
+    let mask_bitmap = unwarped_dynamic.to_luma8();
 
     let patch_rgba = if use_fast_inpaint {
         // cpu based inpainting, low quality but no setup required

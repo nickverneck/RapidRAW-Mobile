@@ -197,23 +197,34 @@ pub fn composite_patches_on_image(
     let mut composited_rgba = base_image.to_rgba32f();
 
     for patch_obj in visible_patches {
-        let patch_info: PatchMaskInfo = from_value(patch_obj.clone())
-            .context("Failed to deserialize patch info for mask generation")?;
+        let patch_data = patch_obj.get("patchData").context("Missing patchData")?;
 
-        let mask_def = MaskDefinition {
-            id: patch_info.id,
-            name: patch_info.name,
-            visible: true,
-            invert: patch_info.invert,
-            opacity: 100.0,
-            adjustments: Value::Null,
-            sub_masks: patch_info.sub_masks,
+        let mask_bitmap = if let Some(mask_b64) = patch_data.get("mask").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+            let mask_bytes = general_purpose::STANDARD.decode(mask_b64)?;
+            let mask_img = image::load_from_memory(&mask_bytes)?.to_luma8();
+            if mask_img.width() != base_w || mask_img.height() != base_h {
+                imageops::resize(&mask_img, base_w, base_h, imageops::FilterType::Lanczos3)
+            } else {
+                mask_img
+            }
+        } else {
+            let patch_info: PatchMaskInfo = from_value(patch_obj.clone())
+                .context("Failed to deserialize patch info for mask generation")?;
+
+            let mask_def = MaskDefinition {
+                id: patch_info.id,
+                name: patch_info.name,
+                visible: true,
+                invert: patch_info.invert,
+                opacity: 100.0,
+                adjustments: Value::Null,
+                sub_masks: patch_info.sub_masks,
+            };
+
+            generate_mask_bitmap(&mask_def, base_w, base_h, 1.0, (0.0, 0.0))
+                .context("Failed to generate mask from sub_masks for compositing")?
         };
 
-        let mask_bitmap = generate_mask_bitmap(&mask_def, base_w, base_h, 1.0, (0.0, 0.0))
-            .context("Failed to generate mask from sub_masks for compositing")?;
-
-        let patch_data = patch_obj.get("patchData").context("Missing patchData")?;
         let color_b64 = patch_data
             .get("color")
             .and_then(|v| v.as_str())

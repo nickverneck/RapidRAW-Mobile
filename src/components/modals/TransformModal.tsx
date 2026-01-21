@@ -244,6 +244,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     value={params.vertical} 
                     min={-100} max={100} 
                     defaultValue={0}
+                    step={1}
                     onChange={(e) => handleChange('vertical', Number(e.target.value))} 
                 />
                 <Slider 
@@ -251,6 +252,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     value={params.horizontal} 
                     min={-100} max={100} 
                     defaultValue={0}
+                    step={1}
                     onChange={(e) => handleChange('horizontal', Number(e.target.value))} 
                 />
             </div>
@@ -269,6 +271,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     value={params.aspect} 
                     min={-100} max={100} 
                     defaultValue={0}
+                    step={1}
                     onChange={(e) => handleChange('aspect', Number(e.target.value))} 
                 />
                 <Slider 
@@ -276,6 +279,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     value={params.scale} 
                     min={50} max={150} 
                     defaultValue={100}
+                    step={1}
                     onChange={(e) => handleChange('scale', Number(e.target.value))} 
                 />
             </div>
@@ -287,6 +291,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     value={params.x_offset} 
                     min={-100} max={100} 
                     defaultValue={0}
+                    step={1}
                     onChange={(e) => handleChange('x_offset', Number(e.target.value))} 
                 />
                 <Slider 
@@ -294,6 +299,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     value={params.y_offset} 
                     min={-100} max={100} 
                     defaultValue={0}
+                    step={1}
                     onChange={(e) => handleChange('y_offset', Number(e.target.value))} 
                 />
             </div>
@@ -302,7 +308,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                  <div className="p-3 bg-surface rounded-md border border-surface flex gap-3">
                     <Info size={16} className="text-text-secondary flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-text-secondary leading-relaxed">
-                        Transforming updates base geometry. Existing masks may shift, and AI edits/masks must be regenerated.
+                        Transforming updates base geometry. Existing masks may shift, and AI masks must be regenerated.
                     </p>
                  </div>
             </div>

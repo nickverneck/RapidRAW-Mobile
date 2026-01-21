@@ -1168,15 +1168,6 @@ function SubMaskRow({
           {subMask.mode === SubMaskMode.Additive ? <Plus size={14} /> : <Minus size={14} />}
         </button>
         <button
-          className="p-1 hover:bg-bg-primary rounded text-text-secondary"
-          onClick={(e) => {
-            e.stopPropagation();
-            updateSubMask(subMask.id, { visible: !subMask.visible });
-          }}
-        >
-          {subMask.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-        </button>
-        <button
           className="p-1 hover:text-red-500 text-text-secondary"
           onClick={(e) => {
             e.stopPropagation();

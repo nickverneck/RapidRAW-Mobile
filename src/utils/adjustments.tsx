@@ -173,6 +173,7 @@ export interface Adjustments {
 export interface AiPatch {
   id: string;
   isLoading: boolean;
+  invert: boolean;
   name: string;
   patchData: any | null;
   prompt: string;
