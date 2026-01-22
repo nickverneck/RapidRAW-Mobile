@@ -4,7 +4,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::BufReader;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -17,8 +16,6 @@ use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Luma};
-use little_exif::exif_tag::ExifTag;
-use little_exif::metadata::Metadata;
 use num_cpus;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
@@ -42,6 +39,7 @@ use crate::mask_generation::MaskDefinition;
 use crate::preset_converter;
 use crate::tagging::COLOR_TAG_PREFIX;
 use crate::calculate_geometry_hash;
+use crate::exif_processing;
 
 const THUMBNAIL_WIDTH: u32 = 640;
 
@@ -413,33 +411,14 @@ pub async fn read_exif_for_paths(
 ) -> Result<HashMap<String, HashMap<String, String>>, String> {
     let exif_data: HashMap<String, HashMap<String, String>> = paths
         .par_iter()
-        .filter_map(|path_str| {
-            let (source_path, _) = parse_virtual_path(path_str);
-            let file = match fs::File::open(source_path) {
-                Ok(f) => f,
-                Err(_) => return None,
-            };
-            let mut buf_reader = BufReader::new(&file);
-            let exif_reader = exif::Reader::new();
-
-            if let Ok(exif) = exif_reader.read_from_container(&mut buf_reader) {
-                let mut exif_map = HashMap::new();
-                for field in exif.fields() {
-                    exif_map.insert(
-                        field.tag.to_string(),
-                        field.display_value().with_unit(&exif).to_string(),
-                    );
-                }
-                if exif_map.is_empty() {
-                    None
-                } else {
-                    Some((path_str.clone(), exif_map))
-                }
-            } else {
-                None
-            }
+        .filter_map(|virtual_path| {
+            let (source_path, _) = parse_virtual_path(virtual_path);
+            let source_path_str = source_path.to_string_lossy().to_string();
+            exif_processing::extract_metadata(&source_path_str)
+                .map(|exif_map| (virtual_path.clone(), exif_map))
         })
         .collect();
+
     Ok(exif_data)
 }
 
@@ -2301,32 +2280,7 @@ pub async fn import_files(
                     return Err(format!("Source file not found: {}", source_path_str));
                 }
 
-                let file_date: DateTime<Utc> = Metadata::new_from_path(&source_path)
-                    .ok()
-                    .and_then(|metadata| {
-                        metadata
-                            .get_tag(&ExifTag::DateTimeOriginal("".to_string()))
-                            .next()
-                            .and_then(|tag| {
-                                if let &ExifTag::DateTimeOriginal(ref dt_str) = tag {
-                                    chrono::NaiveDateTime::parse_from_str(
-                                        dt_str,
-                                        "%Y:%m:%d %H:%M:%S",
-                                    )
-                                    .ok()
-                                    .map(|dt| DateTime::from_naive_utc_and_offset(dt, Utc))
-                                } else {
-                                    None
-                                }
-                            })
-                    })
-                    .unwrap_or_else(|| {
-                        fs::metadata(&source_path)
-                            .ok()
-                            .and_then(|m| m.created().ok())
-                            .map(DateTime::<Utc>::from)
-                            .unwrap_or_else(Utc::now)
-                    });
+                let file_date = exif_processing::get_creation_date_from_path(&source_path);
 
                 let mut final_dest_folder = PathBuf::from(&destination_folder);
                 if settings.organize_by_date {
@@ -2452,29 +2406,7 @@ pub fn rename_files(paths: Vec<String>, name_template: String) -> Result<Vec<Str
         let parent = original_path.parent().ok_or("Could not get parent directory")?;
         let extension = original_path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
-        let file_date: DateTime<Utc> = Metadata::new_from_path(&original_path)
-            .ok()
-            .and_then(|metadata| {
-                metadata
-                    .get_tag(&ExifTag::DateTimeOriginal("".to_string()))
-                    .next()
-                    .and_then(|tag| {
-                        if let &ExifTag::DateTimeOriginal(ref dt_str) = tag {
-                            chrono::NaiveDateTime::parse_from_str(dt_str, "%Y:%m:%d %H:%M:%S")
-                                .ok()
-                                .map(|dt| DateTime::from_naive_utc_and_offset(dt, Utc))
-                        } else {
-                            None
-                        }
-                    })
-            })
-            .unwrap_or_else(|| {
-                fs::metadata(&original_path)
-                    .ok()
-                    .and_then(|m| m.created().ok())
-                    .map(DateTime::<Utc>::from)
-                    .unwrap_or_else(Utc::now)
-            });
+        let file_date = exif_processing::get_creation_date_from_path(&original_path);
 
         let new_stem = generate_filename_from_template(
             &name_template,
