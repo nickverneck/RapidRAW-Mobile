@@ -64,7 +64,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
-*   **2026-01-24:** Added automatic lens correction using lensfun
+*   **2026-01-24:** Added automatic lens, TCA & vignette correction using lensfun
 *   **2026-01-22:** Improved and centralized EXIF data handling for greater accuracy and support
 *   **2026-01-21:** Inpainting now works correctly on images with geometry transformations
 *   **2026-01-20:** Export preset management for saving export settings 
