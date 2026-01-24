@@ -12,21 +12,61 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
+  SquareDashed,
+  CircleDashed,
+  Activity,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../ui/Button';
 import Slider from '../ui/Slider';
 import Dropdown from '../ui/Dropdown';
+import Switch from '../ui/Switch';
 import throttle from 'lodash.throttle';
 import { Adjustments } from '../../utils/adjustments';
 import { SelectedImage } from '../ui/AppProperties';
 import clsx from 'clsx';
 
+interface GeometryParams {
+  distortion: number;
+  vertical: number;
+  horizontal: number;
+  rotate: number;
+  aspect: number;
+  scale: number;
+  x_offset: number;
+  y_offset: number;
+  lens_distortion_amount: number;
+  lens_vignette_amount: number;
+  lens_tca_amount: number;
+  lens_dist_k1: number;
+  lens_dist_k2: number;
+  lens_dist_k3: number;
+  lens_model: number;
+  tca_vr: number;
+  tca_vb: number;
+  vig_k1: number;
+  vig_k2: number;
+  vig_k3: number;
+  lens_distortion_enabled: boolean;
+  lens_tca_enabled: boolean;
+  lens_vignette_enabled: boolean;
+}
+
 interface LensParams {
   lensMaker: string | null;
   lensModel: string | null;
-  lensCorrectionAmount: number;
-  lensDistortionParams: { k1: number; k2: number; k3: number; model: number } | null;
+  lensDistortionAmount: number;
+  lensVignetteAmount: number;
+  lensTcaAmount: number;
+  lensDistortionEnabled: boolean;
+  lensTcaEnabled: boolean;
+  lensVignetteEnabled: boolean;
+  lensDistortionParams: { 
+    k1: number; k2: number; k3: number;
+    model: number;
+    tca_vr: number; tca_vb: number;
+    vig_k1: number; vig_k2: number; vig_k3: number;
+  } | null;
 }
 
 interface LensCorrectionModalProps {
@@ -40,7 +80,12 @@ interface LensCorrectionModalProps {
 const DEFAULT_PARAMS: LensParams = {
   lensMaker: null,
   lensModel: null,
-  lensCorrectionAmount: 100,
+  lensDistortionAmount: 100,
+  lensVignetteAmount: 100,
+  lensTcaAmount: 100,
+  lensDistortionEnabled: true,
+  lensTcaEnabled: true,
+  lensVignetteEnabled: true,
   lensDistortionParams: null,
 };
 
@@ -53,6 +98,18 @@ const parseFocalLength = (exif: any): number | null => {
 const parseFocalLength35 = (exif: any): number | null => {
   if (!exif || !exif.FocalLengthIn35mmFilm) return null;
   const val = parseFloat(exif.FocalLengthIn35mmFilm);
+  return isNaN(val) ? null : val;
+};
+
+const parseAperture = (exif: any): number | null => {
+  if (!exif || !exif.FNumber) return null;
+  const val = parseFloat(exif.FNumber);
+  return isNaN(val) ? null : val;
+};
+
+const parseDistance = (exif: any): number | null => {
+  if (!exif || !exif.SubjectDistance) return null;
+  const val = parseFloat(exif.SubjectDistance);
   return isNaN(val) ? null : val;
 };
 
@@ -84,6 +141,18 @@ export default function LensCorrectionModal({
 
   const focalLength = useMemo(() => parseFocalLength(selectedImage?.exif), [selectedImage?.exif]);
   const focalLength35 = useMemo(() => parseFocalLength35(selectedImage?.exif), [selectedImage?.exif]);
+  const aperture = useMemo(() => parseAperture(selectedImage?.exif), [selectedImage?.exif]);
+  const distance = useMemo(() => parseDistance(selectedImage?.exif), [selectedImage?.exif]);
+
+  const availability = useMemo(() => {
+    if (!params.lensDistortionParams) return { distortion: false, tca: false, vignetting: false };
+    const p = params.lensDistortionParams;
+    return {
+      distortion: Math.abs(p.k1) > 1e-6 || Math.abs(p.k2) > 1e-6 || Math.abs(p.k3) > 1e-6,
+      tca: Math.abs(p.tca_vr - 1.0) > 1e-5 || Math.abs(p.tca_vb - 1.0) > 1e-5,
+      vignetting: Math.abs(p.vig_k1) > 1e-6 || Math.abs(p.vig_k2) > 1e-6 || Math.abs(p.vig_k3) > 1e-6,
+    };
+  }, [params.lensDistortionParams]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -133,27 +202,56 @@ export default function LensCorrectionModal({
     setPan({ x: 0, y: 0 });
   };
 
+  const fetchDistortionParams = async (maker: string, model: string) => {
+    try {
+      const distParams: any = await invoke('get_lens_distortion_params', { 
+        maker, 
+        model, 
+        focalLength: focalLength, 
+        aperture: aperture, 
+        distance: distance 
+      });
+      return distParams;
+    } catch (error) {
+      console.error('Failed to fetch lens params', error);
+      return null;
+    }
+  };
+
   const updatePreview = useCallback(
     throttle(async (currentParams: LensParams) => {
       try {
-        const geometryParams = {
-          distortion: currentAdjustments.transformDistortion,
-          vertical: currentAdjustments.transformVertical,
-          horizontal: currentAdjustments.transformHorizontal,
-          rotate: currentAdjustments.transformRotate,
-          aspect: currentAdjustments.transformAspect,
-          scale: currentAdjustments.transformScale,
-          x_offset: currentAdjustments.transformXOffset,
-          y_offset: currentAdjustments.transformYOffset,
-          lens_correction_amount: currentParams.lensCorrectionAmount / SLIDER_DIVISOR,
+        const fullParams: GeometryParams = {
+          distortion: currentAdjustments.transformDistortion ?? 0,
+          vertical: currentAdjustments.transformVertical ?? 0,
+          horizontal: currentAdjustments.transformHorizontal ?? 0,
+          rotate: currentAdjustments.transformRotate ?? 0,
+          aspect: currentAdjustments.transformAspect ?? 0,
+          scale: currentAdjustments.transformScale ?? 100,
+          x_offset: currentAdjustments.transformXOffset ?? 0,
+          y_offset: currentAdjustments.transformYOffset ?? 0,
+
+          lens_distortion_amount: currentParams.lensDistortionAmount / SLIDER_DIVISOR,
+          lens_vignette_amount: currentParams.lensVignetteAmount / SLIDER_DIVISOR,
+          lens_tca_amount: currentParams.lensTcaAmount / SLIDER_DIVISOR,
+          
+          lens_distortion_enabled: currentParams.lensDistortionEnabled,
+          lens_vignette_enabled: currentParams.lensVignetteEnabled,
+          lens_tca_enabled: currentParams.lensTcaEnabled,
+
           lens_dist_k1: currentParams.lensDistortionParams?.k1 ?? 0,
           lens_dist_k2: currentParams.lensDistortionParams?.k2 ?? 0,
           lens_dist_k3: currentParams.lensDistortionParams?.k3 ?? 0,
           lens_model: currentParams.lensDistortionParams?.model ?? 0,
+          tca_vr: currentParams.lensDistortionParams?.tca_vr ?? 1.0,
+          tca_vb: currentParams.lensDistortionParams?.tca_vb ?? 1.0,
+          vig_k1: currentParams.lensDistortionParams?.vig_k1 ?? 0,
+          vig_k2: currentParams.lensDistortionParams?.vig_k2 ?? 0,
+          vig_k3: currentParams.lensDistortionParams?.vig_k3 ?? 0,
         };
 
         const result: string = await invoke('preview_geometry_transform', {
-          params: geometryParams,
+          params: fullParams,
           jsAdjustments: currentAdjustments,
           showLines: false,
         });
@@ -165,36 +263,27 @@ export default function LensCorrectionModal({
     [currentAdjustments]
   );
 
-  const fetchDistortionParams = useCallback(async (maker: string, model: string, fl: number) => {
-    try {
-      const distParams: { k1: number; k2: number; k3: number; model: number } | null = await invoke(
-        'get_lens_distortion_params',
-        { maker, model, focalLength: fl }
-      );
-      setParams(prev => ({ ...prev, lensDistortionParams: distParams }));
-      return distParams;
-    } catch (error) {
-      console.error('Failed to fetch distortion params', error);
-      setParams(prev => ({ ...prev, lensDistortionParams: null }));
-      return null;
-    }
-  }, []);
-
   useEffect(() => {
     if (isOpen) {
       setIsMounted(true);
       const timer = setTimeout(() => setShow(true), 10);
-
+      
       const initParams: LensParams = {
         lensMaker: currentAdjustments.lensMaker,
         lensModel: currentAdjustments.lensModel,
-        lensCorrectionAmount: currentAdjustments.lensCorrectionAmount,
+        lensDistortionAmount: currentAdjustments.lensDistortionAmount ?? 100,
+        lensVignetteAmount: currentAdjustments.lensVignetteAmount ?? 100,
+        lensTcaAmount: currentAdjustments.lensTcaAmount ?? 100,
+        lensDistortionEnabled: currentAdjustments.lensDistortionEnabled ?? true,
+        lensTcaEnabled: currentAdjustments.lensTcaEnabled ?? true,
+        lensVignetteEnabled: currentAdjustments.lensVignetteEnabled ?? true,
         lensDistortionParams: currentAdjustments.lensDistortionParams,
       };
+      
       setParams(initParams);
-      updatePreview(initParams);
       setDetectionStatus('idle');
       handleResetZoom();
+      updatePreview(initParams);
 
       invoke('get_lensfun_makers')
         .then((m: any) => setMakers(m))
@@ -216,34 +305,47 @@ export default function LensCorrectionModal({
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, currentAdjustments, updatePreview]);
-
-  useEffect(() => {
-    if (params.lensMaker && params.lensModel && focalLength) {
-      fetchDistortionParams(params.lensMaker, params.lensModel, focalLength).then(distParams => {
-        updatePreview({ ...params, lensDistortionParams: distParams });
-      });
-    } else {
-      updatePreview({ ...params, lensDistortionParams: null });
-    }
-  }, [params.lensMaker, params.lensModel, focalLength, fetchDistortionParams, updatePreview]);
+  }, [isOpen, currentAdjustments]);
 
   const handleMakerChange = (maker: string) => {
-    setParams({ ...params, lensMaker: maker, lensModel: null, lensDistortionParams: null });
+    const newParams = { 
+      ...params, 
+      lensMaker: maker, 
+      lensModel: null, 
+      lensDistortionParams: null 
+    };
+    setParams(newParams);
     setLenses([]);
     setDetectionStatus('idle');
+    
     invoke('get_lensfun_lenses_for_maker', { maker })
       .then((l: any) => setLenses(l))
       .catch(console.error);
+      
+    updatePreview(newParams);
   };
 
-  const handleModelChange = (model: string) => {
-    setParams(prev => ({ ...prev, lensModel: model }));
+  const handleModelChange = async (model: string) => {
+    const tempParams = { ...params, lensModel: model };
+    setParams(tempParams);
     setDetectionStatus('idle');
+
+    if (params.lensMaker) {
+      const distortionParams = await fetchDistortionParams(params.lensMaker, model);
+      const finalParams = { ...tempParams, lensDistortionParams: distortionParams };
+      setParams(finalParams);
+      updatePreview(finalParams);
+    }
   };
 
-  const handleAmountChange = (amount: number) => {
-    const newParams = { ...params, lensCorrectionAmount: amount };
+  const handleAmountChange = (key: keyof LensParams, amount: number) => {
+    const newParams = { ...params, [key]: amount };
+    setParams(newParams);
+    updatePreview(newParams);
+  };
+
+  const handleToggleChange = (key: keyof LensParams, val: boolean) => {
+    const newParams = { ...params, [key]: val };
     setParams(newParams);
     updatePreview(newParams);
   };
@@ -255,22 +357,37 @@ export default function LensCorrectionModal({
     }
     const exifMaker = selectedImage.exif.Make || '';
     const exifModel = selectedImage.exif.LensModel || '';
+    
     if (!exifModel) {
       setDetectionStatus('not_found');
       return;
     }
+
     setDetectionStatus('detecting');
+
     try {
       const result: [string, string] | null = await invoke('autodetect_lens', { maker: exifMaker, model: exifModel });
+      
       if (result) {
         const [detectedMaker, detectedModel] = result;
+        
         if (detectedMaker !== params.lensMaker) {
-          setLenses([]);
           await invoke('get_lensfun_lenses_for_maker', { maker: detectedMaker }).then((l: any) => setLenses(l));
         }
-        setParams(prev => ({ ...prev, lensMaker: detectedMaker, lensModel: detectedModel }));
 
+        const distortionParams = await fetchDistortionParams(detectedMaker, detectedModel);
+
+        const newParams = { 
+          ...params, 
+          lensMaker: detectedMaker, 
+          lensModel: detectedModel,
+          lensDistortionParams: distortionParams
+        };
+
+        setParams(newParams);
         setDetectionStatus('success');
+        updatePreview(newParams);
+        
         setTimeout(() => {
           setDetectionStatus('idle');
         }, 2000);
@@ -290,16 +407,55 @@ export default function LensCorrectionModal({
   };
 
   const handleReset = () => {
-    setParams(DEFAULT_PARAMS);
+    const resetParams = {
+      ...DEFAULT_PARAMS,
+      lensDistortionEnabled: true,
+      lensTcaEnabled: true,
+      lensVignetteEnabled: true,
+    };
+    setParams(resetParams);
     setLenses([]);
     setDetectionStatus('idle');
-    updatePreview(DEFAULT_PARAMS);
+    updatePreview(resetParams);
   };
 
   const toggleCompare = (active: boolean) => {
     setIsCompareActive(active);
     if (active) {
-      updatePreview({ ...params, lensCorrectionAmount: 0, lensDistortionParams: null });
+      const fullParams: GeometryParams = {
+        distortion: currentAdjustments.transformDistortion ?? 0,
+        vertical: currentAdjustments.transformVertical ?? 0,
+        horizontal: currentAdjustments.transformHorizontal ?? 0,
+        rotate: currentAdjustments.transformRotate ?? 0,
+        aspect: currentAdjustments.transformAspect ?? 0,
+        scale: currentAdjustments.transformScale ?? 100,
+        x_offset: currentAdjustments.transformXOffset ?? 0,
+        y_offset: currentAdjustments.transformYOffset ?? 0,
+
+        lens_distortion_amount: (currentAdjustments.lensDistortionAmount ?? 100) / SLIDER_DIVISOR,
+        lens_vignette_amount: (currentAdjustments.lensVignetteAmount ?? 100) / SLIDER_DIVISOR,
+        lens_tca_amount: (currentAdjustments.lensTcaAmount ?? 100) / SLIDER_DIVISOR,
+        
+        lens_distortion_enabled: false,
+        lens_vignette_enabled: false,
+        lens_tca_enabled: false,
+
+        lens_dist_k1: currentAdjustments.lensDistortionParams?.k1 ?? 0,
+        lens_dist_k2: currentAdjustments.lensDistortionParams?.k2 ?? 0,
+        lens_dist_k3: currentAdjustments.lensDistortionParams?.k3 ?? 0,
+        lens_model: currentAdjustments.lensDistortionParams?.model ?? 0,
+        tca_vr: currentAdjustments.lensDistortionParams?.tca_vr ?? 1.0,
+        tca_vb: currentAdjustments.lensDistortionParams?.tca_vb ?? 1.0,
+        vig_k1: currentAdjustments.lensDistortionParams?.vig_k1 ?? 0,
+        vig_k2: currentAdjustments.lensDistortionParams?.vig_k2 ?? 0,
+        vig_k3: currentAdjustments.lensDistortionParams?.vig_k3 ?? 0,
+      };
+
+      invoke('preview_geometry_transform', {
+        params: fullParams,
+        jsAdjustments: currentAdjustments,
+        showLines: false,
+      }).then((result: any) => setPreviewUrl(result));
     } else {
       updatePreview(params);
     }
@@ -414,16 +570,109 @@ export default function LensCorrectionModal({
           </div>
         </div>
 
-        <div className="space-y-3">
-          <p className="text-sm font-semibold text-text-primary">Parameters</p>
-          <Slider
-            label="Correction"
-            value={params.lensCorrectionAmount}
-            min={0}
-            max={200}
-            defaultValue={100}
-            onChange={e => handleAmountChange(Number(e.target.value))}
-          />
+        <div className="space-y-6">
+          <p className="text-sm font-semibold text-text-primary">Corrections</p>
+          
+          <div className="flex flex-col gap-4">
+            <div>
+              <div className={clsx("flex items-center gap-3 p-2 rounded-md transition-colors", availability.distortion ? "bg-surface" : "bg-surface/30 opacity-60")}>
+                  <div className="p-1.5 bg-bg-primary rounded text-text-secondary"><SquareDashed size={16}/></div>
+                  <Switch 
+                    className="flex-grow"
+                    label="Distortion"
+                    checked={params.lensDistortionEnabled && availability.distortion} 
+                    onChange={(val) => handleToggleChange('lensDistortionEnabled', val)}
+                    disabled={!availability.distortion}
+                  />
+              </div>
+              <AnimatePresence initial={false}>
+                {availability.distortion && params.lensDistortionEnabled && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                    animate={{ height: 'auto', opacity: 1, marginTop: 8 }}
+                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden px-2"
+                  >
+                    <Slider
+                      label="Amount"
+                      value={params.lensDistortionAmount}
+                      min={0}
+                      max={200}
+                      defaultValue={100}
+                      onChange={e => handleAmountChange('lensDistortionAmount', Number(e.target.value))}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div>
+              <div className={clsx("flex items-center gap-3 p-2 rounded-md transition-colors", availability.tca ? "bg-surface" : "bg-surface/30 opacity-60")}>
+                  <div className="p-1.5 bg-bg-primary rounded text-text-secondary"><Activity size={16}/></div>
+                  <Switch 
+                    className="flex-grow"
+                    label="Chromatic Aberration"
+                    checked={params.lensTcaEnabled && availability.tca} 
+                    onChange={(val) => handleToggleChange('lensTcaEnabled', val)}
+                    disabled={!availability.tca}
+                  />
+              </div>
+              <AnimatePresence initial={false}>
+                {availability.tca && params.lensTcaEnabled && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                    animate={{ height: 'auto', opacity: 1, marginTop: 8 }}
+                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden px-2"
+                  >
+                    <Slider
+                      label="Amount"
+                      value={params.lensTcaAmount}
+                      min={0}
+                      max={200}
+                      defaultValue={100}
+                      onChange={e => handleAmountChange('lensTcaAmount', Number(e.target.value))}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div>
+              <div className={clsx("flex items-center gap-3 p-2 rounded-md transition-colors", availability.vignetting ? "bg-surface" : "bg-surface/30 opacity-60")}>
+                  <div className="p-1.5 bg-bg-primary rounded text-text-secondary"><CircleDashed size={16}/></div>
+                  <Switch 
+                    className="flex-grow"
+                    label="Vignetting"
+                    checked={params.lensVignetteEnabled && availability.vignetting} 
+                    onChange={(val) => handleToggleChange('lensVignetteEnabled', val)}
+                    disabled={!availability.vignetting}
+                  />
+              </div>
+              <AnimatePresence initial={false}>
+                {availability.vignetting && params.lensVignetteEnabled && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                    animate={{ height: 'auto', opacity: 1, marginTop: 8 }}
+                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                    className="overflow-hidden px-2"
+                  >
+                    <Slider
+                      label="Amount"
+                      value={params.lensVignetteAmount}
+                      min={0}
+                      max={200}
+                      defaultValue={100}
+                      onChange={e => handleAmountChange('lensVignetteAmount', Number(e.target.value))}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
         </div>
 
         <div className="mt-auto pt-4 space-y-2">
@@ -448,7 +697,7 @@ export default function LensCorrectionModal({
                 >
                   Lensfun Project
                 </a>
-                , licensed under{' '}
+                {' '} (
                 <a
                   href="https://creativecommons.org/licenses/by-sa/3.0/"
                   target="_blank"
@@ -457,7 +706,7 @@ export default function LensCorrectionModal({
                 >
                   CC BY-SA 3.0
                 </a>
-                .
+                ).
               </p>
             </div>
           </div>

@@ -28,16 +28,40 @@ interface GeometryParams {
   scale: number;
   x_offset: number;
   y_offset: number;
-  lens_correction_amount: number;
+  lens_distortion_amount: number;
+  lens_vignette_amount: number;
+  lens_tca_amount: number;
   lens_dist_k1: number;
   lens_dist_k2: number;
   lens_dist_k3: number;
   lens_model: number;
+  tca_vr: number;
+  tca_vb: number;
+  vig_k1: number;
+  vig_k2: number;
+  vig_k3: number;
+  lens_distortion_enabled: boolean;
+  lens_tca_enabled: boolean;
+  lens_vignette_enabled: boolean;
 }
 
 type TransformParams = Omit<
   GeometryParams,
-  'lens_correction_amount' | 'lens_dist_k1' | 'lens_dist_k2' | 'lens_dist_k3' | 'lens_model'
+  | 'lens_distortion_amount'
+  | 'lens_vignette_amount'
+  | 'lens_tca_amount'
+  | 'lens_dist_k1'
+  | 'lens_dist_k2'
+  | 'lens_dist_k3'
+  | 'lens_model'
+  | 'tca_vr'
+  | 'tca_vb'
+  | 'vig_k1'
+  | 'vig_k2'
+  | 'vig_k3'
+  | 'lens_distortion_enabled'
+  | 'lens_tca_enabled'
+  | 'lens_vignette_enabled'
 >;
 
 interface TransformModalProps {
@@ -57,6 +81,8 @@ const DEFAULT_PARAMS: TransformParams = {
   x_offset: 0,
   y_offset: 0,
 };
+
+const SLIDER_DIVISOR = 100.0;
 
 export default function TransformModal({ isOpen, onClose, onApply, currentAdjustments }: TransformModalProps) {
   const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS);
@@ -136,11 +162,21 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
       try {
         const fullParams: GeometryParams = {
           ...currentParams,
-          lens_correction_amount: (currentAdjustments.lensCorrectionAmount || 0) / 100,
+          lens_distortion_amount: (currentAdjustments.lensDistortionAmount ?? 100) / SLIDER_DIVISOR,
+          lens_vignette_amount: (currentAdjustments.lensVignetteAmount ?? 100) / SLIDER_DIVISOR,
+          lens_tca_amount: (currentAdjustments.lensTcaAmount ?? 100) / SLIDER_DIVISOR,
           lens_dist_k1: currentAdjustments.lensDistortionParams?.k1 ?? 0,
           lens_dist_k2: currentAdjustments.lensDistortionParams?.k2 ?? 0,
           lens_dist_k3: currentAdjustments.lensDistortionParams?.k3 ?? 0,
           lens_model: currentAdjustments.lensDistortionParams?.model ?? 0,
+          tca_vr: currentAdjustments.lensDistortionParams?.tca_vr ?? 1.0,
+          tca_vb: currentAdjustments.lensDistortionParams?.tca_vb ?? 1.0,
+          vig_k1: currentAdjustments.lensDistortionParams?.vig_k1 ?? 0,
+          vig_k2: currentAdjustments.lensDistortionParams?.vig_k2 ?? 0,
+          vig_k3: currentAdjustments.lensDistortionParams?.vig_k3 ?? 0,
+          lens_distortion_enabled: currentAdjustments.lensDistortionEnabled ?? true,
+          lens_tca_enabled: currentAdjustments.lensTcaEnabled ?? true,
+          lens_vignette_enabled: currentAdjustments.lensVignetteEnabled ?? true,
         };
 
         const result: string = await invoke('preview_geometry_transform', {
@@ -186,7 +222,7 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, currentAdjustments, updatePreview]);
+  }, [isOpen, currentAdjustments]);
 
   const handleChange = (key: keyof typeof DEFAULT_PARAMS, value: number) => {
     const newParams = { ...params, [key]: value };
@@ -221,11 +257,21 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
     if (active) {
       const fullParams: GeometryParams = {
         ...DEFAULT_PARAMS,
-        lens_correction_amount: (currentAdjustments.lensCorrectionAmount || 0) / 100,
+        lens_distortion_amount: (currentAdjustments.lensDistortionAmount ?? 100) / SLIDER_DIVISOR,
+        lens_vignette_amount: (currentAdjustments.lensVignetteAmount ?? 100) / SLIDER_DIVISOR,
+        lens_tca_amount: (currentAdjustments.lensTcaAmount ?? 100) / SLIDER_DIVISOR,
         lens_dist_k1: currentAdjustments.lensDistortionParams?.k1 ?? 0,
         lens_dist_k2: currentAdjustments.lensDistortionParams?.k2 ?? 0,
         lens_dist_k3: currentAdjustments.lensDistortionParams?.k3 ?? 0,
         lens_model: currentAdjustments.lensDistortionParams?.model ?? 0,
+        tca_vr: currentAdjustments.lensDistortionParams?.tca_vr ?? 1.0,
+        tca_vb: currentAdjustments.lensDistortionParams?.tca_vb ?? 1.0,
+        vig_k1: currentAdjustments.lensDistortionParams?.vig_k1 ?? 0,
+        vig_k2: currentAdjustments.lensDistortionParams?.vig_k2 ?? 0,
+        vig_k3: currentAdjustments.lensDistortionParams?.vig_k3 ?? 0,
+        lens_distortion_enabled: currentAdjustments.lensDistortionEnabled ?? true,
+        lens_tca_enabled: currentAdjustments.lensTcaEnabled ?? true,
+        lens_vignette_enabled: currentAdjustments.lensVignetteEnabled ?? true,
       };
       const result: string = await invoke('preview_geometry_transform', {
         params: fullParams,

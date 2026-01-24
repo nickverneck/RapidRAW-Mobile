@@ -250,7 +250,12 @@ export default function CropPanel({
       transformYOffset: INITIAL_ADJUSTMENTS.transformYOffset ?? 0,
       lensMaker: INITIAL_ADJUSTMENTS.lensMaker,
       lensModel: INITIAL_ADJUSTMENTS.lensModel,
-      lensCorrectionAmount: INITIAL_ADJUSTMENTS.lensCorrectionAmount,
+      lensDistortionAmount: INITIAL_ADJUSTMENTS.lensDistortionAmount,
+      lensVignetteAmount: INITIAL_ADJUSTMENTS.lensVignetteAmount,
+      lensTcaAmount: INITIAL_ADJUSTMENTS.lensTcaAmount,
+      lensDistortionEnabled: INITIAL_ADJUSTMENTS.lensDistortionEnabled,
+      lensTcaEnabled: INITIAL_ADJUSTMENTS.lensTcaEnabled,
+      lensVignetteEnabled: INITIAL_ADJUSTMENTS.lensVignetteEnabled,
       lensDistortionParams: INITIAL_ADJUSTMENTS.lensDistortionParams,
     }));
   };

@@ -27,9 +27,43 @@ pub struct Distortion {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Tca {
+    #[serde(rename = "@model")]
+    pub model: String,
+    #[serde(rename = "@focal")]
+    pub focal: f32,
+    #[serde(rename = "@vr")]
+    pub vr: Option<f32>,
+    #[serde(rename = "@vb")]
+    pub vb: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Vignetting {
+    #[serde(rename = "@model")]
+    pub model: String,
+    #[serde(rename = "@focal")]
+    pub focal: f32,
+    #[serde(rename = "@aperture")]
+    pub aperture: f32,
+    #[serde(rename = "@distance")]
+    pub distance: Option<f32>,
+    #[serde(rename = "@k1")]
+    pub k1: Option<f32>,
+    #[serde(rename = "@k2")]
+    pub k2: Option<f32>,
+    #[serde(rename = "@k3")]
+    pub k3: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Calibration {
     #[serde(rename = "distortion", default)]
     pub distortions: Vec<Distortion>,
+    #[serde(rename = "tca", default)]
+    pub tca: Vec<Tca>,
+    #[serde(rename = "vignetting", default)]
+    pub vignetting: Vec<Vignetting>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -73,6 +107,11 @@ pub struct LensDistortionParams {
     k2: f64,
     k3: f64,
     model: u32,
+    tca_vr: f64,
+    tca_vb: f64,
+    vig_k1: f64,
+    vig_k2: f64,
+    vig_k3: f64,
 }
 
 impl Lens {
@@ -83,6 +122,176 @@ impl Lens {
     pub fn get_maker(&self) -> &str {
         &self.maker[0].value
     }
+
+    pub fn get_distortion_params(&self, focal_length: f32, aperture: Option<f32>, distance: Option<f32>) -> Option<LensDistortionParams> {
+        let cal = self.calibration.as_ref()?;
+        
+        let (k1, k2, k3, model) = if cal.distortions.is_empty() {
+            (0.0, 0.0, 0.0, 0)
+        } else {
+            let mut sorted = cal.distortions.clone();
+            sorted.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
+            
+            if let Some(exact) = sorted.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
+                extract_dist_params(exact)
+            } else if focal_length < sorted[0].focal {
+                extract_dist_params(&sorted[0])
+            } else if focal_length > sorted.last().unwrap().focal {
+                extract_dist_params(sorted.last().unwrap())
+            } else {
+                let mut res = (0.0, 0.0, 0.0, 0);
+                for i in 0..sorted.len() - 1 {
+                    let d1 = &sorted[i];
+                    let d2 = &sorted[i + 1];
+                    if focal_length >= d1.focal && focal_length <= d2.focal {
+                        let p1 = extract_dist_params(d1);
+                        let p2 = extract_dist_params(d2);
+                        if p1.3 != p2.3 { res = p1; } 
+                        else {
+                            let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
+                            res = (
+                                p1.0 + t as f64 * (p2.0 - p1.0),
+                                p1.1 + t as f64 * (p2.1 - p1.1),
+                                p1.2 + t as f64 * (p2.2 - p1.2),
+                                p1.3
+                            );
+                        }
+                        break;
+                    }
+                }
+                res
+            }
+        };
+
+        let (tca_vr, tca_vb) = if cal.tca.is_empty() {
+            (1.0, 1.0)
+        } else {
+             let mut sorted = cal.tca.clone();
+             sorted.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
+             
+             if let Some(exact) = sorted.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
+                 extract_tca_params(exact)
+             } else if focal_length < sorted[0].focal {
+                 extract_tca_params(&sorted[0])
+             } else if focal_length > sorted.last().unwrap().focal {
+                 extract_tca_params(sorted.last().unwrap())
+             } else {
+                 let mut res = (1.0, 1.0);
+                 for i in 0..sorted.len() - 1 {
+                     let d1 = &sorted[i];
+                     let d2 = &sorted[i + 1];
+                     if focal_length >= d1.focal && focal_length <= d2.focal {
+                         let p1 = extract_tca_params(d1);
+                         let p2 = extract_tca_params(d2);
+                         let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
+                         res = (
+                             p1.0 + t as f64 * (p2.0 - p1.0),
+                             p1.1 + t as f64 * (p2.1 - p1.1)
+                         );
+                         break;
+                     }
+                 }
+                 res
+             }
+        };
+
+        let (vig_k1, vig_k2, vig_k3) = if cal.vignetting.is_empty() {
+            (0.0, 0.0, 0.0)
+        } else {
+            let target_aperture = aperture.unwrap_or(3.5);
+            let target_distance = distance.unwrap_or(1000.0);
+
+            let mut sorted = cal.vignetting.clone();
+            sorted.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
+
+            let find_best_vig = |items: &[Vignetting]| -> (f64, f64, f64) {
+                 let best_aperture_item = items.iter().min_by(|a, b| {
+                     (a.aperture - target_aperture).abs().partial_cmp(&(b.aperture - target_aperture).abs()).unwrap()
+                 });
+                 
+                 if let Some(best_ap) = best_aperture_item {
+                    let candidates: Vec<&Vignetting> = items.iter().filter(|x| (x.aperture - best_ap.aperture).abs() < 0.01).collect();
+                    let best_dist = candidates.into_iter().min_by(|a, b| {
+                         let da = a.distance.unwrap_or(1000.0);
+                         let db = b.distance.unwrap_or(1000.0);
+                         (da - target_distance).abs().partial_cmp(&(db - target_distance).abs()).unwrap()
+                    });
+                    extract_vig_params(best_dist.unwrap_or(best_ap))
+                 } else {
+                    (0.0, 0.0, 0.0)
+                 }
+            };
+
+            if focal_length < sorted[0].focal {
+                let group: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - sorted[0].focal).abs() < 0.01).cloned().collect();
+                find_best_vig(&group)
+            } else if focal_length > sorted.last().unwrap().focal {
+                let last_focal = sorted.last().unwrap().focal;
+                let group: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - last_focal).abs() < 0.01).cloned().collect();
+                find_best_vig(&group)
+            } else {
+                let mut res = (0.0, 0.0, 0.0);
+                for i in 0..sorted.len() - 1 {
+                    let d1 = &sorted[i];
+                    let d2 = &sorted[i+1];
+                    if (d1.focal - d2.focal).abs() < 0.01 { continue; }
+
+                    if focal_length >= d1.focal && focal_length <= d2.focal {
+                        let group1: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - d1.focal).abs() < 0.01).cloned().collect();
+                        let group2: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - d2.focal).abs() < 0.01).cloned().collect();
+
+                        let p1 = find_best_vig(&group1);
+                        let p2 = find_best_vig(&group2);
+
+                        let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
+                        res = (
+                            p1.0 + t as f64 * (p2.0 - p1.0),
+                            p1.1 + t as f64 * (p2.1 - p1.1),
+                            p1.2 + t as f64 * (p2.2 - p1.2),
+                        );
+                        break;
+                    }
+                }
+                res
+            }
+        };
+
+        Some(LensDistortionParams {
+            k1, k2, k3, model,
+            tca_vr, tca_vb,
+            vig_k1, vig_k2, vig_k3
+        })
+    }
+}
+
+fn extract_dist_params(dist: &Distortion) -> (f64, f64, f64, u32) {
+    match dist.model.as_str() {
+        "poly3" | "poly5" => (
+            dist.k1.unwrap_or(0.0) as f64, 
+            dist.k2.unwrap_or(0.0) as f64, 
+            dist.k3.unwrap_or(0.0) as f64, 
+            0
+        ),
+        "ptlens" => {
+            let a = dist.a.unwrap_or(0.0) as f64;
+            let b = dist.b.unwrap_or(0.0) as f64;
+            let c = dist.c.unwrap_or(0.0) as f64;
+            (a, b, c, 1)
+        }
+        _ => (0.0, 0.0, 0.0, 0),
+    }
+}
+
+fn extract_tca_params(tca: &Tca) -> (f64, f64) {
+    (tca.vr.unwrap_or(1.0) as f64, tca.vb.unwrap_or(1.0) as f64)
+}
+
+fn extract_vig_params(vig: &Vignetting) -> (f64, f64, f64) {
+    (
+        vig.k1.unwrap_or(0.0) as f64,
+        vig.k2.unwrap_or(0.0) as f64,
+        vig.k3.unwrap_or(0.0) as f64,
+    )
 }
 
 pub fn load_lensfun_db(app_handle: &tauri::AppHandle) -> LensDatabase {
@@ -123,69 +332,6 @@ pub fn load_lensfun_db(app_handle: &tauri::AppHandle) -> LensDatabase {
 
     log::info!("Loaded {} lenses and {} cameras from Lensfun database.", combined_db.lenses.len(), combined_db.cameras.len());
     combined_db
-}
-
-impl Lens {
-    pub fn get_distortion_params(&self, focal_length: f32) -> Option<(f64, f64, f64, u32)> {
-        let distortions = self.calibration.as_ref()?.distortions.as_slice();
-        if distortions.is_empty() { return None; }
-
-        let mut sorted_distortions = distortions.to_vec();
-        sorted_distortions.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
-
-        if let Some(exact_match) = sorted_distortions.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
-            return Some(extract_params(exact_match));
-        }
-
-        if focal_length < sorted_distortions.first().unwrap().focal {
-            return Some(extract_params(&sorted_distortions[0]));
-        }
-        if focal_length > sorted_distortions.last().unwrap().focal {
-            return Some(extract_params(sorted_distortions.last().unwrap()));
-        }
-
-        for i in 0..sorted_distortions.len() - 1 {
-            let d1 = &sorted_distortions[i];
-            let d2 = &sorted_distortions[i + 1];
-
-            if focal_length >= d1.focal && focal_length <= d2.focal {
-                let p1 = extract_params(d1);
-                let p2 = extract_params(d2);
-
-                if p1.3 != p2.3 {
-                    return Some(p1);
-                }
-
-                let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
-                
-                let k1 = p1.0 + t as f64 * (p2.0 - p1.0);
-                let k2 = p1.1 + t as f64 * (p2.1 - p1.1);
-                let k3 = p1.2 + t as f64 * (p2.2 - p1.2);
-
-                return Some((k1, k2, k3, p1.3));
-            }
-        }
-        
-        None
-    }
-}
-
-fn extract_params(dist: &Distortion) -> (f64, f64, f64, u32) {
-    match dist.model.as_str() {
-        "poly3" | "poly5" => (
-            dist.k1.unwrap_or(0.0) as f64, 
-            dist.k2.unwrap_or(0.0) as f64, 
-            dist.k3.unwrap_or(0.0) as f64, 
-            0
-        ),
-        "ptlens" => {
-            let a = dist.a.unwrap_or(0.0) as f64;
-            let b = dist.b.unwrap_or(0.0) as f64;
-            let c = dist.c.unwrap_or(0.0) as f64;
-            (a, b, c, 1)
-        }
-        _ => (0.0, 0.0, 0.0, 0),
-    }
 }
 
 #[tauri::command]
@@ -280,12 +426,17 @@ pub fn autodetect_lens(maker: String, model: String, state: State<AppState>) -> 
 }
 
 #[tauri::command]
-pub fn get_lens_distortion_params(maker: String, model: String, focal_length: f32, state: State<AppState>) -> Result<Option<LensDistortionParams>, String> {
+pub fn get_lens_distortion_params(
+    maker: String, 
+    model: String, 
+    focal_length: f32, 
+    aperture: Option<f32>, 
+    distance: Option<f32>, 
+    state: State<AppState>
+) -> Result<Option<LensDistortionParams>, String> {
     if let Some(db) = &*state.lens_db.lock().unwrap() {
         if let Some(lens) = db.lenses.iter().find(|l| l.get_maker() == maker && l.get_name() == model) {
-            if let Some((k1, k2, k3, model)) = lens.get_distortion_params(focal_length) {
-                return Ok(Some(LensDistortionParams { k1, k2, k3, model }));
-            }
+            return Ok(lens.get_distortion_params(focal_length, aperture, distance));
         }
     }
     Ok(None)

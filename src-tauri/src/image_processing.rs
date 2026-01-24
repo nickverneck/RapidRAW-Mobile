@@ -52,11 +52,21 @@ pub struct GeometryParams {
     pub scale: f32,
     pub x_offset: f32,
     pub y_offset: f32,
-    pub lens_correction_amount: f32,
+    pub lens_distortion_amount: f32,
+    pub lens_vignette_amount: f32,
+    pub lens_tca_amount: f32,
+    pub lens_distortion_enabled: bool,
+    pub lens_tca_enabled: bool,
+    pub lens_vignette_enabled: bool,
     pub lens_dist_k1: f32,
     pub lens_dist_k2: f32,
     pub lens_dist_k3: f32,
     pub lens_model: u32,
+    pub tca_vr: f32,
+    pub tca_vb: f32,
+    pub vig_k1: f32,
+    pub vig_k2: f32,
+    pub vig_k3: f32,
 }
 
 impl Default for GeometryParams {
@@ -70,11 +80,21 @@ impl Default for GeometryParams {
             scale: 100.0,
             x_offset: 0.0,
             y_offset: 0.0,
-            lens_correction_amount: 1.0,
+            lens_distortion_amount: 1.0,
+            lens_vignette_amount: 1.0,
+            lens_tca_amount: 1.0,
+            lens_distortion_enabled: true,
+            lens_tca_enabled: true,
+            lens_vignette_enabled: true,
             lens_dist_k1: 0.0,
             lens_dist_k2: 0.0,
             lens_dist_k3: 0.0,
             lens_model: 0,
+            tca_vr: 1.0,
+            tca_vb: 1.0,
+            vig_k1: 0.0,
+            vig_k2: 0.0,
+            vig_k3: 0.0,
         }
     }
 }
@@ -91,11 +111,23 @@ pub fn get_geometry_params_from_json(adjustments: &serde_json::Value) -> Geometr
         scale: adjustments["transformScale"].as_f64().unwrap_or(100.0) as f32,
         x_offset: adjustments["transformXOffset"].as_f64().unwrap_or(0.0) as f32,
         y_offset: adjustments["transformYOffset"].as_f64().unwrap_or(0.0) as f32,
-        lens_correction_amount: adjustments["lensCorrectionAmount"].as_f64().unwrap_or(100.0) as f32 / 100.0,
+        
+        lens_distortion_amount: adjustments["lensDistortionAmount"].as_f64().unwrap_or(100.0) as f32 / 100.0,
+        lens_vignette_amount: adjustments["lensVignetteAmount"].as_f64().unwrap_or(100.0) as f32 / 100.0,
+        lens_tca_amount: adjustments["lensTcaAmount"].as_f64().unwrap_or(100.0) as f32 / 100.0,
+        lens_distortion_enabled: adjustments["lensDistortionEnabled"].as_bool().unwrap_or(true),
+        lens_tca_enabled: adjustments["lensTcaEnabled"].as_bool().unwrap_or(true),
+        lens_vignette_enabled: adjustments["lensVignetteEnabled"].as_bool().unwrap_or(true),
+
         lens_dist_k1: lens_params.and_then(|p| p.get("k1").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
         lens_dist_k2: lens_params.and_then(|p| p.get("k2").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
         lens_dist_k3: lens_params.and_then(|p| p.get("k3").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
         lens_model: lens_params.and_then(|p| p.get("model").and_then(|m| m.as_u64())).unwrap_or(0) as u32,
+        tca_vr: lens_params.and_then(|p| p.get("tca_vr").and_then(|k| k.as_f64())).unwrap_or(1.0) as f32,
+        tca_vb: lens_params.and_then(|p| p.get("tca_vb").and_then(|k| k.as_f64())).unwrap_or(1.0) as f32,
+        vig_k1: lens_params.and_then(|p| p.get("vig_k1").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
+        vig_k2: lens_params.and_then(|p| p.get("vig_k2").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
+        vig_k3: lens_params.and_then(|p| p.get("vig_k3").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
     }
 }
 
@@ -236,6 +268,64 @@ fn build_transform_matrices(params: &GeometryParams, width: f32, height: f32) ->
     (forward, cx, cy, half_diagonal)
 }
 
+#[inline(always)]
+fn interpolate_pixel_with_tca(
+    src_raw: &[f32],
+    src_width: usize,
+    src_height: usize,
+    cx: f32,
+    cy: f32,
+    base_x: f32,
+    base_y: f32,
+    vr: f32,
+    vb: f32,
+    pixel_out: &mut [f32],
+) {
+    // Green channel is reference (vr=1.0)
+    let gx = base_x;
+    let gy = base_y;
+
+    // Red channel scaled around center
+    let rx = cx + (base_x - cx) * vr;
+    let ry = cy + (base_y - cy) * vr;
+
+    // Blue channel scaled around center
+    let bx = cx + (base_x - cx) * vb;
+    let by = cy + (base_y - cy) * vb;
+
+    let sample_channel = |target_x: f32, target_y: f32, channel_idx: usize| -> f32 {
+        if target_x < 0.0 || target_y < 0.0 || target_x >= (src_width as f32 - 1.0) || target_y >= (src_height as f32 - 1.0) {
+            return 0.0;
+        }
+        let x0 = target_x.floor() as usize;
+        let y0 = target_y.floor() as usize;
+        let wx = target_x - x0 as f32;
+        let wy = target_y - y0 as f32;
+        let one_minus_wx = 1.0 - wx;
+        let one_minus_wy = 1.0 - wy;
+
+        let stride = src_width * 3;
+        let idx_row0 = y0 * stride;
+        let idx_row1 = idx_row0 + stride;
+        let idx_p00 = idx_row0 + x0 * 3 + channel_idx;
+        
+        unsafe {
+            let p00 = *src_raw.get_unchecked(idx_p00);
+            let p10 = *src_raw.get_unchecked(idx_p00 + 3);
+            let p01 = *src_raw.get_unchecked(idx_row1 + x0 * 3 + channel_idx);
+            let p11 = *src_raw.get_unchecked(idx_row1 + x0 * 3 + 3 + channel_idx);
+
+            let top = p00 * one_minus_wx + p10 * wx;
+            let bot = p01 * one_minus_wx + p11 * wx;
+            top * one_minus_wy + bot * wy
+        }
+    };
+
+    pixel_out[0] = sample_channel(rx, ry, 0);
+    pixel_out[1] = sample_channel(gx, gy, 1);
+    pixel_out[2] = sample_channel(bx, by, 2);
+}
+
 pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> DynamicImage {
     let src_img = image.to_rgb32f();
     let (width, height) = src_img.dimensions();
@@ -250,13 +340,26 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
 
     let max_radius_sq_inv = 1.0 / (cx * cx + cy * cy);
     let k_distortion = params.distortion / 100.0;
-    
+
     let lk1 = params.lens_dist_k1 as f64;
     let lk2 = params.lens_dist_k2 as f64;
     let lk3 = params.lens_dist_k3 as f64;
-    let lens_amt = params.lens_correction_amount as f64;
-    let has_lens_correction = lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6;
+    let lens_dist_amt = params.lens_distortion_amount as f64;
+
+    let has_lens_correction = params.lens_distortion_enabled && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
     let is_ptlens = params.lens_model == 1;
+
+    let vr = if (params.tca_vr - 1.0).abs() > 1e-5 { params.tca_vr + (1.0 - params.tca_vr) * (1.0 - params.lens_tca_amount) } else { 1.0 };
+    let vb = if (params.tca_vb - 1.0).abs() > 1e-5 { params.tca_vb + (1.0 - params.tca_vb) * (1.0 - params.lens_tca_amount) } else { 1.0 };
+
+    let has_tca = params.lens_tca_enabled && ((vr - 1.0).abs() > 1e-5 || (vb - 1.0).abs() > 1e-5);
+
+    let vk1 = params.vig_k1 as f64;
+    let vk2 = params.vig_k2 as f64;
+    let vk3 = params.vig_k3 as f64;
+    let lens_vig_amt = params.lens_vignette_amount as f64;
+
+    let has_vignetting = params.lens_vignette_enabled && (vk1.abs() > 1e-6 || vk2.abs() > 1e-6 || vk3.abs() > 1e-6) && lens_vig_amt > 0.01;
 
     let src_raw = src_img.as_raw();
     let width_usize = width as usize;
@@ -296,9 +399,9 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
                                 ru_norm * poly
                             };
 
-                            let effective_r_norm = ru_norm + (rd_norm - ru_norm) * lens_amt;
+                            let effective_r_norm = ru_norm + (rd_norm - ru_norm) * lens_dist_amt;
                             let scale = effective_r_norm / ru_norm;
-                            
+
                             src_x = cx + dx * scale as f32;
                             src_y = cy + dy * scale as f32;
                         }
@@ -313,7 +416,32 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
                         src_y = cy + dy * f;
                     }
 
-                    interpolate_pixel(src_raw, width_usize, height_usize, src_x, src_y, pixel);
+                    if has_tca {
+                        interpolate_pixel_with_tca(src_raw, width_usize, height_usize, cx, cy, src_x, src_y, vr, vb, pixel);
+                    } else {
+                        interpolate_pixel(src_raw, width_usize, height_usize, src_x, src_y, pixel);
+                    }
+
+                    if has_vignetting {
+                        let dx = src_x - cx;
+                        let dy = src_y - cy;
+                        let ru = ((dx * dx + dy * dy) as f64).sqrt();
+                        let ru_norm = ru / half_diagonal;
+                        let ru_norm2 = ru_norm * ru_norm;
+                        
+                        let v_factor = 1.0 + vk1 * ru_norm2 
+                                     + vk2 * (ru_norm2 * ru_norm2) 
+                                     + vk3 * (ru_norm2 * ru_norm2 * ru_norm2);
+                        
+                        if v_factor > 1e-6 {
+                            let correction_gain = 1.0 / v_factor;
+                            let final_gain = 1.0 + (correction_gain - 1.0) * lens_vig_amt;
+                            
+                            pixel[0] *= final_gain as f32;
+                            pixel[1] *= final_gain as f32;
+                            pixel[2] *= final_gain as f32;
+                        }
+                    }
                 }
                 current_vec += step_vec_x;
             }
@@ -332,12 +460,13 @@ pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams
 
     let max_radius_sq_inv = 1.0 / (cx * cx + cy * cy);
     let k_distortion = params.distortion / 100.0;
-    
+
     let lk1 = params.lens_dist_k1 as f64;
     let lk2 = params.lens_dist_k2 as f64;
     let lk3 = params.lens_dist_k3 as f64;
-    let lens_amt = params.lens_correction_amount as f64;
-    let has_lens_correction = lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6;
+    let lens_dist_amt = params.lens_distortion_amount as f64;
+
+    let has_lens_correction = params.lens_distortion_enabled && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
     let is_ptlens = params.lens_model == 1;
 
     let src_raw = src_img.as_raw();
@@ -362,7 +491,7 @@ pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams
 
                     if rd > 1e-6 {
                         let mut ru = rd;
-                        
+
                         for _ in 0..8 {
                             let ru_norm = ru / half_diagonal;
                             let ru_norm2 = ru_norm * ru_norm;
@@ -388,8 +517,8 @@ pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams
                                 (val, prime)
                             };
 
-                            let g_val = ru + (f_val - ru) * lens_amt - rd;
-                            let g_prime = 1.0 + (f_prime - 1.0) * lens_amt;
+                            let g_val = ru + (f_val - ru) * lens_dist_amt - rd;
+                            let g_prime = 1.0 + (f_prime - 1.0) * lens_dist_amt;
 
                             if g_prime.abs() < 1e-7 { break; }
                             let delta = g_val / g_prime;
@@ -516,6 +645,26 @@ pub fn apply_crop(mut image: DynamicImage, crop_value: &Value) -> DynamicImage {
 }
 
 pub fn is_geometry_identity(params: &GeometryParams) -> bool {
+    let dist_identity = !params.lens_distortion_enabled || (
+        (params.lens_distortion_amount - 1.0).abs() < 1e-4 &&
+        params.lens_dist_k1.abs() < 1e-6 && 
+        params.lens_dist_k2.abs() < 1e-6 && 
+        params.lens_dist_k3.abs() < 1e-6
+    );
+
+    let tca_identity = !params.lens_tca_enabled || (
+        (params.lens_tca_amount - 1.0).abs() < 1e-4 &&
+        (params.tca_vr - 1.0).abs() < 1e-6 &&
+        (params.tca_vb - 1.0).abs() < 1e-6
+    );
+
+    let vig_identity = !params.lens_vignette_enabled || (
+        (params.lens_vignette_amount - 1.0).abs() < 1e-4 &&
+        params.vig_k1.abs() < 1e-6 && 
+        params.vig_k2.abs() < 1e-6 && 
+        params.vig_k3.abs() < 1e-6
+    );
+
     params.distortion == 0.0
         && params.vertical == 0.0
         && params.horizontal == 0.0
@@ -524,8 +673,9 @@ pub fn is_geometry_identity(params: &GeometryParams) -> bool {
         && params.scale == 100.0
         && params.x_offset == 0.0
         && params.y_offset == 0.0
-        && (params.lens_correction_amount - 1.0).abs() < 1e-4
-        && (params.lens_dist_k1.abs() < 1e-6 && params.lens_dist_k2.abs() < 1e-6 && params.lens_dist_k3.abs() < 1e-6)
+        && dist_identity
+        && tca_identity
+        && vig_identity
 }
 
 pub fn apply_geometry_warp(

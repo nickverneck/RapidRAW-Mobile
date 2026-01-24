@@ -245,6 +245,15 @@ fn apply_all_transformations(
     (cropped_image, unscaled_crop_offset)
 }
 
+const GEOMETRY_KEYS: &[&str] = &[
+    "transformDistortion", "transformVertical", "transformHorizontal",
+    "transformRotate", "transformAspect", "transformScale",
+    "transformXOffset", "transformYOffset", "lensDistortionAmount",
+    "lensVignetteAmount", "lensTcaAmount", "lensDistortionParams",
+    "lensMaker", "lensModel", "lensDistortionEnabled", 
+    "lensTcaEnabled", "lensVignetteEnabled"
+];
+
 pub fn calculate_geometry_hash(adjustments: &serde_json::Value) -> u64 {
     let mut hasher = DefaultHasher::new();
 
@@ -254,14 +263,9 @@ pub fn calculate_geometry_hash(adjustments: &serde_json::Value) -> u64 {
 
     adjustments["orientationSteps"].as_u64().hash(&mut hasher);
 
-    let geo_keys = [
-        "transformDistortion", "transformVertical", "transformHorizontal",
-        "transformRotate", "transformAspect", "transformScale", 
-        "transformXOffset", "transformYOffset"
-    ];
-
-    for key in geo_keys {
+    for key in GEOMETRY_KEYS {
         if let Some(val) = adjustments.get(key) {
+            key.hash(&mut hasher);
             val.to_string().hash(&mut hasher); 
         }
     }
@@ -275,12 +279,12 @@ fn calculate_visual_hash(path: &str, adjustments: &serde_json::Value) -> u64 {
 
     if let Some(obj) = adjustments.as_object() {
         for (key, value) in obj {
+            if GEOMETRY_KEYS.contains(&key.as_str()) {
+                continue;
+            }
+
             match key.as_str() {
-                "transformDistortion" | "transformVertical" | "transformHorizontal" | "transformRotate" |
-                "transformAspect" | "transformScale" | "transformXOffset" | "transformYOffset" => (),
-
                 "crop" | "rotation" | "orientationSteps" | "flipHorizontal" | "flipVertical" => (),
-
                 _ => {
                     key.hash(&mut hasher);
                     value.to_string().hash(&mut hasher);
@@ -313,22 +317,12 @@ fn calculate_transform_hash(adjustments: &serde_json::Value) -> u64 {
         }
     }
 
-    let transform_distortion = adjustments["transformDistortion"].as_f64().unwrap_or(0.0);
-    (transform_distortion.to_bits()).hash(&mut hasher);
-    let transform_vertical = adjustments["transformVertical"].as_f64().unwrap_or(0.0);
-    (transform_vertical.to_bits()).hash(&mut hasher);
-    let transform_horizontal = adjustments["transformHorizontal"].as_f64().unwrap_or(0.0);
-    (transform_horizontal.to_bits()).hash(&mut hasher);
-    let transform_rotate = adjustments["transformRotate"].as_f64().unwrap_or(0.0);
-    (transform_rotate.to_bits()).hash(&mut hasher);
-    let transform_aspect = adjustments["transformAspect"].as_f64().unwrap_or(0.0);
-    (transform_aspect.to_bits()).hash(&mut hasher);
-    let transform_scale = adjustments["transformScale"].as_f64().unwrap_or(100.0);
-    (transform_scale.to_bits()).hash(&mut hasher);
-    let transform_x_offset = adjustments["transformXOffset"].as_f64().unwrap_or(0.0);
-    (transform_x_offset.to_bits()).hash(&mut hasher);
-    let transform_y_offset = adjustments["transformYOffset"].as_f64().unwrap_or(0.0);
-    (transform_y_offset.to_bits()).hash(&mut hasher);
+    for key in GEOMETRY_KEYS {
+        if let Some(val) = adjustments.get(key) {
+            key.hash(&mut hasher);
+            val.to_string().hash(&mut hasher);
+        }
+    }
 
     if let Some(patches_val) = adjustments.get("aiPatches") {
         if let Some(patches_arr) = patches_val.as_array() {
@@ -1086,16 +1080,29 @@ async fn preview_geometry_transform(
                 obj.insert("orientationSteps".to_string(), serde_json::json!(0));
                 obj.insert("flipHorizontal".to_string(), serde_json::json!(false));
                 obj.insert("flipVertical".to_string(), serde_json::json!(false));
-                obj.insert("transformDistortion".to_string(), serde_json::json!(0.0));
-                obj.insert("transformVertical".to_string(), serde_json::json!(0.0));
-                obj.insert("transformHorizontal".to_string(), serde_json::json!(0.0));
-                obj.insert("transformRotate".to_string(), serde_json::json!(0.0));
-                obj.insert("transformAspect".to_string(), serde_json::json!(0.0));
-                obj.insert("transformScale".to_string(), serde_json::json!(100.0));
-                obj.insert("transformXOffset".to_string(), serde_json::json!(0.0));
-                obj.insert("transformYOffset".to_string(), serde_json::json!(0.0));
-                obj.insert("lensCorrectionAmount".to_string(), serde_json::json!(100.0));
-                obj.insert("lensDistortionParams".to_string(), serde_json::Value::Null);
+                for key in GEOMETRY_KEYS {
+                    match *key {
+                        "transformScale" |
+                        "lensDistortionAmount" | 
+                        "lensVignetteAmount" | 
+                        "lensTcaAmount" => {
+                            obj.insert(key.to_string(), serde_json::json!(100.0));
+                        },
+                        "lensDistortionParams" |
+                        "lensMaker" | 
+                        "lensModel" => {
+                            obj.insert(key.to_string(), serde_json::Value::Null);
+                        },
+                        "lensDistortionEnabled" | 
+                        "lensTcaEnabled" | 
+                        "lensVignetteEnabled" => {
+                            obj.insert(key.to_string(), serde_json::json!(true)); 
+                        },
+                        _ => {
+                            obj.insert(key.to_string(), serde_json::json!(0.0));
+                        }
+                    }
+                }
             }
 
             let all_adjustments = get_all_adjustments_from_json(&temp_adjustments, is_raw);

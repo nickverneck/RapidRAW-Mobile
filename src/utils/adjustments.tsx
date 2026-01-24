@@ -98,8 +98,13 @@ export enum TransformAdjustment {
 export enum LensAdjustment {
   LensMaker = 'lensMaker',
   LensModel = 'lensModel',
-  LensCorrectionAmount = 'lensCorrectionAmount',
+  LensDistortionAmount = 'lensDistortionAmount',
+  LensVignetteAmount = 'lensVignetteAmount',
+  LensTcaAmount = 'lensTcaAmount',
   LensDistortionParams = 'lensDistortionParams',
+  LensDistortionEnabled = 'lensDistortionEnabled',
+  LensTcaEnabled = 'lensTcaEnabled',
+  LensVignetteEnabled = 'lensVignetteEnabled',
 }
 
 export interface ColorCalibration {
@@ -139,8 +144,23 @@ export interface Adjustments {
   grainSize: number;
   highlights: number;
   hsl: Hsl;
-  lensCorrectionAmount: number;
-  lensDistortionParams: { k1: number; k2: number; k3: number; model: number } | null;
+  lensDistortionAmount: number;
+  lensVignetteAmount: number;
+  lensTcaAmount: number;
+  lensDistortionEnabled: boolean;
+  lensTcaEnabled: boolean;
+  lensVignetteEnabled: boolean;
+  lensDistortionParams: {
+    k1: number;
+    k2: number;
+    k3: number;
+    model: number;
+    tca_vr: number;
+    tca_vb: number;
+    vig_k1: number;
+    vig_k2: number;
+    vig_k3: number;
+  } | null;
   lensMaker: string | null;
   lensModel: string | null;
   lumaNoiseReduction: number;
@@ -434,7 +454,12 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     reds: { hue: 0, saturation: 0, luminance: 0 },
     yellows: { hue: 0, saturation: 0, luminance: 0 },
   },
-  lensCorrectionAmount: 100,
+  lensDistortionAmount: 100,
+  lensVignetteAmount: 100,
+  lensTcaAmount: 100,
+  lensDistortionEnabled: true,
+  lensTcaEnabled: true,
+  lensVignetteEnabled: true,
   lensDistortionParams: null,
   lensMaker: null,
   lensModel: null,
@@ -531,8 +556,12 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
     ...loadedAdjustments,
     lensMaker: loadedAdjustments.lensMaker ?? INITIAL_ADJUSTMENTS.lensMaker,
     lensModel: loadedAdjustments.lensModel ?? INITIAL_ADJUSTMENTS.lensModel,
-    lensCorrectionAmount:
-      loadedAdjustments.lensCorrectionAmount ?? INITIAL_ADJUSTMENTS.lensCorrectionAmount,
+    lensDistortionAmount: loadedAdjustments.lensDistortionAmount ?? INITIAL_ADJUSTMENTS.lensDistortionAmount,
+    lensVignetteAmount: loadedAdjustments.lensVignetteAmount ?? INITIAL_ADJUSTMENTS.lensVignetteAmount,
+    lensTcaAmount: loadedAdjustments.lensTcaAmount ?? INITIAL_ADJUSTMENTS.lensTcaAmount,
+    lensDistortionEnabled: loadedAdjustments.lensDistortionEnabled ?? INITIAL_ADJUSTMENTS.lensDistortionEnabled,
+    lensTcaEnabled: loadedAdjustments.lensTcaEnabled ?? INITIAL_ADJUSTMENTS.lensTcaEnabled,
+    lensVignetteEnabled: loadedAdjustments.lensVignetteEnabled ?? INITIAL_ADJUSTMENTS.lensVignetteEnabled,
     lensDistortionParams:
       loadedAdjustments.lensDistortionParams ?? INITIAL_ADJUSTMENTS.lensDistortionParams,
     transformDistortion: loadedAdjustments.transformDistortion ?? INITIAL_ADJUSTMENTS.transformDistortion,
@@ -577,7 +606,12 @@ export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   Effect.GrainSize,
   BasicAdjustment.Highlights,
   ColorAdjustment.Hsl,
-  'lensCorrectionAmount',
+  'lensDistortionAmount',
+  'lensVignetteAmount',
+  'lensTcaAmount',
+  'lensDistortionEnabled',
+  'lensTcaEnabled',
+  'lensVignetteEnabled',
   'lensDistortionParams',
   'lensMaker',
   'lensModel',
