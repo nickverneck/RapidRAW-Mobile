@@ -194,7 +194,9 @@ export default function MasksPanel({
   }, [adjustments.masks, activeMaskContainerId, onSelectContainer, onSelectMask]);
 
   useEffect(() => {
-    setIsMaskListEmpty(adjustments.masks.length === 0);
+    if (adjustments.masks.length > 0) {
+      setIsMaskListEmpty(false);
+    }
 
     if (!hasPerformedInitialSelection.current && !activeMaskContainerId && adjustments.masks.length > 0) {
       const lastMask = adjustments.masks[adjustments.masks.length - 1];
@@ -541,8 +543,6 @@ export default function MasksPanel({
                     >
                         <p className="text-sm my-3 font-semibold text-text-primary">Masks</p>
                         
-                        {isMaskListEmpty && <div className="text-center text-text-secondary text-sm py-4 opacity-70">No masks created.</div>}
-                        
                         <AnimatePresence 
                           initial={false} 
                           mode='popLayout'
@@ -552,33 +552,45 @@ export default function MasksPanel({
                               }
                           }}
                         >
-                            {adjustments.masks.map((container) => (
-                              <ContainerRow 
-                                  key={container.id} 
-                                  container={container} 
-                                  isSelected={activeMaskContainerId === container.id && activeMaskId === null}
-                                  hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
-                                  isExpanded={expandedContainers.has(container.id)}
-                                  onToggle={() => handleToggleExpand(container.id)} 
-                                  onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
-                                  renamingId={renamingId} setRenamingId={setRenamingId} 
-                                  tempName={tempName} setTempName={setTempName}
-                                  updateContainer={updateContainer} 
-                                  handleDelete={handleDeleteContainer} 
-                                  handleDuplicate={handleDuplicateContainer} 
-                                  setCopiedMask={setCopiedMask} 
-                                  copiedMask={copiedMask} 
-                                  presets={presets}
-                                  setAdjustments={setAdjustments}
-                                  activeDragItem={activeDragItem}
-                                  activeMaskId={activeMaskId}
-                                  onSelectContainer={onSelectContainer}
-                                  onSelectMask={onSelectMask}
-                                  updateSubMask={updateSubMask}
-                                  handleDeleteSubMask={handleDeleteSubMask}
-                                  analyzingSubMaskId={analyzingSubMaskId}
-                              />
-                            ))}
+                            {isMaskListEmpty ? (
+                                <motion.div
+                                    key="empty-masks-placeholder"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="text-center text-text-secondary text-sm py-4 opacity-70"
+                                >
+                                    No masks created.
+                                </motion.div>
+                            ) : (
+                                adjustments.masks.map((container) => (
+                                    <ContainerRow 
+                                        key={container.id} 
+                                        container={container} 
+                                        isSelected={activeMaskContainerId === container.id && activeMaskId === null}
+                                        hasActiveChild={activeMaskContainerId === container.id && activeMaskId !== null}
+                                        isExpanded={expandedContainers.has(container.id)}
+                                        onToggle={() => handleToggleExpand(container.id)} 
+                                        onSelect={() => { onSelectContainer(container.id); onSelectMask(null); }}
+                                        renamingId={renamingId} setRenamingId={setRenamingId} 
+                                        tempName={tempName} setTempName={setTempName}
+                                        updateContainer={updateContainer} 
+                                        handleDelete={handleDeleteContainer} 
+                                        handleDuplicate={handleDuplicateContainer} 
+                                        setCopiedMask={setCopiedMask} 
+                                        copiedMask={copiedMask} 
+                                        presets={presets}
+                                        setAdjustments={setAdjustments}
+                                        activeDragItem={activeDragItem}
+                                        activeMaskId={activeMaskId}
+                                        onSelectContainer={onSelectContainer}
+                                        onSelectMask={onSelectMask}
+                                        updateSubMask={updateSubMask}
+                                        handleDeleteSubMask={handleDeleteSubMask}
+                                        analyzingSubMaskId={analyzingSubMaskId}
+                                    />
+                                ))
+                            )}
                         </AnimatePresence>
 
                         <AnimatePresence
