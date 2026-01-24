@@ -52,6 +52,11 @@ pub struct GeometryParams {
     pub scale: f32,
     pub x_offset: f32,
     pub y_offset: f32,
+    pub lens_correction_amount: f32,
+    pub lens_dist_k1: f32,
+    pub lens_dist_k2: f32,
+    pub lens_dist_k3: f32,
+    pub lens_model: u32,
 }
 
 impl Default for GeometryParams {
@@ -65,7 +70,32 @@ impl Default for GeometryParams {
             scale: 100.0,
             x_offset: 0.0,
             y_offset: 0.0,
+            lens_correction_amount: 1.0,
+            lens_dist_k1: 0.0,
+            lens_dist_k2: 0.0,
+            lens_dist_k3: 0.0,
+            lens_model: 0,
         }
+    }
+}
+
+pub fn get_geometry_params_from_json(adjustments: &serde_json::Value) -> GeometryParams {
+    let lens_params = adjustments.get("lensDistortionParams").and_then(|v| v.as_object());
+
+    GeometryParams {
+        distortion: adjustments["transformDistortion"].as_f64().unwrap_or(0.0) as f32,
+        vertical: adjustments["transformVertical"].as_f64().unwrap_or(0.0) as f32,
+        horizontal: adjustments["transformHorizontal"].as_f64().unwrap_or(0.0) as f32,
+        rotate: adjustments["transformRotate"].as_f64().unwrap_or(0.0) as f32,
+        aspect: adjustments["transformAspect"].as_f64().unwrap_or(0.0) as f32,
+        scale: adjustments["transformScale"].as_f64().unwrap_or(100.0) as f32,
+        x_offset: adjustments["transformXOffset"].as_f64().unwrap_or(0.0) as f32,
+        y_offset: adjustments["transformYOffset"].as_f64().unwrap_or(0.0) as f32,
+        lens_correction_amount: adjustments["lensCorrectionAmount"].as_f64().unwrap_or(100.0) as f32 / 100.0,
+        lens_dist_k1: lens_params.and_then(|p| p.get("k1").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
+        lens_dist_k2: lens_params.and_then(|p| p.get("k2").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
+        lens_dist_k3: lens_params.and_then(|p| p.get("k3").and_then(|k| k.as_f64())).unwrap_or(0.0) as f32,
+        lens_model: lens_params.and_then(|p| p.get("model").and_then(|m| m.as_u64())).unwrap_or(0) as u32,
     }
 }
 
@@ -126,32 +156,70 @@ pub fn downscale_f32_image(image: &DynamicImage, nwidth: u32, nheight: u32) -> D
     DynamicImage::ImageRgb32F(out)
 }
 
-pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> DynamicImage {
-    let src_img = image.to_rgb32f();
-    let (width, height) = src_img.dimensions();
-    let mut out_buffer = vec![0.0f32; (width * height * 3) as usize];
+#[inline(always)]
+fn interpolate_pixel(
+    src_raw: &[f32],
+    src_width: usize,
+    src_height: usize,
+    x: f32,
+    y: f32,
+    pixel_out: &mut [f32],
+) {
+    if x < 0.0 || y < 0.0 || x >= (src_width as f32 - 1.0) || y >= (src_height as f32 - 1.0) {
+        return;
+    }
 
+    let x0 = x.floor() as usize;
+    let y0 = y.floor() as usize;
+
+    let wx = x - x0 as f32;
+    let wy = y - y0 as f32;
+    let one_minus_wx = 1.0 - wx;
+    let one_minus_wy = 1.0 - wy;
+
+    let stride = src_width * 3;
+    let idx_row0 = y0 * stride;
+    let idx_row1 = idx_row0 + stride;
+    let idx_p00 = idx_row0 + x0 * 3;
+
+    unsafe {
+        let p00 = src_raw.get_unchecked(idx_p00..idx_p00 + 3);
+        let p10 = src_raw.get_unchecked(idx_p00 + 3..idx_p00 + 6);
+        let p01 = src_raw.get_unchecked(idx_row1 + x0 * 3..idx_row1 + x0 * 3 + 3);
+        let p11 = src_raw.get_unchecked(idx_row1 + x0 * 3 + 3..idx_row1 + x0 * 3 + 6);
+
+        let top_r = p00[0] * one_minus_wx + p10[0] * wx;
+        let top_g = p00[1] * one_minus_wx + p10[1] * wx;
+        let top_b = p00[2] * one_minus_wx + p10[2] * wx;
+
+        let bot_r = p01[0] * one_minus_wx + p11[0] * wx;
+        let bot_g = p01[1] * one_minus_wx + p11[1] * wx;
+        let bot_b = p01[2] * one_minus_wx + p11[2] * wx;
+
+        pixel_out[0] = top_r * one_minus_wy + bot_r * wy;
+        pixel_out[1] = top_g * one_minus_wy + bot_g * wy;
+        pixel_out[2] = top_b * one_minus_wy + bot_b * wy;
+    }
+}
+
+fn build_transform_matrices(params: &GeometryParams, width: f32, height: f32) -> (NaMatrix3<f32>, f32, f32, f64) {
+    let cx = width / 2.0;
+    let cy = height / 2.0;
     let ref_dim = 2000.0;
-    let p_vert = (params.vertical / 100000.0) * (ref_dim / height as f32);
-    let p_horiz = (-params.horizontal / 100000.0) * (ref_dim / width as f32);
-
+    
+    let p_vert = (params.vertical / 100000.0) * (ref_dim / height);
+    let p_horiz = (-params.horizontal / 100000.0) * (ref_dim / width);
     let theta = params.rotate.to_radians();
-
+    
     let aspect_factor = if params.aspect >= 0.0 {
         1.0 + params.aspect / 100.0
     } else {
         1.0 / (1.0 + params.aspect.abs() / 100.0)
     };
-
+    
     let scale_factor = params.scale / 100.0;
-    let off_x = (params.x_offset / 100.0) * width as f32;
-    let off_y = (params.y_offset / 100.0) * height as f32;
-
-    let cx = width as f32 / 2.0;
-    let cy = height as f32 / 2.0;
-
-    let max_radius_sq = cx * cx + cy * cy;
-    let k_distortion = params.distortion / 100.0;
+    let off_x = (params.x_offset / 100.0) * width;
+    let off_y = (params.y_offset / 100.0) * height;
 
     let t_center = NaMatrix3::new(1.0, 0.0, cx, 0.0, 1.0, cy, 0.0, 0.0, 1.0);
     let t_uncenter = NaMatrix3::new(1.0, 0.0, -cx, 0.0, 1.0, -cy, 0.0, 0.0, 1.0);
@@ -162,27 +230,44 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
     let m_scale = NaMatrix3::new(scale_factor * aspect_factor, 0.0, 0.0, 0.0, scale_factor, 0.0, 0.0, 0.0, 1.0);
     let m_offset = NaMatrix3::new(1.0, 0.0, off_x, 0.0, 1.0, off_y, 0.0, 0.0, 1.0);
 
-    let forward_transform = t_center * m_offset * m_perspective * m_rotate * m_scale * t_uncenter;
+    let forward = t_center * m_offset * m_perspective * m_rotate * m_scale * t_uncenter;
+    let half_diagonal = ((width as f64 * width as f64 + height as f64 * height as f64).sqrt()) / 2.0;
+
+    (forward, cx, cy, half_diagonal)
+}
+
+pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> DynamicImage {
+    let src_img = image.to_rgb32f();
+    let (width, height) = src_img.dimensions();
+    let mut out_buffer = vec![0.0f32; (width * height * 3) as usize];
+
+    let (forward_transform, cx, cy, half_diagonal) = build_transform_matrices(&params, width as f32, height as f32);
     let inv = forward_transform.try_inverse().unwrap_or(NaMatrix3::identity());
 
-    let step_vec = NaVector3::new(inv[(0, 0)], inv[(1, 0)], inv[(2, 0)]);
+    let step_vec_x = NaVector3::new(inv[(0, 0)], inv[(1, 0)], inv[(2, 0)]);
+    let step_vec_y = NaVector3::new(inv[(0, 1)], inv[(1, 1)], inv[(2, 1)]);
+    let origin_vec = NaVector3::new(inv[(0, 2)], inv[(1, 2)], inv[(2, 2)]);
+
+    let max_radius_sq_inv = 1.0 / (cx * cx + cy * cy);
+    let k_distortion = params.distortion / 100.0;
+    
+    let lk1 = params.lens_dist_k1 as f64;
+    let lk2 = params.lens_dist_k2 as f64;
+    let lk3 = params.lens_dist_k3 as f64;
+    let lens_amt = params.lens_correction_amount as f64;
+    let has_lens_correction = lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6;
+    let is_ptlens = params.lens_model == 1;
 
     let src_raw = src_img.as_raw();
-    let src_stride = (width * 3) as usize;
-    let max_x = width as f32 - 1.0;
-    let max_y = height as f32 - 1.0;
+    let width_usize = width as usize;
+    let height_usize = height as usize;
 
     out_buffer
-        .par_chunks_exact_mut((width * 3) as usize)
+        .par_chunks_exact_mut(width_usize * 3)
         .enumerate()
         .for_each(|(y, row_pixel_data)| {
             let y_f = y as f32;
-
-            let mut current_vec = NaVector3::new(
-                inv[(0, 1)] * y_f + inv[(0, 2)],
-                inv[(1, 1)] * y_f + inv[(1, 2)],
-                inv[(2, 1)] * y_f + inv[(2, 2)],
-            );
+            let mut current_vec = origin_vec + (step_vec_y * y_f);
 
             for pixel in row_pixel_data.chunks_exact_mut(3) {
                 if current_vec.z.abs() > 1e-6 {
@@ -190,54 +275,47 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
                     let mut src_x = current_vec.x * inv_z;
                     let mut src_y = current_vec.y * inv_z;
 
+                    if has_lens_correction {
+                        let dx = src_x - cx;
+                        let dy = src_y - cy;
+                        let ru = ((dx * dx + dy * dy) as f64).sqrt();
+
+                        if ru > 1e-6 {
+                            let ru_norm = ru / half_diagonal;
+                            let ru_norm2 = ru_norm * ru_norm;
+
+                            let rd_norm = if is_ptlens {
+                                let a = lk1; let b = lk2; let c = lk3;
+                                let d = 1.0 - a - b - c;
+                                let poly = a * ru_norm2 * ru_norm + b * ru_norm2 + c * ru_norm + d;
+                                ru_norm * poly
+                            } else {
+                                let poly = 1.0 + lk1 * ru_norm2 
+                                         + lk2 * (ru_norm2 * ru_norm2) 
+                                         + lk3 * (ru_norm2 * ru_norm2 * ru_norm2);
+                                ru_norm * poly
+                            };
+
+                            let effective_r_norm = ru_norm + (rd_norm - ru_norm) * lens_amt;
+                            let scale = effective_r_norm / ru_norm;
+                            
+                            src_x = cx + dx * scale as f32;
+                            src_y = cy + dy * scale as f32;
+                        }
+                    }
+
                     if k_distortion.abs() > 1e-5 {
                         let dx = src_x - cx;
                         let dy = src_y - cy;
-                        let r2 = (dx * dx + dy * dy) / max_radius_sq;
-
-                        let f = 1.0 + k_distortion * r2;
-                        
+                        let r2_norm = (dx * dx + dy * dy) * max_radius_sq_inv;
+                        let f = 1.0 + k_distortion * r2_norm;
                         src_x = cx + dx * f;
                         src_y = cy + dy * f;
                     }
 
-                    if src_x >= 0.0 && src_x < max_x && src_y >= 0.0 && src_y < max_y {
-                        let x0 = src_x.floor() as u32;
-                        let y0 = src_y.floor() as u32;
-
-                        let wx = src_x - x0 as f32;
-                        let wy = src_y - y0 as f32;
-                        let one_minus_wx = 1.0 - wx;
-                        let one_minus_wy = 1.0 - wy;
-
-                        let idx_row0 = (y0 as usize) * src_stride;
-                        let idx_row1 = idx_row0 + src_stride;
-                        let idx_p00 = idx_row0 + (x0 as usize) * 3;
-                        let idx_p10 = idx_p00 + 3;
-                        let idx_p01 = idx_row1 + (x0 as usize) * 3;
-                        let idx_p11 = idx_p01 + 3;
-
-                        unsafe {
-                            let p00 = src_raw.get_unchecked(idx_p00..idx_p00+3);
-                            let p10 = src_raw.get_unchecked(idx_p10..idx_p10+3);
-                            let p01 = src_raw.get_unchecked(idx_p01..idx_p01+3);
-                            let p11 = src_raw.get_unchecked(idx_p11..idx_p11+3);
-
-                            let top_r = p00[0] * one_minus_wx + p10[0] * wx;
-                            let top_g = p00[1] * one_minus_wx + p10[1] * wx;
-                            let top_b = p00[2] * one_minus_wx + p10[2] * wx;
-
-                            let bot_r = p01[0] * one_minus_wx + p11[0] * wx;
-                            let bot_g = p01[1] * one_minus_wx + p11[1] * wx;
-                            let bot_b = p01[2] * one_minus_wx + p11[2] * wx;
-
-                            pixel[0] = top_r * one_minus_wy + bot_r * wy;
-                            pixel[1] = top_g * one_minus_wy + bot_g * wy;
-                            pixel[2] = top_b * one_minus_wy + bot_b * wy;
-                        }
-                    } 
+                    interpolate_pixel(src_raw, width_usize, height_usize, src_x, src_y, pixel);
                 }
-                current_vec += step_vec;
+                current_vec += step_vec_x;
             }
         });
 
@@ -250,120 +328,98 @@ pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams
     let (width, height) = src_img.dimensions();
     let mut out_buffer = vec![0.0f32; (width * height * 3) as usize];
 
-    let ref_dim = 2000.0;
-    let p_vert = (params.vertical / 100000.0) * (ref_dim / height as f32);
-    let p_horiz = (-params.horizontal / 100000.0) * (ref_dim / width as f32);
+    let (forward_transform, cx, cy, half_diagonal) = build_transform_matrices(&params, width as f32, height as f32);
 
-    let theta = params.rotate.to_radians();
-
-    let aspect_factor = if params.aspect >= 0.0 {
-        1.0 + params.aspect / 100.0
-    } else {
-        1.0 / (1.0 + params.aspect.abs() / 100.0)
-    };
-
-    let scale_factor = params.scale / 100.0;
-    let off_x = (params.x_offset / 100.0) * width as f32;
-    let off_y = (params.y_offset / 100.0) * height as f32;
-
-    let cx = width as f32 / 2.0;
-    let cy = height as f32 / 2.0;
-
-    let max_radius_sq = cx * cx + cy * cy;
+    let max_radius_sq_inv = 1.0 / (cx * cx + cy * cy);
     let k_distortion = params.distortion / 100.0;
-
-    let t_center = NaMatrix3::new(1.0, 0.0, cx, 0.0, 1.0, cy, 0.0, 0.0, 1.0);
-    let t_uncenter = NaMatrix3::new(1.0, 0.0, -cx, 0.0, 1.0, -cy, 0.0, 0.0, 1.0);
-    let m_perspective = NaMatrix3::new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, p_horiz, p_vert, 1.0);
     
-    let (sin_t, cos_t) = theta.sin_cos();
-    let m_rotate = NaMatrix3::new(cos_t, -sin_t, 0.0, sin_t, cos_t, 0.0, 0.0, 0.0, 1.0);
-    let m_scale = NaMatrix3::new(scale_factor * aspect_factor, 0.0, 0.0, 0.0, scale_factor, 0.0, 0.0, 0.0, 1.0);
-    let m_offset = NaMatrix3::new(1.0, 0.0, off_x, 0.0, 1.0, off_y, 0.0, 0.0, 1.0);
-
-    let forward_transform = t_center * m_offset * m_perspective * m_rotate * m_scale * t_uncenter;
+    let lk1 = params.lens_dist_k1 as f64;
+    let lk2 = params.lens_dist_k2 as f64;
+    let lk3 = params.lens_dist_k3 as f64;
+    let lens_amt = params.lens_correction_amount as f64;
+    let has_lens_correction = lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6;
+    let is_ptlens = params.lens_model == 1;
 
     let src_raw = src_img.as_raw();
-    let src_stride = (width * 3) as usize;
-    let max_x = width as f32 - 1.0;
-    let max_y = height as f32 - 1.0;
+    let width_usize = width as usize;
+    let height_usize = height as usize;
 
     out_buffer
-        .par_chunks_exact_mut((width * 3) as usize)
+        .par_chunks_exact_mut(width_usize * 3)
         .enumerate()
         .for_each(|(y, row_pixel_data)| {
             let y_f = y as f32;
-
+            
             for (x, pixel) in row_pixel_data.chunks_exact_mut(3).enumerate() {
                 let x_f = x as f32;
+                let mut current_x = x_f;
+                let mut current_y = y_f;
 
-                let mut x_linear = x_f;
-                let mut y_linear = y_f;
+                if has_lens_correction {
+                    let dx = current_x - cx;
+                    let dy = current_y - cy;
+                    let rd = ((dx * dx + dy * dy) as f64).sqrt();
 
-                if k_distortion.abs() > 1e-5 {
-                    let dx = x_f - cx;
-                    let dy = y_f - cy;
-                    let r_distorted = (dx * dx + dy * dy).sqrt();
+                    if rd > 1e-6 {
+                        let mut ru = rd;
+                        
+                        for _ in 0..8 {
+                            let ru_norm = ru / half_diagonal;
+                            let ru_norm2 = ru_norm * ru_norm;
 
-                    if r_distorted > 1e-6 {
-                        let c = k_distortion / max_radius_sq;
-                        let mut r_u = r_distorted;
+                            let (f_val, f_prime) = if is_ptlens {
+                                let a = lk1; let b = lk2; let c = lk3;
+                                let d = 1.0 - a - b - c;
+                                let poly = a * ru_norm2 * ru_norm + b * ru_norm2 + c * ru_norm + d;
+                                
+                                let val = ru * poly;
+                                let prime = 4.0 * a * ru_norm2 * ru_norm 
+                                          + 3.0 * b * ru_norm2 
+                                          + 2.0 * c * ru_norm 
+                                          + d;
+                                (val, prime)
+                            } else {
+                                let poly = 1.0 + lk1 * ru_norm2 + lk2 * ru_norm2 * ru_norm2 + lk3 * ru_norm2 * ru_norm2 * ru_norm2;
+                                let val = ru * poly;
+                                let poly_prime = 2.0 * lk1 * ru_norm 
+                                               + 4.0 * lk2 * ru_norm2 * ru_norm 
+                                               + 6.0 * lk3 * ru_norm2 * ru_norm2 * ru_norm;
+                                let prime = poly + ru_norm * poly_prime; 
+                                (val, prime)
+                            };
 
-                        for _ in 0..6 {
-                            let r_u2 = r_u * r_u;
-                            let f_val = r_u + c * r_u * r_u2 - r_distorted;
-                            let f_deriv = 1.0 + 3.0 * c * r_u2;
-                            r_u -= f_val / f_deriv;
+                            let g_val = ru + (f_val - ru) * lens_amt - rd;
+                            let g_prime = 1.0 + (f_prime - 1.0) * lens_amt;
+
+                            if g_prime.abs() < 1e-7 { break; }
+                            let delta = g_val / g_prime;
+                            ru -= delta;
+                            if delta.abs() < 1e-4 { break; }
                         }
 
-                        let scale = r_u / r_distorted;
-                        x_linear = cx + dx * scale;
-                        y_linear = cy + dy * scale;
+                        let scale = ru / rd;
+                        current_x = cx + dx * scale as f32;
+                        current_y = cy + dy * scale as f32;
                     }
                 }
 
-                let target_vec = forward_transform * NaVector3::new(x_linear, y_linear, 1.0);
+                if k_distortion.abs() > 1e-5 {
+                    let dx = current_x - cx;
+                    let dy = current_y - cy;
+                    let r2_norm = (dx * dx + dy * dy) * max_radius_sq_inv;
+                    let f = 1.0 - k_distortion * r2_norm;
+                    current_x = cx + dx * f;
+                    current_y = cy + dy * f;
+                }
+
+                let target_vec = forward_transform * NaVector3::new(current_x, current_y, 1.0);
 
                 if target_vec.z.abs() > 1e-6 {
                     let inv_z = 1.0 / target_vec.z;
                     let src_x = target_vec.x * inv_z;
                     let src_y = target_vec.y * inv_z;
 
-                    if src_x >= 0.0 && src_x < max_x && src_y >= 0.0 && src_y < max_y {
-                        let x0 = src_x.floor() as u32;
-                        let y0 = src_y.floor() as u32;
-
-                        let wx = src_x - x0 as f32;
-                        let wy = src_y - y0 as f32;
-                        let one_minus_wx = 1.0 - wx;
-                        let one_minus_wy = 1.0 - wy;
-
-                        let idx_row0 = (y0 as usize) * src_stride;
-                        let idx_row1 = idx_row0 + src_stride;
-                        let idx_p00 = idx_row0 + (x0 as usize) * 3;
-                        let idx_p10 = idx_p00 + 3;
-                        let idx_p01 = idx_row1 + (x0 as usize) * 3;
-                        let idx_p11 = idx_p01 + 3;
-
-                        unsafe {
-                            let p00 = src_raw.get_unchecked(idx_p00..idx_p00+3);
-                            let p10 = src_raw.get_unchecked(idx_p10..idx_p10+3);
-                            let p01 = src_raw.get_unchecked(idx_p01..idx_p01+3);
-                            let p11 = src_raw.get_unchecked(idx_p11..idx_p11+3);
-
-                            let top_r = p00[0] * one_minus_wx + p10[0] * wx;
-                            let top_g = p00[1] * one_minus_wx + p10[1] * wx;
-                            let top_b = p00[2] * one_minus_wx + p10[2] * wx;
-
-                            let bot_r = p01[0] * one_minus_wx + p11[0] * wx;
-                            let bot_g = p01[1] * one_minus_wx + p11[1] * wx;
-                            let bot_b = p01[2] * one_minus_wx + p11[2] * wx;
-
-                            pixel[0] = top_r * one_minus_wy + bot_r * wy;
-                            pixel[1] = top_g * one_minus_wy + bot_g * wy;
-                            pixel[2] = top_b * one_minus_wy + bot_b * wy;
-                        }
-                    }
+                    interpolate_pixel(src_raw, width_usize, height_usize, src_x, src_y, pixel);
                 }
             }
         });
@@ -459,19 +515,6 @@ pub fn apply_crop(mut image: DynamicImage, crop_value: &Value) -> DynamicImage {
     image
 }
 
-pub fn get_geometry_params_from_json(adjustments: &serde_json::Value) -> GeometryParams {
-    GeometryParams {
-        distortion: adjustments["transformDistortion"].as_f64().unwrap_or(0.0) as f32,
-        vertical: adjustments["transformVertical"].as_f64().unwrap_or(0.0) as f32,
-        horizontal: adjustments["transformHorizontal"].as_f64().unwrap_or(0.0) as f32,
-        rotate: adjustments["transformRotate"].as_f64().unwrap_or(0.0) as f32,
-        aspect: adjustments["transformAspect"].as_f64().unwrap_or(0.0) as f32,
-        scale: adjustments["transformScale"].as_f64().unwrap_or(100.0) as f32,
-        x_offset: adjustments["transformXOffset"].as_f64().unwrap_or(0.0) as f32,
-        y_offset: adjustments["transformYOffset"].as_f64().unwrap_or(0.0) as f32,
-    }
-}
-
 pub fn is_geometry_identity(params: &GeometryParams) -> bool {
     params.distortion == 0.0
         && params.vertical == 0.0
@@ -481,6 +524,8 @@ pub fn is_geometry_identity(params: &GeometryParams) -> bool {
         && params.scale == 100.0
         && params.x_offset == 0.0
         && params.y_offset == 0.0
+        && (params.lens_correction_amount - 1.0).abs() < 1e-4
+        && (params.lens_dist_k1.abs() < 1e-6 && params.lens_dist_k2.abs() < 1e-6 && params.lens_dist_k3.abs() < 1e-6)
 }
 
 pub fn apply_geometry_warp(
@@ -488,7 +533,6 @@ pub fn apply_geometry_warp(
     adjustments: &serde_json::Value,
 ) -> DynamicImage {
     let params = get_geometry_params_from_json(adjustments);
-    
     if !is_geometry_identity(&params) {
         warp_image_geometry(image, params)
     } else {

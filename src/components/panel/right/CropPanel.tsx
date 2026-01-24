@@ -9,11 +9,13 @@ import {
   Ruler,
   Scan,
   X,
+  Aperture,
 } from 'lucide-react';
 import { Adjustments, INITIAL_ADJUSTMENTS } from '../../../utils/adjustments';
 import clsx from 'clsx';
 import { Orientation, SelectedImage } from '../../ui/AppProperties';
 import TransformModal from '../../modals/TransformModal';
+import LensCorrectionModal from '../../modals/LensCorrectionModal';
 
 const BASE_RATIO = 1.618;
 const ORIGINAL_RATIO = 0;
@@ -54,6 +56,7 @@ export default function CropPanel({
   const [customW, setCustomW] = useState('');
   const [customH, setCustomH] = useState('');
   const [isTransformModalOpen, setIsTransformModalOpen] = useState(false);
+  const [isLensModalOpen, setIsLensModalOpen] = useState(false);
   const [isRotationActive, setIsRotationActive] = useState(false);
 
   const { aspectRatio, rotation = 0, flipHorizontal = false, flipVertical = false, orientationSteps = 0 } = adjustments;
@@ -242,9 +245,13 @@ export default function CropPanel({
       transformHorizontal: INITIAL_ADJUSTMENTS.transformHorizontal ?? 0,
       transformRotate: INITIAL_ADJUSTMENTS.transformRotate ?? 0,
       transformAspect: INITIAL_ADJUSTMENTS.transformAspect ?? 0,
-      transformScale: INITIAL_ADJUSTMENTS.transformScale ?? 1,
+      transformScale: INITIAL_ADJUSTMENTS.transformScale ?? 100,
       transformXOffset: INITIAL_ADJUSTMENTS.transformXOffset ?? 0,
       transformYOffset: INITIAL_ADJUSTMENTS.transformYOffset ?? 0,
+      lensMaker: INITIAL_ADJUSTMENTS.lensMaker,
+      lensModel: INITIAL_ADJUSTMENTS.lensModel,
+      lensCorrectionAmount: INITIAL_ADJUSTMENTS.lensCorrectionAmount,
+      lensDistortionParams: INITIAL_ADJUSTMENTS.lensDistortionParams,
     }));
   };
 
@@ -389,16 +396,37 @@ export default function CropPanel({
               <div className="bg-surface px-4 py-3 pb-4 rounded-lg">
                 <div className="flex justify-between items-center mb-3">
                   <span className="font-mono text-lg text-text-primary">{rotation.toFixed(1)}°</span>
-                  <button
-                    className="p-1.5 rounded-md hover:bg-card-active text-text-secondary hover:text-text-primary transition-colors"
-                    onClick={resetFineRotation}
-                    title="Reset Fine Rotation"
-                    disabled={rotation === 0}
-                  >
-                    <RotateCcw size={14} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setIsStraightenActive((isActive: boolean) => {
+                          const willBeActive = !isActive;
+                          if (willBeActive) {
+                            setAdjustments((prev: Adjustments) => ({ ...prev, rotation: 0 }));
+                          }
+                          return willBeActive;
+                        });
+                      }}
+                      className={clsx(
+                        'p-1.5 rounded-md transition-colors',
+                        isStraightenActive
+                          ? 'bg-accent text-button-text'
+                          : 'text-text-secondary hover:bg-card-active hover:text-text-primary',
+                      )}
+                      title="Straighten Tool"
+                    >
+                      <Ruler size={16} />
+                    </button>
+                    <button
+                      className="p-1.5 rounded-md text-text-secondary transition-colors cursor-pointer hover:bg-card-active hover:text-text-primary"
+                      onClick={resetFineRotation}
+                      title="Reset Fine Rotation"
+                      disabled={rotation === 0}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  </div>
                 </div>
-
                 <div className="relative w-full h-5">
                   <div className="absolute top-1/2 left-0 w-full h-1.5 -translate-y-1/4 bg-card-active rounded-full pointer-events-none" />
                   <input
@@ -424,7 +452,7 @@ export default function CropPanel({
             </div>
 
             <div className="space-y-4">
-              <p className="text-sm mb-3 font-semibold text-text-primary">Tools</p>
+              <p className="text-sm mb-3 font-semibold text-text-primary">Orientation</p>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   className="flex flex-col items-center justify-center p-3 rounded-lg transition-colors bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary"
@@ -471,45 +499,25 @@ export default function CropPanel({
                   <FlipVertical size={20} className="transition-none" />
                   <span className="text-xs mt-1.5 transition-none">Flip Vert</span>
                 </button>
-                <button
-                  className={clsx(
-                    'flex flex-col items-center justify-center p-3 rounded-lg transition-colors group',
-                    isStraightenActive
-                      ? 'bg-accent text-button-text hover:bg-red-500'
-                      : 'bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary',
-                  )}
-                  onClick={() => {
-                    setIsStraightenActive((isActive: boolean) => {
-                      const willBeActive = !isActive;
-                      if (willBeActive) {
-                        setAdjustments((prev: Adjustments) => ({ ...prev, rotation: 0 }));
-                      }
-                      return willBeActive;
-                    });
-                  }}
-                >
-                  <Ruler size={20} className="transition-none" />
-                  <span className="relative text-xs mt-1.5 h-4 flex items-center justify-center transition-none">
-                    <span className={clsx('transition-none', isStraightenActive && 'group-hover:opacity-0')}>
-                      Straighten
-                    </span>
-                    <span
-                      className={clsx(
-                        'absolute left-0 right-0 text-center opacity-0 transition-none',
-                        isStraightenActive && 'group-hover:opacity-100',
-                      )}
-                    >
-                      Cancel
-                    </span>
-                  </span>
-                </button>
+              </div>
+            </div>
 
+            <div className="space-y-4">
+              <p className="text-sm mb-3 font-semibold text-text-primary">Geometry</p>
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   className="flex flex-col items-center justify-center p-3 rounded-lg transition-colors bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary group"
                   onClick={() => setIsTransformModalOpen(true)}
                 >
                   <Scan size={20} className="transition-none" />
                   <span className="text-xs mt-1.5 transition-none">Transform</span>
+                </button>
+                <button
+                  className="flex flex-col items-center justify-center p-3 rounded-lg transition-colors bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary group"
+                  onClick={() => setIsLensModalOpen(true)}
+                >
+                  <Aperture size={20} className="transition-none" />
+                  <span className="text-xs mt-1.5 transition-none">Lens</span>
                 </button>
               </div>
             </div>
@@ -537,6 +545,20 @@ export default function CropPanel({
           }));
         }}
         currentAdjustments={adjustments}
+      />
+
+      <LensCorrectionModal
+        isOpen={isLensModalOpen}
+        onClose={() => setIsLensModalOpen(false)}
+        onApply={(newParams) => {
+          setAdjustments((prev: Adjustments) => ({
+            ...prev,
+            ...newParams,
+            crop: null,
+          }));
+        }}
+        currentAdjustments={adjustments}
+        selectedImage={selectedImage}
       />
     </div>
   );

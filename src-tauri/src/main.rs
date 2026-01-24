@@ -23,6 +23,7 @@ mod preset_converter;
 mod raw_processing;
 mod tagging;
 mod tagging_utils;
+mod lens_correction;
 
 use log;
 use std::collections::{HashMap, hash_map::DefaultHasher};
@@ -134,6 +135,7 @@ pub struct AppState {
     pub patch_cache: Mutex<HashMap<String, serde_json::Value>>,
     pub geometry_cache: Mutex<HashMap<u64, DynamicImage>>, 
     pub thumbnail_geometry_cache: Mutex<HashMap<String, (u64, DynamicImage, f32)>>,
+    pub lens_db: Mutex<Option<lens_correction::LensDatabase>>,
 }
 
 #[derive(serde::Serialize)]
@@ -1044,7 +1046,7 @@ fn generate_original_transformed_preview(
 async fn preview_geometry_transform(
     params: GeometryParams,
     js_adjustments: serde_json::Value,
-    show_lines: bool, // New parameter to control line generation
+    show_lines: bool,
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
@@ -1092,6 +1094,8 @@ async fn preview_geometry_transform(
                 obj.insert("transformScale".to_string(), serde_json::json!(100.0));
                 obj.insert("transformXOffset".to_string(), serde_json::json!(0.0));
                 obj.insert("transformYOffset".to_string(), serde_json::json!(0.0));
+                obj.insert("lensCorrectionAmount".to_string(), serde_json::json!(100.0));
+                obj.insert("lensDistortionParams".to_string(), serde_json::Value::Null);
             }
 
             let all_adjustments = get_all_adjustments_from_json(&temp_adjustments, is_raw);
@@ -3183,6 +3187,10 @@ fn main() {
             let app_handle = app.handle().clone();
             let settings: AppSettings = load_settings(app_handle.clone()).unwrap_or_default();
 
+            let lens_db = lens_correction::load_lensfun_db(&app_handle);
+            let state = app.state::<AppState>();
+            *state.lens_db.lock().unwrap() = Some(lens_db);
+
             unsafe {
                 if let Some(backend) = &settings.processing_backend {
                     if backend != "auto" {
@@ -3268,6 +3276,7 @@ fn main() {
             patch_cache: Mutex::new(HashMap::new()),
             geometry_cache: Mutex::new(HashMap::new()),
             thumbnail_geometry_cache: Mutex::new(HashMap::new()),
+            lens_db: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             load_image,
@@ -3304,6 +3313,7 @@ fn main() {
             save_temp_file,
             get_image_dimensions,
             frontend_ready,
+            cancel_thumbnail_generation,
             image_processing::generate_histogram,
             image_processing::generate_waveform,
             image_processing::calculate_auto_adjustments,
@@ -3314,7 +3324,6 @@ fn main() {
             file_management::get_pinned_folder_trees,
             file_management::generate_thumbnails,
             file_management::generate_thumbnails_progressive,
-            cancel_thumbnail_generation,
             file_management::create_folder,
             file_management::delete_folder,
             file_management::copy_files,
@@ -3349,6 +3358,10 @@ fn main() {
             tagging::add_tag_for_paths,
             tagging::remove_tag_for_paths,
             culling::cull_images,
+            lens_correction::get_lensfun_makers,
+            lens_correction::get_lensfun_lenses_for_maker,
+            lens_correction::autodetect_lens,
+            lens_correction::get_lens_distortion_params,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

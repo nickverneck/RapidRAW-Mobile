@@ -64,6 +64,9 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2026-01-24:** Added automatic lens correction using lensfun
+*   **2026-01-22:** Improved and centralized EXIF data handling for greater accuracy and support
+*   **2026-01-21:** Inpainting now works correctly on images with geometry transformations
 *   **2026-01-20:** Export preset management for saving export settings 
 *   **2026-01-19:** Preload library for faster startup & automatic geometry transformation helper lines
 *   **2026-01-18:** Implement image geometry transformation utils
@@ -71,14 +74,13 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2026-01-16:** Major masking system overhaul with drag & drop, per-mask opacity/invert & UI improvements
 *   **2026-01-13:** New python middleware client for external generative AI integration (ComfyUI)
 *   **2026-01-12:** Created a RapidRAW community discord server
-*   **2026-01-11:** Separate preview worker, optional high-quality live previews & mask/ai patch caching
-*   **2026-01-10:** Enhanced EXIF UI, optimized color wheels/curves & rawler update
-*   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
-
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2026-01-11:** Separate preview worker, optional high-quality live previews & mask/ai patch caching
+*   **2026-01-10:** Enhanced EXIF UI, optimized color wheels/curves & rawler update
+*   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
 *   **2026-01-05:** Collage maker upgrade (drag & drop, zoom, ratio options)
 *   **2026-01-05:** 'Prefer RAW' filter option added to library
 *   **2026-01-05:** Support for uppercase file extensions
@@ -337,7 +339,7 @@ While the core functionality is in place, I'm actively working on improving seve
 | Write a tutorial on how to connect ComfyUI with RapidRAW                                    | Medium | Medium       | [ ]    |
 | Centralize Coordinate Transformation Logic - See [#245](https://github.com/CyberTimon/RapidRAW/issues/245) | Medium      | High | [ ]    |
 | Improve speed on older systems (e.g. Pascal GPUs)                                            | Medium   | High       | [ ]    |
-| Implement warping tools                                                                     | Low  | High       | [ ]    |
+| Implement warping tools                                                                     | Low  | High       | [X]    |
 
 ## AI Roadmap
 
@@ -490,6 +492,7 @@ A huge thank you to the following projects and tools that were very important in
 
 *   **[Google AI Studio](https://aistudio.google.com):** For providing amazing assistance in researching, implementing image processing algorithms and giving an overall speed boost.
 *   **[rawler](https://github.com/dnglab/dnglab/tree/main/rawler):** For the excellent Rust crate that provides the foundation for RAW file processing in this project.
+*   **[lensfun](https://lensfun.github.io/):** For its invaluable open-source library and comprehensive database for automatic lens correction.
 *   **[pixls.us](https://discuss.pixls.us/):** For being an incredible community full of knowledgeable people who offered inspiration, advice, and ideas.
 *   **[darktable & co.](https://github.com/darktable-org/darktable):** For some reference implementations that guided parts of this work.
 *   **You:** For using and supporting RapidRAW. Your interest keeps this project alive and evolving.

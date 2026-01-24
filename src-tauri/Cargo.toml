@@ -62,6 +62,8 @@ exr = "1.74.0"
 qoi = "0.4.1"
 glam = "0.30.9"
 tauri-plugin-single-instance = "2.3.6"
+quick-xml = { version = "0.36", features = ["serialize"] }
+fuzzy-matcher = "0.3.7"
 
 [build-dependencies]
 tauri-build = { version = "2.5", features = [] }

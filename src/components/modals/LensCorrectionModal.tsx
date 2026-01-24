@@ -1,0 +1,604 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import {
+  RotateCcw,
+  Search,
+  Check,
+  Info,
+  Loader,
+  Grid3X3,
+  Eye,
+  EyeOff,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+} from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import Button from '../ui/Button';
+import Slider from '../ui/Slider';
+import Dropdown from '../ui/Dropdown';
+import throttle from 'lodash.throttle';
+import { Adjustments } from '../../utils/adjustments';
+import { SelectedImage } from '../ui/AppProperties';
+import clsx from 'clsx';
+
+interface LensParams {
+  lensMaker: string | null;
+  lensModel: string | null;
+  lensCorrectionAmount: number;
+  lensDistortionParams: { k1: number; k2: number; k3: number; model: number } | null;
+}
+
+interface LensCorrectionModalProps {
+  isOpen: boolean;
+  onClose(): void;
+  onApply(newParams: LensParams): void;
+  currentAdjustments: Adjustments;
+  selectedImage: SelectedImage | null;
+}
+
+const DEFAULT_PARAMS: LensParams = {
+  lensMaker: null,
+  lensModel: null,
+  lensCorrectionAmount: 100,
+  lensDistortionParams: null,
+};
+
+const parseFocalLength = (exif: any): number | null => {
+  if (!exif || !exif.FocalLength) return null;
+  const val = parseFloat(exif.FocalLength);
+  return isNaN(val) ? null : val;
+};
+
+const parseFocalLength35 = (exif: any): number | null => {
+  if (!exif || !exif.FocalLengthIn35mmFilm) return null;
+  const val = parseFloat(exif.FocalLengthIn35mmFilm);
+  return isNaN(val) ? null : val;
+};
+
+const SLIDER_DIVISOR = 100.0;
+
+export default function LensCorrectionModal({
+  isOpen,
+  onClose,
+  onApply,
+  currentAdjustments,
+  selectedImage,
+}: LensCorrectionModalProps) {
+  const [params, setParams] = useState<LensParams>(DEFAULT_PARAMS);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
+  const [makers, setMakers] = useState<string[]>([]);
+  const [lenses, setLenses] = useState<string[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
+  const [show, setShow] = useState(false);
+  const [detectionStatus, setDetectionStatus] = useState<'idle' | 'detecting' | 'not_found' | 'success'>('idle');
+
+  const [showGrid, setShowGrid] = useState(true);
+  const [isCompareActive, setIsCompareActive] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastMousePos = useRef({ x: 0, y: 0 });
+
+  const focalLength = useMemo(() => parseFocalLength(selectedImage?.exif), [selectedImage?.exif]);
+  const focalLength35 = useMemo(() => parseFocalLength35(selectedImage?.exif), [selectedImage?.exif]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - lastMousePos.current.x;
+      const dy = e.clientY - lastMousePos.current.y;
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    };
+    const handleWindowMouseUp = () => {
+      setIsDragging(false);
+    };
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.stopPropagation();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - rect.width / 2;
+    const mouseY = e.clientY - rect.top - rect.height / 2;
+    const delta = -e.deltaY * 0.001;
+    const newZoom = Math.min(Math.max(0.1, zoom + delta), 8);
+    const scaleRatio = newZoom / zoom;
+    const mouseFromCenterX = mouseX - pan.x;
+    const mouseFromCenterY = mouseY - pan.y;
+    const newPanX = mouseX - mouseFromCenterX * scaleRatio;
+    const newPanY = mouseY - mouseFromCenterY * scaleRatio;
+    setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
+  };
+
+  const handleResetZoom = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const updatePreview = useCallback(
+    throttle(async (currentParams: LensParams) => {
+      try {
+        const geometryParams = {
+          distortion: currentAdjustments.transformDistortion,
+          vertical: currentAdjustments.transformVertical,
+          horizontal: currentAdjustments.transformHorizontal,
+          rotate: currentAdjustments.transformRotate,
+          aspect: currentAdjustments.transformAspect,
+          scale: currentAdjustments.transformScale,
+          x_offset: currentAdjustments.transformXOffset,
+          y_offset: currentAdjustments.transformYOffset,
+          lens_correction_amount: currentParams.lensCorrectionAmount / SLIDER_DIVISOR,
+          lens_dist_k1: currentParams.lensDistortionParams?.k1 ?? 0,
+          lens_dist_k2: currentParams.lensDistortionParams?.k2 ?? 0,
+          lens_dist_k3: currentParams.lensDistortionParams?.k3 ?? 0,
+          lens_model: currentParams.lensDistortionParams?.model ?? 0,
+        };
+
+        const result: string = await invoke('preview_geometry_transform', {
+          params: geometryParams,
+          jsAdjustments: currentAdjustments,
+          showLines: false,
+        });
+        setPreviewUrl(result);
+      } catch (e) {
+        console.error('Lens correction preview failed', e);
+      }
+    }, 50),
+    [currentAdjustments]
+  );
+
+  const fetchDistortionParams = useCallback(async (maker: string, model: string, fl: number) => {
+    try {
+      const distParams: { k1: number; k2: number; k3: number; model: number } | null = await invoke(
+        'get_lens_distortion_params',
+        { maker, model, focalLength: fl }
+      );
+      setParams(prev => ({ ...prev, lensDistortionParams: distParams }));
+      return distParams;
+    } catch (error) {
+      console.error('Failed to fetch distortion params', error);
+      setParams(prev => ({ ...prev, lensDistortionParams: null }));
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsMounted(true);
+      const timer = setTimeout(() => setShow(true), 10);
+
+      const initParams: LensParams = {
+        lensMaker: currentAdjustments.lensMaker,
+        lensModel: currentAdjustments.lensModel,
+        lensCorrectionAmount: currentAdjustments.lensCorrectionAmount,
+        lensDistortionParams: currentAdjustments.lensDistortionParams,
+      };
+      setParams(initParams);
+      updatePreview(initParams);
+      setDetectionStatus('idle');
+      handleResetZoom();
+
+      invoke('get_lensfun_makers')
+        .then((m: any) => setMakers(m))
+        .catch(console.error);
+
+      if (initParams.lensMaker) {
+        invoke('get_lensfun_lenses_for_maker', { maker: initParams.lensMaker })
+          .then((l: any) => setLenses(l))
+          .catch(console.error);
+      }
+
+      return () => clearTimeout(timer);
+    } else {
+      setShow(false);
+      const timer = setTimeout(() => {
+        setIsMounted(false);
+        setPreviewUrl(null);
+        setIsApplying(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, currentAdjustments, updatePreview]);
+
+  useEffect(() => {
+    if (params.lensMaker && params.lensModel && focalLength) {
+      fetchDistortionParams(params.lensMaker, params.lensModel, focalLength).then(distParams => {
+        updatePreview({ ...params, lensDistortionParams: distParams });
+      });
+    } else {
+      updatePreview({ ...params, lensDistortionParams: null });
+    }
+  }, [params.lensMaker, params.lensModel, focalLength, fetchDistortionParams, updatePreview]);
+
+  const handleMakerChange = (maker: string) => {
+    setParams({ ...params, lensMaker: maker, lensModel: null, lensDistortionParams: null });
+    setLenses([]);
+    setDetectionStatus('idle');
+    invoke('get_lensfun_lenses_for_maker', { maker })
+      .then((l: any) => setLenses(l))
+      .catch(console.error);
+  };
+
+  const handleModelChange = (model: string) => {
+    setParams(prev => ({ ...prev, lensModel: model }));
+    setDetectionStatus('idle');
+  };
+
+  const handleAmountChange = (amount: number) => {
+    const newParams = { ...params, lensCorrectionAmount: amount };
+    setParams(newParams);
+    updatePreview(newParams);
+  };
+
+  const handleAutoDetect = async () => {
+    if (!selectedImage?.exif) {
+      setDetectionStatus('not_found');
+      return;
+    }
+    const exifMaker = selectedImage.exif.Make || '';
+    const exifModel = selectedImage.exif.LensModel || '';
+    if (!exifModel) {
+      setDetectionStatus('not_found');
+      return;
+    }
+    setDetectionStatus('detecting');
+    try {
+      const result: [string, string] | null = await invoke('autodetect_lens', { maker: exifMaker, model: exifModel });
+      if (result) {
+        const [detectedMaker, detectedModel] = result;
+        if (detectedMaker !== params.lensMaker) {
+          setLenses([]);
+          await invoke('get_lensfun_lenses_for_maker', { maker: detectedMaker }).then((l: any) => setLenses(l));
+        }
+        setParams(prev => ({ ...prev, lensMaker: detectedMaker, lensModel: detectedModel }));
+
+        setDetectionStatus('success');
+        setTimeout(() => {
+          setDetectionStatus('idle');
+        }, 2000);
+      } else {
+        setDetectionStatus('not_found');
+      }
+    } catch (error) {
+      console.error('Autodetection failed with error:', error);
+      setDetectionStatus('not_found');
+    }
+  };
+
+  const handleApply = () => {
+    setIsApplying(true);
+    onApply(params);
+    onClose();
+  };
+
+  const handleReset = () => {
+    setParams(DEFAULT_PARAMS);
+    setLenses([]);
+    setDetectionStatus('idle');
+    updatePreview(DEFAULT_PARAMS);
+  };
+
+  const toggleCompare = (active: boolean) => {
+    setIsCompareActive(active);
+    if (active) {
+      updatePreview({ ...params, lensCorrectionAmount: 0, lensDistortionParams: null });
+    } else {
+      updatePreview(params);
+    }
+  };
+
+  const imageTransformStyle = {
+    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+    transformOrigin: 'center center',
+  };
+
+  const makerOptions = makers.map(m => ({ label: m, value: m }));
+  const lensOptions = lenses.map(m => ({ label: m, value: m }));
+
+  const autoDetectButtonContent = () => {
+    switch (detectionStatus) {
+      case 'detecting':
+        return (
+          <>
+            <Loader size={16} className="animate-spin" /> Detecting...
+          </>
+        );
+      case 'not_found':
+        return 'Not Found';
+      case 'success':
+        return (
+          <>
+            <Check size={16} /> Lens Found
+          </>
+        );
+      default:
+        return (
+          <>
+            <Search size={16} /> Auto-detect Lens
+          </>
+        );
+    }
+  };
+
+  const renderControls = () => (
+    <div className="w-80 flex-shrink-0 bg-bg-secondary flex flex-col border-l border-surface h-full z-10">
+      <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface">
+        <h2 className="text-xl font-bold text-primary text-shadow-shiny">Lens Correction</h2>
+        <button
+          onClick={handleReset}
+          title="Reset Correction"
+          className="p-2 rounded-full hover:bg-surface transition-colors"
+        >
+          <RotateCcw size={18} />
+        </button>
+      </div>
+      <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-6 text-text-secondary">
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-text-primary">Auto Detection</p>
+          <button
+            onClick={handleAutoDetect}
+            className={clsx(
+              'w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-md transition-colors',
+              detectionStatus === 'not_found'
+                ? 'bg-red-500/20 text-red-400'
+                : detectionStatus === 'success'
+                ? 'bg-green-500/20 text-green-400'
+                : 'bg-surface hover:bg-card-active'
+            )}
+            disabled={detectionStatus === 'detecting'}
+          >
+            {autoDetectButtonContent()}
+          </button>
+
+          <AnimatePresence>
+            {detectionStatus === 'not_found' && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="p-3 bg-red-500/10 border border-red-500/20 rounded-md flex items-center gap-3 text-red-300"
+              >
+                <Info size={16} className="flex-shrink-0" />
+                <p className="text-xs leading-relaxed">
+                  Lens correction may not be available for all lenses. Auto-detection relies on EXIF data.
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {focalLength && (
+            <div className="text-xs text-center text-text-tertiary flex flex-col gap-0.5">
+              <p>Focal Length: <span className="text-text-secondary font-mono">{focalLength.toFixed(1)}mm</span></p>
+              {focalLength35 && focalLength35 !== focalLength && (
+                <p className="text-text-secondary font-mono">(35mm equiv: {focalLength35.toFixed(1)}mm)</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-text-primary">Manual Selection</p>
+          <div className="space-y-4">
+            <Dropdown
+              options={makerOptions}
+              value={params.lensMaker}
+              onChange={handleMakerChange}
+              placeholder="Select Manufacturer"
+            />
+            <Dropdown
+              options={lensOptions}
+              value={params.lensModel}
+              onChange={handleModelChange}
+              placeholder="Select Lens Model"
+              disabled={!params.lensMaker}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-text-primary">Parameters</p>
+          <Slider
+            label="Correction"
+            value={params.lensCorrectionAmount}
+            min={0}
+            max={200}
+            defaultValue={100}
+            onChange={e => handleAmountChange(Number(e.target.value))}
+          />
+        </div>
+
+        <div className="mt-auto pt-4 space-y-2">
+          {currentAdjustments.masks && currentAdjustments.masks.length > 0 && (
+            <div className="p-3 bg-surface rounded-md border border-surface flex items-center gap-3">
+              <Info size={16} className="text-text-secondary flex-shrink-0" />
+              <p className="text-xs text-text-secondary leading-relaxed">
+                Lens correction updates base geometry. Existing masks may shift, and AI masks must be regenerated.
+              </p>
+            </div>
+          )}
+          <div className="p-3 bg-surface rounded-md border border-surface flex items-center gap-3">
+            <Info size={16} className="text-text-secondary flex-shrink-0" />
+            <div className="text-xs text-text-tertiary leading-tight space-y-1">
+              <p>
+                Lens database provided by the{' '}
+                <a
+                  href="https://lensfun.github.io/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-primary transition-colors"
+                >
+                  Lensfun Project
+                </a>
+                , licensed under{' '}
+                <a
+                  href="https://creativecommons.org/licenses/by-sa/3.0/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-primary transition-colors"
+                >
+                  CC BY-SA 3.0
+                </a>
+                .
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderContent = () => (
+    <div className="flex flex-row h-full w-full overflow-hidden">
+      <div className="flex-grow flex flex-col relative min-h-0 bg-[#0f0f0f] overflow-hidden">
+        <div
+          ref={containerRef}
+          className="flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing select-none"
+          onMouseDown={handleMouseDown}
+          onWheel={handleWheel}
+        >
+          <div
+            className="absolute inset-0 opacity-20 pointer-events-none"
+            style={{ backgroundImage: 'radial-gradient(#444 1px, transparent 1px)', backgroundSize: '24px 24px' }}
+          ></div>
+
+          {previewUrl && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="origin-center" style={imageTransformStyle}>
+                <div className="relative inline-block shadow-2xl">
+                  <img
+                    src={previewUrl}
+                    className="block object-contain"
+                    style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto' }}
+                    alt="Lens Correction Preview"
+                    draggable={false}
+                  />
+                  {showGrid && !isCompareActive && (
+                    <div className="absolute inset-0 border border-white/40 pointer-events-none shadow-[0_0_20px_rgba(0,0,0,0.5)]">
+                      <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30"></div>
+                      <div className="absolute right-1/3 top-0 bottom-0 w-px bg-white/30"></div>
+                      <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30"></div>
+                      <div className="absolute bottom-1/3 left-0 right-0 h-px bg-white/30"></div>
+                    </div>
+                  )}
+                  {isCompareActive && (
+                    <div className="absolute top-4 left-4 bg-accent text-button-text text-xs px-2 py-1 rounded shadow-lg z-20">
+                      ORIGINAL
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/70 backdrop-blur-md p-1.5 rounded-full border border-white/10 shadow-xl z-20 pointer-events-auto"
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowGrid(!showGrid)}
+              className={clsx(
+                'p-2 rounded-full transition-colors',
+                showGrid ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'
+              )}
+              title="Toggle Grid"
+            >
+              <Grid3X3 size={18} />
+            </button>
+            <div className="w-px h-5 bg-white/20 mx-1"></div>
+            <button
+              onClick={() => setZoom(z => Math.max(0.1, z - 0.25))}
+              className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
+              title="Zoom Out"
+            >
+              <ZoomOut size={18} />
+            </button>
+            <span className="text-xs font-mono text-white/90 w-12 text-center select-none pointer-events-none">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom(z => Math.min(8, z + 0.25))}
+              className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
+              title="Zoom In"
+            >
+              <ZoomIn size={18} />
+            </button>
+            <button
+              onClick={handleResetZoom}
+              className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
+              title="Reset Zoom"
+            >
+              <Maximize size={16} />
+            </button>
+            <div className="w-px h-5 bg-white/20 mx-1"></div>
+            <button
+              onMouseDown={() => toggleCompare(true)}
+              onMouseUp={() => toggleCompare(false)}
+              onMouseLeave={() => toggleCompare(false)}
+              className={clsx(
+                'p-2 rounded-full transition-colors select-none',
+                isCompareActive ? 'bg-accent text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'
+              )}
+              title="Hold to Compare"
+            >
+              {isCompareActive ? <Eye size={18} /> : <EyeOff size={18} />}
+            </button>
+          </div>
+        </div>
+      </div>
+      {renderControls()}
+    </div>
+  );
+
+  if (!isMounted) return null;
+
+  return (
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
+        show ? 'opacity-100' : 'opacity-0'
+      }`}
+      onMouseDown={onClose}
+    >
+      <AnimatePresence>
+        {show && (
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="bg-surface rounded-lg shadow-xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <div className="flex-grow min-h-0 overflow-hidden">{renderContent()}</div>
+            <div className="flex-shrink-0 p-4 flex justify-end gap-3 border-t border-surface bg-bg-secondary z-20">
+              <button onClick={onClose} className="px-4 py-2 rounded-md text-text-secondary hover:bg-surface transition-colors">
+                Cancel
+              </button>
+              <Button onClick={handleApply} disabled={isApplying || !previewUrl}>
+                <Check className="mr-2" size={16} /> Apply
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

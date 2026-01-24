@@ -95,6 +95,13 @@ export enum TransformAdjustment {
   TransformYOffset = 'transformYOffset',
 }
 
+export enum LensAdjustment {
+  LensMaker = 'lensMaker',
+  LensModel = 'lensModel',
+  LensCorrectionAmount = 'lensCorrectionAmount',
+  LensDistortionParams = 'lensDistortionParams',
+}
+
 export interface ColorCalibration {
   shadowsTint: number;
   redHue: number;
@@ -132,6 +139,10 @@ export interface Adjustments {
   grainSize: number;
   highlights: number;
   hsl: Hsl;
+  lensCorrectionAmount: number;
+  lensDistortionParams: { k1: number; k2: number; k3: number; model: number } | null;
+  lensMaker: string | null;
+  lensModel: string | null;
   lumaNoiseReduction: number;
   lutData?: string | null;
   lutIntensity?: number;
@@ -423,6 +434,10 @@ export const INITIAL_ADJUSTMENTS: Adjustments = {
     reds: { hue: 0, saturation: 0, luminance: 0 },
     yellows: { hue: 0, saturation: 0, luminance: 0 },
   },
+  lensCorrectionAmount: 100,
+  lensDistortionParams: null,
+  lensMaker: null,
+  lensModel: null,
   lumaNoiseReduction: 0,
   lutData: null,
   lutIntensity: 100,
@@ -514,6 +529,12 @@ export const normalizeLoadedAdjustments = (loadedAdjustments: Adjustments): any 
   return {
     ...INITIAL_ADJUSTMENTS,
     ...loadedAdjustments,
+    lensMaker: loadedAdjustments.lensMaker ?? INITIAL_ADJUSTMENTS.lensMaker,
+    lensModel: loadedAdjustments.lensModel ?? INITIAL_ADJUSTMENTS.lensModel,
+    lensCorrectionAmount:
+      loadedAdjustments.lensCorrectionAmount ?? INITIAL_ADJUSTMENTS.lensCorrectionAmount,
+    lensDistortionParams:
+      loadedAdjustments.lensDistortionParams ?? INITIAL_ADJUSTMENTS.lensDistortionParams,
     transformDistortion: loadedAdjustments.transformDistortion ?? INITIAL_ADJUSTMENTS.transformDistortion,
     transformVertical: loadedAdjustments.transformVertical ?? INITIAL_ADJUSTMENTS.transformVertical,
     transformHorizontal: loadedAdjustments.transformHorizontal ?? INITIAL_ADJUSTMENTS.transformHorizontal,
@@ -556,6 +577,10 @@ export const COPYABLE_ADJUSTMENT_KEYS: Array<string> = [
   Effect.GrainSize,
   BasicAdjustment.Highlights,
   ColorAdjustment.Hsl,
+  'lensCorrectionAmount',
+  'lensDistortionParams',
+  'lensMaker',
+  'lensModel',
   'lutIntensity',
   'lutName',
   'lutPath',
