@@ -453,34 +453,32 @@ fn generate_ai_bitmap_from_full_mask(
             let x_uncrop = x_out as f32 + crop_offset.0;
             let y_uncrop = y_out as f32 + crop_offset.1;
 
+            let x_centered = x_uncrop - center_x;
+            let y_centered = y_uncrop - center_y;
+
+            let x_unrotated = x_centered * cos_a + y_centered * sin_a + center_x;
+            let y_unrotated = -x_centered * sin_a + y_centered * cos_a + center_y;
+
             let x_unflipped = if flip_horizontal {
-                scaled_coarse_rotated_w - x_uncrop
+                scaled_coarse_rotated_w - x_unrotated
             } else {
-                x_uncrop
+                x_unrotated
             };
             let y_unflipped = if flip_vertical {
-                scaled_coarse_rotated_h - y_uncrop
+                scaled_coarse_rotated_h - y_unrotated
             } else {
-                y_uncrop
+                y_unrotated
             };
 
-            let x_centered = x_unflipped - center_x;
-            let y_centered = y_unflipped - center_y;
-
-            let x_rot = x_centered * cos_a + y_centered * sin_a;
-            let y_rot = -x_centered * sin_a + y_centered * cos_a;
-            let x_unrotated_fine = x_rot + center_x;
-            let y_unrotated_fine = y_rot + center_y;
-
             let (x_unrotated_coarse, y_unrotated_coarse) = match orientation_steps {
-                0 => (x_unrotated_fine, y_unrotated_fine),
-                1 => (y_unrotated_fine, scaled_coarse_rotated_w - x_unrotated_fine),
+                0 => (x_unflipped, y_unflipped),
+                1 => (y_unflipped, scaled_coarse_rotated_w - x_unflipped),
                 2 => (
-                    scaled_coarse_rotated_w - x_unrotated_fine,
-                    scaled_coarse_rotated_h - y_unrotated_fine,
+                    scaled_coarse_rotated_w - x_unflipped,
+                    scaled_coarse_rotated_h - y_unflipped,
                 ),
-                3 => (scaled_coarse_rotated_h - y_unrotated_fine, x_unrotated_fine),
-                _ => (x_unrotated_fine, y_unrotated_fine),
+                3 => (scaled_coarse_rotated_h - y_unflipped, x_unflipped),
+                _ => (x_unflipped, y_unflipped),
             };
 
             let x_src = x_unrotated_coarse / scale;
