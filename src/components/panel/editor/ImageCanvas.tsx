@@ -1063,12 +1063,6 @@ const ImageCanvas = memo(
 
     const cropImageTransforms = useMemo(() => {
       const transforms = [`rotate(${adjustments.rotation || 0}deg)`];
-      if (adjustments.flipHorizontal) {
-        transforms.push('scaleX(-1)');
-      }
-      if (adjustments.flipVertical) {
-        transforms.push('scaleY(-1)');
-      }
       return transforms.join(' ');
     }, [adjustments.rotation, adjustments.flipHorizontal, adjustments.flipVertical]);
 

@@ -926,14 +926,19 @@ fn generate_uncropped_preview(
         let orientation_steps = adjustments_clone["orientationSteps"].as_u64().unwrap_or(0) as u8;
         let coarse_rotated_image = apply_coarse_rotation(warped_image, orientation_steps);
 
+        let flip_horizontal = adjustments_clone["flipHorizontal"].as_bool().unwrap_or(false);
+        let flip_vertical = adjustments_clone["flipVertical"].as_bool().unwrap_or(false);
+        
+        let flipped_image = apply_flip(coarse_rotated_image, flip_horizontal, flip_vertical);
+
         let settings = load_settings(app_handle.clone()).unwrap_or_default();
         let preview_dim = settings.editor_preview_resolution.unwrap_or(1920);
 
-        let (rotated_w, rotated_h) = coarse_rotated_image.dimensions();
+        let (rotated_w, rotated_h) = flipped_image.dimensions();
 
         let (processing_base, scale_for_gpu) = if rotated_w > preview_dim || rotated_h > preview_dim
         {
-            let base = downscale_f32_image(&coarse_rotated_image, preview_dim, preview_dim);
+            let base = downscale_f32_image(&flipped_image, preview_dim, preview_dim);
             let scale = if rotated_w > 0 {
                 base.width() as f32 / rotated_w as f32
             } else {
@@ -941,7 +946,7 @@ fn generate_uncropped_preview(
             };
             (base, scale)
         } else {
-            (coarse_rotated_image.clone(), 1.0)
+            (flipped_image.clone(), 1.0)
         };
 
         let (preview_width, preview_height) = processing_base.dimensions();
