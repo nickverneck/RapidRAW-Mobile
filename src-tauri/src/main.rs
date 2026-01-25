@@ -2151,14 +2151,12 @@ async fn generate_ai_subject_mask(
         let mut hasher = blake3::Hasher::new();
         hasher.update(path.as_bytes());
         let mut geo_hasher = DefaultHasher::new();
-        js_adjustments["transformDistortion"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformVertical"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformHorizontal"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformRotate"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformAspect"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformScale"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformXOffset"].to_string().hash(&mut geo_hasher);
-        js_adjustments["transformYOffset"].to_string().hash(&mut geo_hasher);
+        for key in GEOMETRY_KEYS {
+            if let Some(val) = js_adjustments.get(key) {
+                key.hash(&mut geo_hasher);
+                val.to_string().hash(&mut geo_hasher);
+            }
+        }
         hasher.update(&geo_hasher.finish().to_le_bytes());
 
 
