@@ -1049,8 +1049,12 @@ async fn preview_geometry_transform(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    let loaded_image_path = state.original_image.lock().unwrap()
-        .as_ref().ok_or("No image loaded")?.path.clone();
+    let (loaded_image_path, is_raw) = {
+        let guard = state.original_image.lock().unwrap();
+        let loaded = guard.as_ref().ok_or("No image loaded")?;
+        (loaded.path.clone(), loaded.is_raw)
+    };
+
     let visual_hash = calculate_visual_hash(&loaded_image_path, &js_adjustments);
 
     let base_image_to_warp = {
@@ -1061,10 +1065,10 @@ async fn preview_geometry_transform(
         } else {
             let context = get_or_init_gpu_context(&state)?;
             
-            let (original_image, is_raw) = {
+            let original_image = {
                 let guard = state.original_image.lock().unwrap();
                 let loaded = guard.as_ref().ok_or("No image loaded")?;
-                (loaded.image.clone(), loaded.is_raw)
+                loaded.image.clone()
             };
 
             let settings = load_settings(app_handle.clone()).unwrap_or_default();
@@ -1137,7 +1141,15 @@ async fn preview_geometry_transform(
     };
 
     let final_image = tokio::task::spawn_blocking(move || -> DynamicImage {
-        let warped_image = warp_image_geometry(&base_image_to_warp, params);
+        let mut adjusted_params = params;
+
+        if is_raw { // approximate linear vignetting correction on gamma-baked & tonemapped geometry preview
+            adjusted_params.lens_vignette_amount *= 0.45;
+        } else {
+            adjusted_params.lens_vignette_amount *= 0.85;
+        }
+
+        let warped_image = warp_image_geometry(&base_image_to_warp, adjusted_params);
         let orientation_steps = js_adjustments["orientationSteps"].as_u64().unwrap_or(0) as u8;
         let flip_horizontal = js_adjustments["flipHorizontal"].as_bool().unwrap_or(false);
         let flip_vertical = js_adjustments["flipVertical"].as_bool().unwrap_or(false);
