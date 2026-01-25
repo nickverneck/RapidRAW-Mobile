@@ -1372,8 +1372,11 @@ function SettingsPanel({
           {isComponentMode && (
             <>
               {isAiMask && aiModelDownloadStatus && (
-                <div className="text-xs text-accent text-center bg-accent/10 p-1 rounded">
-                  Downloading Model: {aiModelDownloadStatus}
+                <div className="p-3 mb-4 bg-card-active rounded-md border border-surface flex items-center gap-3">
+                  <Loader2 size={16} className="text-accent animate-spin flex-shrink-0" />
+                  <div className="text-xs text-text-secondary leading-relaxed">
+                    AI Model Downloading: <span className="text-accent font-medium">{aiModelDownloadStatus}</span>
+                  </div>
                 </div>
               )}
               
