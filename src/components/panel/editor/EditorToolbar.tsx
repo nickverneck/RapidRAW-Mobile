@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useRef, useMemo } from 'react';
 import { Eye, EyeOff, ArrowLeft, Maximize, Loader2, Undo, Redo, Waves } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { SelectedImage } from '../../ui/AppProperties';
 import { IconAperture, IconCalendar, IconClock, IconFocalLength, IconIso, IconShutter } from './ExifIcons';
@@ -344,12 +345,38 @@ const EditorToolbar = memo(
             {showOriginal ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
           <button
-            className="bg-surface text-text-primary p-2 rounded-full hover:bg-card-active transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-surface text-text-primary p-2 rounded-full hover:bg-card-active transition-colors disabled:opacity-50 disabled:cursor-not-allowed relative"
             disabled={isFullScreenLoading}
             onClick={onToggleFullScreen}
             title="Toggle Fullscreen (F)"
           >
-            <Maximize size={20} />
+            <div className="relative w-5 h-5 flex items-center justify-center">
+              <AnimatePresence mode="wait" initial={false}>
+                {isFullScreenLoading ? (
+                  <motion.div
+                    key="loader"
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute"
+                  >
+                    <Loader2 size={20} className="animate-spin text-accent" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="maximize"
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute"
+                  >
+                    <Maximize size={20} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </button>
         </div>
       </div>
