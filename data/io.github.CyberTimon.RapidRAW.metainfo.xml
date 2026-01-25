@@ -29,7 +29,7 @@
   <launchable type="desktop-id">io.github.CyberTimon.RapidRAW.desktop</launchable>
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/6f56816ff765e678586c977752aae2cc999a1b92/.github/assets/editor.png</image>
+      <image>https://raw.githubusercontent.com/CyberTimon/RapidRAW/2f7c0354580bbd403287a924e2a7fce9f2cdfc40/.github/assets/editor.png</image>
         <caption>Editor interface</caption>
     </screenshot>
   </screenshots>
@@ -38,6 +38,28 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.9" date="2026-01-25">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.9</url>
+        <description translate="no">
+            <p>New Features</p>
+            <ul>
+                <li>Lens Correction: Integrated the Lensfun library for dedicated corrections of optical flaws.</li>
+                <li>Geometry Warping Tools: Added a dedicated transform modal to fix perspective and composition with dynamic alignment guides.</li>
+                <li>Refactored Masking System: Rebuilt the masking panel to support sequential masking, drag-and-drop reordering, and individual component opacity.</li>
+                <li>Export Presets: Added a manager to save and reuse export settings like quality and dimensions.</li>
+                <li>AI Infrastructure: Migrated to a dedicated middleware client (RapidRAW-AI-Connector) for more robust and flexible generative AI integration.</li>
+                <li>Improved Large Library Performance: The filmstrip now uses virtualized rendering, significantly speeding up navigation in folders with thousands of images.</li>
+                <li>Centralized EXIF: Refactored metadata handling for better consistency and added support for formats like .RAF, .CR3 and more.</li>
+            </ul>
+            <p>Core Improvements</p>
+            <ul>
+                <li>Implemented library preloading to reduce image loading times.</li>
+                <li>Improved UI contrast and standardized slider styles across the application.</li>
+                <li>Updated the Rawler library for improved camera support.</li>
+                <li>General stability improvements and "under the hood" code cleanup.</li>
+            </ul>
+        </description>
+    </release>
     <release version="v1.4.8" date="2026-01-11">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.8</url>
         <description translate="no">
