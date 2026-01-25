@@ -197,7 +197,7 @@ fn interpolate_pixel(
     y: f32,
     pixel_out: &mut [f32],
 ) {
-    if x < 0.0 || y < 0.0 || x >= (src_width as f32 - 1.0) || y >= (src_height as f32 - 1.0) {
+    if x.is_nan() || y.is_nan() || x < 0.0 || y < 0.0 || x >= (src_width as f32 - 1.0) || y >= (src_height as f32 - 1.0) {
         return;
     }
 
@@ -281,34 +281,44 @@ fn interpolate_pixel_with_tca(
     vb: f32,
     pixel_out: &mut [f32],
 ) {
-    // Green channel is reference (vr=1.0)
     let gx = base_x;
     let gy = base_y;
 
-    // Red channel scaled around center
     let rx = cx + (base_x - cx) * vr;
     let ry = cy + (base_y - cy) * vr;
 
-    // Blue channel scaled around center
     let bx = cx + (base_x - cx) * vb;
     let by = cy + (base_y - cy) * vb;
 
     let sample_channel = |target_x: f32, target_y: f32, channel_idx: usize| -> f32 {
-        if target_x < 0.0 || target_y < 0.0 || target_x >= (src_width as f32 - 1.0) || target_y >= (src_height as f32 - 1.0) {
+        if target_x.is_nan() || target_y.is_nan() {
             return 0.0;
         }
-        let x0 = target_x.floor() as usize;
-        let y0 = target_y.floor() as usize;
-        let wx = target_x - x0 as f32;
-        let wy = target_y - y0 as f32;
+
+        let x_clamped = target_x.clamp(0.0, src_width as f32 - 1.0);
+        let y_clamped = target_y.clamp(0.0, src_height as f32 - 1.0);
+
+        let mut x0 = x_clamped.floor() as usize;
+        let mut y0 = y_clamped.floor() as usize;
+
+        if x0 >= src_width - 1 {
+            x0 = src_width.saturating_sub(2);
+        }
+        if y0 >= src_height - 1 {
+            y0 = src_height.saturating_sub(2);
+        }
+
+        let wx = x_clamped - x0 as f32;
+        let wy = y_clamped - y0 as f32;
         let one_minus_wx = 1.0 - wx;
         let one_minus_wy = 1.0 - wy;
 
         let stride = src_width * 3;
         let idx_row0 = y0 * stride;
         let idx_row1 = idx_row0 + stride;
+
         let idx_p00 = idx_row0 + x0 * 3 + channel_idx;
-        
+
         unsafe {
             let p00 = *src_raw.get_unchecked(idx_p00);
             let p10 = *src_raw.get_unchecked(idx_p00 + 3);
