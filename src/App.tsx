@@ -1207,6 +1207,10 @@ function App() {
           break;
       }
 
+      if (comparison === 0 && key !== 'name') {
+        return a.path.localeCompare(b.path);
+      }
+
       return order === SortDirection.Ascending ? comparison : -comparison;
     });
     return list;
