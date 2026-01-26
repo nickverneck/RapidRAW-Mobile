@@ -725,7 +725,28 @@ function App() {
       }));
 
       try {
+        const transformAdjustments = {
+          transformDistortion: adjustments.transformDistortion,
+          transformVertical: adjustments.transformVertical,
+          transformHorizontal: adjustments.transformHorizontal,
+          transformRotate: adjustments.transformRotate,
+          transformAspect: adjustments.transformAspect,
+          transformScale: adjustments.transformScale,
+          transformXOffset: adjustments.transformXOffset,
+          transformYOffset: adjustments.transformYOffset,
+          lensDistortionAmount: adjustments.lensDistortionAmount,
+          lensVignetteAmount: adjustments.lensVignetteAmount,
+          lensTcaAmount: adjustments.lensTcaAmount,
+          lensDistortionParams: adjustments.lensDistortionParams,
+          lensMaker: adjustments.lensMaker,
+          lensModel: adjustments.lensModel,
+          lensDistortionEnabled: adjustments.lensDistortionEnabled,
+          lensTcaEnabled: adjustments.lensTcaEnabled,
+          lensVignetteEnabled: adjustments.lensVignetteEnabled,
+        };
+
         const newMaskParams: any = await invoke(Invokes.GenerateAiSubjectMask, {
+          jsAdjustments: transformAdjustments,
           endPoint: [endPoint.x, endPoint.y],
           flipHorizontal: adjustments.flipHorizontal,
           flipVertical: adjustments.flipVertical,
