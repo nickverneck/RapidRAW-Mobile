@@ -387,7 +387,13 @@ pub fn autodetect_lens(maker: String, model: String, state: State<AppState>) -> 
         if !lenses_from_maker.is_empty() {
             let best_match = lenses_from_maker
                 .into_iter()
-                .filter_map(|lens| matcher.fuzzy_match(lens.get_name(), &clean_model).map(|score| (score, lens)))
+                .filter_map(|lens| {
+                    matcher.fuzzy_match(lens.get_name(), &clean_model).map(|score| {
+                        let length_penalty = (lens.get_name().len() as i64 - clean_model.len() as i64).max(0) / 2;
+                        let adjusted_score = score - length_penalty;
+                        (adjusted_score, lens)
+                    })
+                })
                 .max_by_key(|(score, _)| *score)
                 .map(|(_, lens)| (lens.get_maker().to_string(), lens.get_name().to_string()));
 
