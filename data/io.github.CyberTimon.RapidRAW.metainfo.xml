@@ -38,6 +38,23 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.10" date="2026-01-26">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.10</url>
+        <description translate="no">
+            <p>New Features</p>
+            <ul>
+                <li>Reworked Local Contrast: A completely new shader approach for sharpness, clarity, and structure that eliminates "black hole" artifacts around high-contrast edges.</li>
+                <li>Fine Rotation Grid: The rotation and transform grid now dynamically transitions from the rule of thirds to a high-precision fine grid for better alignment accuracy.</li>
+                <li>Favourite Lenses: Frequently used lenses can now be saved in settings for quick access within the Lens Correction panel.</li>
+                <li>Improved Lens Correction: Enhanced the mathematical accuracy of lens profile applications based on initial testing and feedback.</li>
+            </ul>
+            <p>Core Improvements</p>
+            <ul>
+                <li>Fixed quick eraser functionality.</li>
+                <li>Improved contrast for the sepia UI theme.</li>
+            </ul>
+        </description>
+    </release>
     <release version="v1.4.9" date="2026-01-25">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.9</url>
         <description translate="no">

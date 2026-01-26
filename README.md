@@ -64,6 +64,8 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 <details>
 <summary><strong>Recent Changes</strong></summary>
 
+*   **2026-01-26:** Favorite lens saving, improved rotation controls (finer grid), better local contrast adjustments
+*   **2026-01-25:** Filmstrip performance boost, improved sorting, lens distortion fixes for AI masks & crop
 *   **2026-01-24:** Added automatic lens, TCA & vignette correction using lensfun
 *   **2026-01-22:** Improved and centralized EXIF data handling for greater accuracy and support
 *   **2026-01-21:** Inpainting now works correctly on images with geometry transformations
@@ -72,12 +74,12 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
 *   **2026-01-18:** Implement image geometry transformation utils
 *   **2026-01-17:** Refactor AI panel to correctly work with the new masking system
 *   **2026-01-16:** Major masking system overhaul with drag & drop, per-mask opacity/invert & UI improvements
-*   **2026-01-13:** New python middleware client for external generative AI integration (ComfyUI)
-*   **2026-01-12:** Created a RapidRAW community discord server
 
 <details>
 <summary><strong>Expand further</strong></summary>
 
+*   **2026-01-13:** New python middleware client for external generative AI integration (ComfyUI)
+*   **2026-01-12:** Created a RapidRAW community discord server
 *   **2026-01-11:** Separate preview worker, optional high-quality live previews & mask/ai patch caching
 *   **2026-01-10:** Enhanced EXIF UI, optimized color wheels/curves & rawler update
 *   **2026-01-09:** Live previews for all adjustments & masks with optimized GPU processing
