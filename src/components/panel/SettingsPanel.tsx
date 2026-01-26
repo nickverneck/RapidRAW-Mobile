@@ -13,6 +13,7 @@ import {
   X,
   SlidersHorizontal,
   Keyboard,
+  Bookmark,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
@@ -72,6 +73,11 @@ interface TestStatus {
   message: string;
   success: boolean | null;
   testing: boolean;
+}
+
+interface MyLens {
+  maker: string;
+  model: string;
 }
 
 const EXECUTE_TIMEOUT = 3000;
@@ -252,6 +258,11 @@ export default function SettingsPanel({
   const [aiConnectorAddress, setAiConnectorAddress] = useState<string>(appSettings?.aiConnectorAddress || '');
   const [newShortcut, setNewShortcut] = useState('');
 
+  const [lensMakers, setLensMakers] = useState<string[]>([]);
+  const [lensModels, setLensModels] = useState<string[]>([]);
+  const [tempLensMaker, setTempLensMaker] = useState<string>('');
+  const [tempLensModel, setTempLensModel] = useState<string>('');
+
   const [processingSettings, setProcessingSettings] = useState({
     editorPreviewResolution: appSettings?.editorPreviewResolution || 1920,
     rawHighlightCompression: appSettings?.rawHighlightCompression ?? 2.5,
@@ -289,6 +300,10 @@ export default function SettingsPanel({
       }
     };
     fetchLogPath();
+
+    invoke('get_lensfun_makers')
+      .then((m: any) => setLensMakers(m))
+      .catch(console.error);
   }, []);
 
   const handleProcessingSettingChange = (key: string, value: any) => {
@@ -312,6 +327,47 @@ export default function SettingsPanel({
   const handleProviderChange = (provider: string) => {
     setAiProvider(provider);
     onSettingsChange({ ...appSettings, aiProvider: provider });
+  };
+
+  const handleTempMakerChange = (maker: string) => {
+    setTempLensMaker(maker);
+    setTempLensModel('');
+    setLensModels([]);
+    if (maker) {
+      invoke('get_lensfun_lenses_for_maker', { maker })
+        .then((l: any) => setLensModels(l))
+        .catch(console.error);
+    }
+  };
+
+  const handleAddLens = () => {
+    if (tempLensMaker && tempLensModel) {
+      const currentLenses: MyLens[] = appSettings?.myLenses || [];
+      if (!currentLenses.some((l) => l.maker === tempLensMaker && l.model === tempLensModel)) {
+        const newLenses = [...currentLenses, { maker: tempLensMaker, model: tempLensModel }];
+
+        newLenses.sort((a, b) => {
+          const makerComp = a.maker.localeCompare(b.maker);
+          if (makerComp !== 0) return makerComp;
+          return a.model.localeCompare(b.model);
+        });
+
+        onSettingsChange({
+          ...appSettings,
+          myLenses: newLenses,
+        });
+        setTempLensMaker('');
+        setTempLensModel('');
+        setLensModels([]);
+      }
+    }
+  };
+
+  const handleRemoveLens = (index: number) => {
+    const currentLenses: MyLens[] = appSettings?.myLenses || [];
+    const newLenses = [...currentLenses];
+    newLenses.splice(index, 1);
+    onSettingsChange({ ...appSettings, myLenses: newLenses });
   };
 
   const effectiveRootPath = rootPath || appSettings?.lastRootPath;
@@ -669,6 +725,65 @@ export default function SettingsPanel({
                         })
                       }
                     />
+                  </div>
+                </div>
+
+                <div className="p-6 bg-surface rounded-xl shadow-md">
+                  <h2 className="text-xl font-semibold mb-6 text-accent">My Lenses</h2>
+                  <p className="text-sm text-text-secondary mb-6">
+                    Create a list of your frequently used lenses to quickly access them in the Lens Correction panel.
+                  </p>
+
+                  <div className="bg-bg-primary rounded-lg p-4 border border-border-color mb-6">
+                    <h3 className="text-sm font-medium text-text-primary mb-3">Add New Lens</h3>
+                    <div className="space-y-4">
+                      <Dropdown
+                        options={lensMakers.map((m) => ({ label: m, value: m }))}
+                        value={tempLensMaker}
+                        onChange={handleTempMakerChange}
+                        placeholder="Select Manufacturer"
+                      />
+                      <Dropdown
+                        options={lensModels.map((m) => ({ label: m, value: m }))}
+                        value={tempLensModel}
+                        onChange={setTempLensModel}
+                        placeholder="Select Lens Model"
+                        disabled={!tempLensMaker}
+                      />
+                      <Button onClick={handleAddLens} disabled={!tempLensMaker || !tempLensModel} className="w-full">
+                        <Plus size={16} className="mr-2" />
+                        Add to My Lenses
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium text-text-primary mb-3">Saved Lenses</h3>
+                    {(!appSettings?.myLenses || appSettings.myLenses.length === 0) && (
+                      <p className="text-sm text-text-secondary italic">No lenses added yet.</p>
+                    )}
+                    <div className="divide-y divide-border-color">
+                      {(appSettings?.myLenses || []).map((lens: MyLens, index: number) => (
+                        <div key={`${lens.maker}-${lens.model}-${index}`} className="flex justify-between items-center py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-surface rounded-md text-accent">
+                              <Bookmark size={16} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-text-primary">{lens.model}</p>
+                              <p className="text-xs text-text-secondary">{lens.maker}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveLens(index)}
+                            className="p-2 text-text-secondary hover:text-red-400 hover:bg-bg-primary rounded-md transition-colors"
+                            title="Remove lens"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

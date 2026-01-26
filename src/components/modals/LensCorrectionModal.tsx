@@ -15,6 +15,7 @@ import {
   SquareDashed,
   CircleDashed,
   Activity,
+  Bookmark,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import Button from '../ui/Button';
@@ -50,6 +51,11 @@ interface GeometryParams {
   lens_distortion_enabled: boolean;
   lens_tca_enabled: boolean;
   lens_vignette_enabled: boolean;
+}
+
+interface MyLens {
+  maker: string;
+  model: string;
 }
 
 interface LensParams {
@@ -127,6 +133,7 @@ export default function LensCorrectionModal({
   const [isApplying, setIsApplying] = useState(false);
   const [makers, setMakers] = useState<string[]>([]);
   const [lenses, setLenses] = useState<string[]>([]);
+  const [myLenses, setMyLenses] = useState<MyLens[]>([]);
   const [isMounted, setIsMounted] = useState(false);
   const [show, setShow] = useState(false);
   const [detectionStatus, setDetectionStatus] = useState<'idle' | 'detecting' | 'not_found' | 'success'>('idle');
@@ -267,6 +274,12 @@ export default function LensCorrectionModal({
     if (isOpen) {
       setIsMounted(true);
       const timer = setTimeout(() => setShow(true), 10);
+
+      invoke('load_settings').then((settings: any) => {
+        if (settings?.myLenses) {
+          setMyLenses(settings.myLenses);
+        }
+      });
       
       const initParams: LensParams = {
         lensMaker: currentAdjustments.lensMaker,
@@ -336,6 +349,26 @@ export default function LensCorrectionModal({
       setParams(finalParams);
       updatePreview(finalParams);
     }
+  };
+
+  const handleMyLensSelect = async (val: string) => {
+    if (!val || val === 'none') return;
+    const index = parseInt(val);
+    const selected = myLenses[index];
+    if (!selected) return;
+
+    const tempParams = { ...params, lensMaker: selected.maker, lensModel: selected.model };
+    setParams(tempParams);
+    setDetectionStatus('idle');
+
+    invoke('get_lensfun_lenses_for_maker', { maker: selected.maker })
+      .then((l: any) => setLenses(l))
+      .catch(console.error);
+
+    const distortionParams = await fetchDistortionParams(selected.maker, selected.model);
+    const finalParams = { ...tempParams, lensDistortionParams: distortionParams };
+    setParams(finalParams);
+    updatePreview(finalParams);
   };
 
   const handleAmountChange = (key: keyof LensParams, amount: number) => {
@@ -469,6 +502,15 @@ export default function LensCorrectionModal({
 
   const makerOptions = makers.map(m => ({ label: m, value: m }));
   const lensOptions = lenses.map(m => ({ label: m, value: m }));
+  const myLensOptions = useMemo(() => {
+    if (myLenses.length === 0) {
+      return [{ label: 'Manage your lenses in Settings', value: 'none' }];
+    }
+    return myLenses.map((l, i) => ({
+      label: `${l.maker} - ${l.model}`,
+      value: i.toString(),
+    }));
+  }, [myLenses]);
 
   const autoDetectButtonContent = () => {
     switch (detectionStatus) {
@@ -540,37 +582,37 @@ export default function LensCorrectionModal({
               </motion.div>
             )}
           </AnimatePresence>
-
-          {focalLength && (
-            <div className="text-xs text-center text-text-tertiary flex flex-col gap-0.5">
-              <p>Focal Length: <span className="text-text-secondary font-mono">{focalLength.toFixed(1)}mm</span></p>
-              {focalLength35 && focalLength35 !== focalLength && (
-                <p className="text-text-secondary font-mono">(35mm equiv: {focalLength35.toFixed(1)}mm)</p>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="space-y-3">
           <p className="text-sm font-semibold text-text-primary">Manual Selection</p>
+
           <div className="space-y-4">
+              <Dropdown
+                options={myLensOptions}
+                value=""
+                onChange={handleMyLensSelect}
+                placeholder="Choose Saved Lens"
+              />
+            
             <Dropdown
               options={makerOptions}
               value={params.lensMaker}
               onChange={handleMakerChange}
               placeholder="Select Manufacturer"
             />
-            <Dropdown
-              options={lensOptions}
-              value={params.lensModel}
-              onChange={handleModelChange}
-              placeholder="Select Lens Model"
-              disabled={!params.lensMaker}
-            />
+            {params.lensMaker && (
+              <Dropdown
+                options={lensOptions}
+                value={params.lensModel}
+                onChange={handleModelChange}
+                placeholder="Select Lens Model"
+              />
+            )}
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-3">
           <p className="text-sm font-semibold text-text-primary">Corrections</p>
           
           <div className="flex flex-col gap-4">

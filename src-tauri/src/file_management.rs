@@ -130,6 +130,12 @@ pub struct LastFolderState {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MyLens {
+    pub maker: String,
+    pub model: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum PasteMode {
     Merge,
@@ -295,6 +301,8 @@ pub struct AppSettings {
     pub library_view_mode: Option<String>,
     #[serde(default = "default_export_presets")]
     pub export_presets: Vec<ExportPreset>,
+    #[serde(default)]
+    pub my_lenses: Option<Vec<MyLens>>,
 }
 
 fn default_adjustment_visibility() -> HashMap<String, bool> {
@@ -349,6 +357,7 @@ impl Default for AppSettings {
             linux_gpu_optimization: Some(false),
             library_view_mode: Some("flat".to_string()),
             export_presets: default_export_presets(),
+            my_lenses: Some(Vec::new()),
         }
     }
 }

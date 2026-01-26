@@ -144,6 +144,7 @@ export interface AppSettings {
   processingBackend?: string;
   linuxGpuOptimization?: boolean;
   exportPresets?: ExportPreset[];
+  myLenses?: any;
 }
 
 export interface BrushSettings {
