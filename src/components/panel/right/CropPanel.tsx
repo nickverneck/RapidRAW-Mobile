@@ -27,6 +27,7 @@ interface CropPanelProps {
   selectedImage: SelectedImage;
   setAdjustments(adjustments: Partial<Adjustments> | ((prev: Adjustments) => Adjustments)): void;
   setIsStraightenActive(active: any): void;
+  setIsRotationActive?(active: boolean): void;
 }
 
 interface CropPreset {
@@ -52,6 +53,7 @@ export default function CropPanel({
   selectedImage,
   setAdjustments,
   setIsStraightenActive,
+  setIsRotationActive: setGlobalRotationActive,
 }: CropPanelProps) {
   const [customW, setCustomW] = useState('');
   const [customH, setCustomH] = useState('');
@@ -65,6 +67,7 @@ export default function CropPanel({
     const handleDragEndGlobal = () => {
       if (isRotationActive) {
         setIsRotationActive(false);
+        setGlobalRotationActive?.(false);
       }
     };
 
@@ -77,7 +80,7 @@ export default function CropPanel({
       window.removeEventListener('mouseup', handleDragEndGlobal);
       window.removeEventListener('touchend', handleDragEndGlobal);
     };
-  }, [isRotationActive]);
+  }, [isRotationActive, setGlobalRotationActive]);
 
   const getEffectiveOriginalRatio = useCallback(() => {
     if (!selectedImage?.width || !selectedImage?.height) {
@@ -292,10 +295,12 @@ export default function CropPanel({
 
   const handleRotationMouseDown = () => {
     setIsRotationActive(true);
+    setGlobalRotationActive?.(true);
   };
 
   const handleRotationMouseUp = () => {
     setIsRotationActive(false);
+    setGlobalRotationActive?.(false);
   };
 
   return (

@@ -340,6 +340,7 @@ function App() {
   const [isFullResolution, setIsFullResolution] = useState(false);
   const [fullResolutionUrl, setFullResolutionUrl] = useState<string | null>(null);
   const [isLoadingFullRes, setIsLoadingFullRes] = useState(false);
+  const [isRotationActive, setIsRotationActive] = useState(false);
   const [transformedOriginalUrl, setTransformedOriginalUrl] = useState<string | null>(null);
   const fullResRequestRef = useRef<any>(null);
   const fullResCacheKeyRef = useRef<string | null>(null);
@@ -4328,6 +4329,7 @@ function App() {
               isFullResolution={isFullResolution}
               fullResolutionUrl={fullResolutionUrl}
               isLoadingFullRes={isLoadingFullRes}
+              isRotationActive={isRotationActive}
             />
             <Resizer
               direction={Orientation.Horizontal}
@@ -4415,6 +4417,7 @@ function App() {
                           selectedImage={selectedImage}
                           setAdjustments={setAdjustments}
                           setIsStraightenActive={setIsStraightenActive}
+                          setIsRotationActive={setIsRotationActive}
                         />
                       )}
                       {renderedRightPanel === Panel.Masks && (

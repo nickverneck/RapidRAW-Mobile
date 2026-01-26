@@ -32,6 +32,7 @@ interface EditorProps {
   isLoading: boolean;
   isMaskControlHovered: boolean;
   isStraightenActive: boolean;
+  isRotationActive?: boolean;
   isWaveformVisible: boolean;
   onBackToLibrary(): void;
   onCloseWaveform(): void;
@@ -85,6 +86,7 @@ export default function Editor({
   isLoading,
   isMaskControlHovered,
   isStraightenActive,
+  isRotationActive,
   isWaveformVisible,
   onBackToLibrary,
   onCloseWaveform,
@@ -569,6 +571,7 @@ export default function Editor({
                 isMaskControlHovered={isMaskControlHovered}
                 isMasking={isMasking}
                 isStraightenActive={isStraightenActive}
+                isRotationActive={isRotationActive}
                 maskOverlayUrl={maskOverlayUrl}
                 onGenerateAiMask={onGenerateAiMask}
                 onQuickErase={onQuickErase}
