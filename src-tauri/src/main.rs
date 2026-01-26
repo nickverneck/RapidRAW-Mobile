@@ -1144,9 +1144,9 @@ async fn preview_geometry_transform(
         let mut adjusted_params = params;
 
         if is_raw { // approximate linear vignetting correction on gamma-baked & tonemapped geometry preview
-            adjusted_params.lens_vignette_amount *= 0.45;
+            adjusted_params.lens_vignette_amount *= 0.4;
         } else {
-            adjusted_params.lens_vignette_amount *= 0.85;
+            adjusted_params.lens_vignette_amount *= 0.8;
         }
 
         let warped_image = warp_image_geometry(&base_image_to_warp, adjusted_params);

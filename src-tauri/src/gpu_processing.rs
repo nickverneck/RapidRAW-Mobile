@@ -657,7 +657,7 @@ impl GpuProcessor {
                 };
 
                 let did_create_sharpness_blur =
-                    create_blur(&mut encoder, 1.0, &self.sharpness_blur_view);
+                    create_blur(&mut encoder, 2.0, &self.sharpness_blur_view);
                 let did_create_clarity_blur =
                     create_blur(&mut encoder, 6.0, &self.clarity_blur_view);
                 let did_create_structure_blur =

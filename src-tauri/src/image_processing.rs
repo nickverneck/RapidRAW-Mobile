@@ -349,12 +349,12 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
     let origin_vec = NaVector3::new(inv[(0, 2)], inv[(1, 2)], inv[(2, 2)]);
 
     let max_radius_sq_inv = 1.0 / (cx * cx + cy * cy);
-    let k_distortion = params.distortion / 100.0;
+    let k_distortion = (params.distortion / 100.0) * 2.5; // hack to align it;
 
     let lk1 = params.lens_dist_k1 as f64;
     let lk2 = params.lens_dist_k2 as f64;
     let lk3 = params.lens_dist_k3 as f64;
-    let lens_dist_amt = params.lens_distortion_amount as f64;
+    let lens_dist_amt = (params.lens_distortion_amount as f64) * 2.5; // hack to align it
 
     let has_lens_correction = params.lens_distortion_enabled && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
     let is_ptlens = params.lens_model == 1;
@@ -367,7 +367,7 @@ pub fn warp_image_geometry(image: &DynamicImage, params: GeometryParams) -> Dyna
     let vk1 = params.vig_k1 as f64;
     let vk2 = params.vig_k2 as f64;
     let vk3 = params.vig_k3 as f64;
-    let lens_vig_amt = params.lens_vignette_amount as f64;
+    let lens_vig_amt = (params.lens_vignette_amount as f64) * 0.8; // hack to align it
 
     let has_vignetting = params.lens_vignette_enabled && (vk1.abs() > 1e-6 || vk2.abs() > 1e-6 || vk3.abs() > 1e-6) && lens_vig_amt > 0.01;
 
@@ -474,7 +474,7 @@ pub fn unwarp_image_geometry(warped_image: &DynamicImage, params: GeometryParams
     let lk1 = params.lens_dist_k1 as f64;
     let lk2 = params.lens_dist_k2 as f64;
     let lk3 = params.lens_dist_k3 as f64;
-    let lens_dist_amt = params.lens_distortion_amount as f64;
+    let lens_dist_amt = (params.lens_distortion_amount as f64) * 2.0;
 
     let has_lens_correction = params.lens_distortion_enabled && (lk1.abs() > 1e-6 || lk2.abs() > 1e-6 || lk3.abs() > 1e-6);
     let is_ptlens = params.lens_model == 1;
