@@ -691,7 +691,8 @@ fn apply_local_contrast(
 
         if (mode == 0u) {
             let edge_magnitude = abs(log_ratio);
-            let edge_dampener = 1.0 - smoothstep(0.35, 1.8, edge_magnitude);
+            let normalized_edge = clamp(edge_magnitude / 3.0, 0.0, 1.0);
+            let edge_dampener = 1.0 - pow(normalized_edge, 0.5);
             
             effective_amount = amount * edge_dampener * 0.8;
         } 

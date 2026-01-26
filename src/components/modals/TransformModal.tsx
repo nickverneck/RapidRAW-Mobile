@@ -84,6 +84,50 @@ const DEFAULT_PARAMS: TransformParams = {
 
 const SLIDER_DIVISOR = 100.0;
 
+const CustomGrid = ({ 
+  denseVisible, 
+  ruleOfThirdsVisible 
+}: { 
+  denseVisible: boolean; 
+  ruleOfThirdsVisible: boolean; 
+}) => (
+  <div className="absolute inset-0 pointer-events-none w-full h-full z-10">
+    <div 
+      className={clsx(
+        "absolute inset-0 w-full h-full transition-opacity duration-300 ease-in-out",
+        ruleOfThirdsVisible ? "opacity-100" : "opacity-0"
+      )}
+    >
+       <div className="absolute top-0 bottom-0 border-l border-white/40 left-1/3" />
+       <div className="absolute top-0 bottom-0 border-l border-white/40 left-2/3" />
+       <div className="absolute left-0 right-0 border-t border-white/40 top-1/3" />
+       <div className="absolute left-0 right-0 border-t border-white/40 top-2/3" />
+    </div>
+
+    <div 
+      className={clsx(
+        "absolute inset-0 w-full h-full transition-opacity duration-500 ease-in-out",
+        denseVisible ? "opacity-100" : "opacity-0"
+      )}
+    >
+       {[...Array(17)].map((_, i) => (
+         <div 
+           key={`v-${i}`} 
+           className="absolute top-0 bottom-0 border-l border-white/40" 
+           style={{ left: `${(i + 1) * 5.555}%` }} 
+         />
+       ))}
+       {[...Array(17)].map((_, i) => (
+         <div 
+           key={`h-${i}`} 
+           className="absolute left-0 right-0 border-t border-white/40" 
+           style={{ top: `${(i + 1) * 5.555}%` }} 
+         />
+       ))}
+    </div>
+  </div>
+);
+
 export default function TransformModal({ isOpen, onClose, onApply, currentAdjustments }: TransformModalProps) {
   const [params, setParams] = useState<TransformParams>(DEFAULT_PARAMS);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -91,6 +135,8 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
   const [showGrid, setShowGrid] = useState(true);
   const [showLines, setShowLines] = useState(false);
   const [isCompareActive, setIsCompareActive] = useState(false);
+  const [isInteracting, setIsInteracting] = useState(false);
+
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -102,28 +148,43 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
 
   useEffect(() => {
     if (!isDragging) return;
-
     const handleWindowMouseMove = (e: MouseEvent) => {
       const dx = e.clientX - lastMousePos.current.x;
       const dy = e.clientY - lastMousePos.current.y;
       setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
       lastMousePos.current = { x: e.clientX, y: e.clientY };
     };
-
-    const handleWindowMouseUp = () => {
-      setIsDragging(false);
-    };
-
+    const handleWindowMouseUp = () => setIsDragging(false);
     window.addEventListener('mousemove', handleWindowMouseMove);
     window.addEventListener('mouseup', handleWindowMouseUp);
-
     return () => {
       window.removeEventListener('mousemove', handleWindowMouseMove);
       window.removeEventListener('mouseup', handleWindowMouseUp);
     };
   }, [isDragging]);
 
+  useEffect(() => {
+    const handleDragEndGlobal = () => {
+      if (isInteracting) setIsInteracting(false);
+    };
+
+    if (isInteracting) {
+      window.addEventListener('mouseup', handleDragEndGlobal);
+      window.addEventListener('touchend', handleDragEndGlobal);
+    }
+
+    return () => {
+      window.removeEventListener('mouseup', handleDragEndGlobal);
+      window.removeEventListener('touchend', handleDragEndGlobal);
+    };
+  }, [isInteracting]);
+
+  const handleInteractionStart = useCallback(() => {
+    setIsInteracting(true);
+  }, []);
+
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     setIsDragging(true);
     lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -132,21 +193,16 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
   const handleWheel = (e: React.WheelEvent) => {
     e.stopPropagation();
     if (!containerRef.current) return;
-
     const rect = containerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left - rect.width / 2;
     const mouseY = e.clientY - rect.top - rect.height / 2;
-
     const delta = -e.deltaY * 0.001;
     const newZoom = Math.min(Math.max(0.1, zoom + delta), 8);
-
     const scaleRatio = newZoom / zoom;
     const mouseFromCenterX = mouseX - pan.x;
     const mouseFromCenterY = mouseY - pan.y;
-
     const newPanX = mouseX - mouseFromCenterX * scaleRatio;
     const newPanY = mouseY - mouseFromCenterY * scaleRatio;
-
     setZoom(newZoom);
     setPan({ x: newPanX, y: newPanY });
   };
@@ -196,7 +252,6 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
     if (isOpen) {
       setIsMounted(true);
       const timer = setTimeout(() => setShow(true), 10);
-
       const initParams = {
         distortion: currentAdjustments.transformDistortion ?? 0,
         vertical: currentAdjustments.transformVertical ?? 0,
@@ -211,7 +266,6 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
       setShowLines(false);
       handleResetZoom();
       updatePreview(initParams, false);
-
       return () => clearTimeout(timer);
     } else {
       setShow(false);
@@ -297,7 +351,10 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
         </button>
       </div>
 
-      <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-6 text-text-secondary">
+      <div 
+        className="flex-grow overflow-y-auto p-4 flex flex-col gap-6 text-text-secondary"
+        onPointerDownCapture={handleInteractionStart}
+      >
         <div className="space-y-3">
           <p className="text-sm font-semibold text-text-primary">Distortion</p>
           <Slider
@@ -439,13 +496,11 @@ export default function TransformModal({ isOpen, onClose, onApply, currentAdjust
                     draggable={false}
                   />
 
-                  {showGrid && !isCompareActive && (
-                    <div className="absolute inset-0 border border-white/40 pointer-events-none shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-                      <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30"></div>
-                      <div className="absolute right-1/3 top-0 bottom-0 w-px bg-white/30"></div>
-                      <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30"></div>
-                      <div className="absolute bottom-1/3 left-0 right-0 h-px bg-white/30"></div>
-                    </div>
+                  {!isCompareActive && (
+                    <CustomGrid 
+                      ruleOfThirdsVisible={showGrid}
+                      denseVisible={showGrid && isInteracting}
+                    />
                   )}
 
                   {isCompareActive && (

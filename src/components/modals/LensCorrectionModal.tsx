@@ -6,7 +6,6 @@ import {
   Check,
   Info,
   Loader,
-  Grid3X3,
   Eye,
   EyeOff,
   ZoomIn,
@@ -138,7 +137,6 @@ export default function LensCorrectionModal({
   const [show, setShow] = useState(false);
   const [detectionStatus, setDetectionStatus] = useState<'idle' | 'detecting' | 'not_found' | 'success'>('idle');
 
-  const [showGrid, setShowGrid] = useState(true);
   const [isCompareActive, setIsCompareActive] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -782,14 +780,6 @@ export default function LensCorrectionModal({
                     alt="Lens Correction Preview"
                     draggable={false}
                   />
-                  {showGrid && !isCompareActive && (
-                    <div className="absolute inset-0 border border-white/40 pointer-events-none shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-                      <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/30"></div>
-                      <div className="absolute right-1/3 top-0 bottom-0 w-px bg-white/30"></div>
-                      <div className="absolute top-1/3 left-0 right-0 h-px bg-white/30"></div>
-                      <div className="absolute bottom-1/3 left-0 right-0 h-px bg-white/30"></div>
-                    </div>
-                  )}
                   {isCompareActive && (
                     <div className="absolute top-4 left-4 bg-accent text-button-text text-xs px-2 py-1 rounded shadow-lg z-20">
                       ORIGINAL
@@ -804,17 +794,6 @@ export default function LensCorrectionModal({
             className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/70 backdrop-blur-md p-1.5 rounded-full border border-white/10 shadow-xl z-20 pointer-events-auto"
             onMouseDown={e => e.stopPropagation()}
           >
-            <button
-              onClick={() => setShowGrid(!showGrid)}
-              className={clsx(
-                'p-2 rounded-full transition-colors',
-                showGrid ? 'bg-white/20 text-white' : 'text-white/60 hover:bg-white/10 hover:text-white'
-              )}
-              title="Toggle Grid"
-            >
-              <Grid3X3 size={18} />
-            </button>
-            <div className="w-px h-5 bg-white/20 mx-1"></div>
             <button
               onClick={() => setZoom(z => Math.max(0.1, z - 0.25))}
               className="p-2 text-white/60 hover:bg-white/10 hover:text-white rounded-full transition-colors"
