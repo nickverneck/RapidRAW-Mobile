@@ -108,11 +108,11 @@ export const THEMES: Array<ThemeProps> = [
     name: 'Sepia',
     splashImage: '/splash-sepia.jpg',
     cssVariables: {
-      '--color-bg-primary-rgb': '50, 45, 40',
+      '--color-bg-primary-rgb': '48, 43, 38',
       '--opacity-bg-primary': '0.7',
       '--color-bg-secondary-rgb': '65, 60, 55',
       '--opacity-bg-secondary': '0.8',
-      '--color-surface': '50 45 40',
+      '--color-surface': '52 47 43',
       '--color-card-active': '80 75 70',
       '--color-button-text': '50 45 40',
       '--color-text-primary': '225 215 205',
