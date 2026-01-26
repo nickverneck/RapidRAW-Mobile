@@ -1044,6 +1044,7 @@ function ContainerRow({
                   updateSubMask={updateSubMask}
                   handleDelete={() => handleDeleteSubMask(container.id, subMask.id)}
                   analyzingSubMaskId={analyzingSubMaskId}
+                  isParentLoading={container.isLoading}
                 />
               ))}
             </AnimatePresence>
@@ -1076,6 +1077,7 @@ function SubMaskRow({
   handleDelete,
   activeDragItem,
   analyzingSubMaskId,
+  isParentLoading,
 }: any) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: subMask.id,
@@ -1094,7 +1096,7 @@ function SubMaskRow({
   const [isHovered, setIsHovered] = useState(false);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isDraggingContainer = activeDragItem?.type === 'Container';
-  const isAnalyzing = subMask.id === analyzingSubMaskId;
+  const isAnalyzing = subMask.id === analyzingSubMaskId || (isParentLoading && subMask.type === Mask.QuickEraser);
 
   const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) {
@@ -1315,7 +1317,6 @@ function SettingsPanel({
                     disabled={isGeneratingAi || displayContainer.isLoading}
                     onChange={(e: any) => {
                       setPrompt(e.target.value);
-                      // Optionally update container live if desired, or just on blur
                     }}
                     onBlur={() => isActive && updateContainer(container.id, { prompt })}
                     onKeyDown={(e: any) => {
