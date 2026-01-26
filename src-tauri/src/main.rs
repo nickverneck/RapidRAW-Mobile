@@ -3388,17 +3388,23 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(#[allow(unused_variables)] |app_handle, event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = event {
-                if let Some(url) = urls.first() {
-                    if let Ok(path) = url.to_file_path() {
-                        if let Some(path_str) = path.to_str() {
-                            let state = app_handle.state::<AppState>();
-                            *state.initial_file_path.lock().unwrap() = Some(path_str.to_string());
-                            log::info!("macOS initial open: Stored path {} for later.", path_str);
+            match event {
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Opened { urls } => {
+                    if let Some(url) = urls.first() {
+                        if let Ok(path) = url.to_file_path() {
+                            if let Some(path_str) = path.to_str() {
+                                let state = app_handle.state::<AppState>();
+                                *state.initial_file_path.lock().unwrap() = Some(path_str.to_string());
+                                log::info!("macOS initial open: Stored path {} for later.", path_str);
+                            }
                         }
                     }
                 }
+                tauri::RunEvent::ExitRequested { .. } => {
+                    std::process::exit(0);
+                }
+                _ => {}
             }
         });
 }

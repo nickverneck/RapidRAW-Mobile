@@ -135,7 +135,11 @@ struct BlurParams {
     radius: u32,
     tile_offset_x: u32,
     tile_offset_y: u32,
-    _pad: u32,
+    input_width: u32,
+    input_height: u32,
+    _pad1: u32,
+    _pad2: u32,
+    _pad3: u32,
 }
 
 pub struct GpuProcessor {
@@ -590,7 +594,11 @@ impl GpuProcessor {
                         radius,
                         tile_offset_x: input_x_start,
                         tile_offset_y: input_y_start,
-                        _pad: 0,
+                        input_width: input_width,
+                        input_height: input_height,
+                        _pad1: 0,
+                        _pad2: 0,
+                        _pad3: 0,
                     };
                     queue.write_buffer(&self.blur_params_buffer, 0, bytemuck::bytes_of(&params));
 
@@ -649,9 +657,9 @@ impl GpuProcessor {
                 };
 
                 let did_create_sharpness_blur =
-                    create_blur(&mut encoder, 2.0, &self.sharpness_blur_view);
+                    create_blur(&mut encoder, 1.0, &self.sharpness_blur_view);
                 let did_create_clarity_blur =
-                    create_blur(&mut encoder, 8.0, &self.clarity_blur_view);
+                    create_blur(&mut encoder, 6.0, &self.clarity_blur_view);
                 let did_create_structure_blur =
                     create_blur(&mut encoder, 40.0, &self.structure_blur_view);
 
