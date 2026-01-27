@@ -250,7 +250,7 @@ RapidRAW is still in active development and isn't yet as polished as mature tool
         <li><strong>File Operations:</strong> Import, copy, move, rename, and duplicate images/folders.</li>
         <li><strong>Filmstrip View:</strong> Quickly navigate between all the images in your current folder while editing.</li>
         <li><strong>Batch Operations:</strong> Save significant time by applying a consistent set of adjustments or exporting entire batches of images simultaneously.</li>
-        <li><strong>EXIF Data Viewer:</strong> Gain insights by inspecting the complete metadata from your camera, including shutter speed, aperture, ISO, and lens information.</li>
+        <li><strong>EXIF Data Viewer:</strong> Gain insights by inspecting the complete metadata from your camera.</li>
       </ul>
       <h4>Productivity & UI</h4>
       <ul>
