@@ -366,7 +366,7 @@ This setup gives you the best of both worlds: a highly efficient workflow while 
 
 To be clear, **I won't lock features behind a paywall.** All of RapidRAW's functionality is available for free if you use the built-in tools or self-host.
 
-However, I realize that not everyone has the powerful hardware or technical desire to set up and maintain their own ComfyUI server. For those who want a simpler solution, I will be offering an optional **$5/month subscription** (pricing is not final).
+However, I realize that not everyone has the powerful hardware or technical desire to set up and maintain their own ComfyUI server. For those who want a simpler solution, I will be offering an optional **$TBD/month subscription**.
 
 This is purely a **convenience service**. It provides the **same high-quality results** as a self-hosted setup without any of the hassle - just log in, and it works. Subscribing is also the best way to support the project and help me dedicate more time to its development.
 
