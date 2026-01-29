@@ -6,7 +6,6 @@ import { ActiveChannel, Adjustments, Coord } from '../../utils/adjustments';
 import { Theme, OPTION_SEPARATOR } from '../ui/AppProperties';
 import { useContextMenu } from '../../context/ContextMenuContext';
 
-// Module-level variable to act as a clipboard across channel switches
 let curveClipboard: Array<Coord> | null = null;
 
 export interface ChannelConfig {
@@ -77,7 +76,14 @@ function getCurvePath(points: Array<Coord>) {
     }
   }
 
-  let path = `M ${points[0].x} ${255 - points[0].y}`;
+  let path = '';
+
+  if (points[0].x > 0) {
+    path += `M 0 ${255 - points[0].y} L ${points[0].x} ${255 - points[0].y}`;
+  } else {
+    path += `M ${points[0].x} ${255 - points[0].y}`;
+  }
+
   for (let i = 0; i < n - 1; i++) {
     const p0 = points[i];
     const p1 = points[i + 1];
@@ -93,6 +99,10 @@ function getCurvePath(points: Array<Coord>) {
     path += ` C ${cp1x.toFixed(2)} ${255 - Number(cp1y.toFixed(2))}, ${cp2x.toFixed(2)} ${
       255 - Number(cp2y.toFixed(2))
     }, ${p1.x} ${255 - p1.y}`;
+  }
+
+  if (points[n - 1].x < 255) {
+    path += ` L 255 ${255 - points[n - 1].y}`;
   }
 
   return path;
@@ -183,7 +193,6 @@ export default function CurveGraph({
     draggingIndexRef.current = draggingPointIndex;
   }, [draggingPointIndex, onDragStateChange]);
 
-  // Robust hover detection using global coordinates to handle scrollbar/overflow issues
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
@@ -196,7 +205,6 @@ export default function CurveGraph({
         e.clientY >= rect.top &&
         e.clientY <= rect.bottom;
 
-      // Only update state if the boolean value actually changes to prevent re-renders
       if (isInside !== isHoveredRef.current) {
         isHoveredRef.current = isInside;
         setIsHovered(isInside);
@@ -226,15 +234,18 @@ export default function CurveGraph({
       const y = Math.max(0, Math.min(255, 255 - ((e.clientY - rect.top) / rect.height) * 255));
 
       const newPoints = [...currentPoints];
-      const isEndPoint = index === 0 || index === currentPoints.length - 1;
 
-      if (isEndPoint) {
-        x = newPoints[index].x;
-      } else {
-        const prevX = currentPoints[index - 1].x;
-        const nextX = currentPoints[index + 1].x;
-        x = Math.max(prevX + 0.01, Math.min(nextX - 0.01, x));
-      }
+      const SNAP_THRESHOLD = 5;
+      if (x < SNAP_THRESHOLD) x = 0;
+      if (x > 255 - SNAP_THRESHOLD) x = 255;
+
+      const prevX = index > 0 ? currentPoints[index - 1].x : 0;
+      const nextX = index < currentPoints.length - 1 ? currentPoints[index + 1].x : 255;
+
+      const minX = index === 0 ? 0 : prevX + 0.01;
+      const maxX = index === currentPoints.length - 1 ? 255 : nextX - 0.01;
+
+      x = Math.max(minX, Math.min(maxX, x));
 
       newPoints[index] = { x, y };
 
@@ -330,7 +341,7 @@ export default function CurveGraph({
 
     setLocalPoints(newPoints);
     localPointsRef.current = newPoints;
-    
+
     setAdjustments((prev: Adjustments) => ({
       ...prev,
       curves: { ...prev.curves, [activeChannel]: newPoints },
@@ -363,7 +374,6 @@ export default function CurveGraph({
 
     const handlePaste = () => {
       if (!curveClipboard) return;
-
       const newPoints = curveClipboard.map(p => ({ ...p }));
 
       setLocalPoints(newPoints);
@@ -382,7 +392,7 @@ export default function CurveGraph({
       ];
       setLocalPoints(defaultPoints);
       localPointsRef.current = defaultPoints;
-      
+
       setAdjustments((prev: Adjustments) => ({
         ...prev,
         curves: { ...prev.curves, [activeChannel]: defaultPoints },
