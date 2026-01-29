@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertOctagon } from 'lucide-react';
+import { AlertOctagon, RotateCcw, Copy, ClipboardPaste } from 'lucide-react';
 import clsx from 'clsx';
 import { ActiveChannel, Adjustments, Coord } from '../../utils/adjustments';
-import { Theme } from '../ui/AppProperties';
+import { Theme, OPTION_SEPARATOR } from '../ui/AppProperties';
+import { useContextMenu } from '../../context/ContextMenuContext';
+
+// Module-level variable to act as a clipboard across channel switches
+let curveClipboard: Array<Coord> | null = null;
 
 export interface ChannelConfig {
   [index: string]: ColorData;
@@ -128,6 +132,12 @@ function getZeroHistogramPath(data: Array<any>) {
   return `M0,255 L${pathData} L255,255 Z`;
 }
 
+function isDefaultCurve(points: Array<Coord> | undefined) {
+  if (!points || points.length !== 2) return false;
+  const [p1, p2] = points;
+  return p1.x === 0 && p1.y === 0 && p2.x === 255 && p2.y === 255;
+}
+
 export default function CurveGraph({
   adjustments,
   setAdjustments,
@@ -136,6 +146,7 @@ export default function CurveGraph({
   isForMask,
   onDragStateChange,
 }: CurveGraphProps) {
+  const { showContextMenu } = useContextMenu();
   const [activeChannel, setActiveChannel] = useState<ActiveChannel>(ActiveChannel.Luma);
   const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
   const [localPoints, setLocalPoints] = useState<Array<Coord> | null>(null);
@@ -342,7 +353,103 @@ export default function CurveGraph({
     }));
   };
 
-  // We consider the control hovered if the mouse is inside OR if the user is currently dragging a point
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const handleCopy = () => {
+      curveClipboard = points.map(p => ({ ...p }));
+    };
+
+    const handlePaste = () => {
+      if (!curveClipboard) return;
+
+      const newPoints = curveClipboard.map(p => ({ ...p }));
+
+      setLocalPoints(newPoints);
+      localPointsRef.current = newPoints;
+
+      setAdjustments((prev: Adjustments) => ({
+        ...prev,
+        curves: { ...prev.curves, [activeChannel]: newPoints },
+      }));
+    };
+
+    const handleReset = () => {
+      const defaultPoints = [
+        { x: 0, y: 0 },
+        { x: 255, y: 255 },
+      ];
+      setLocalPoints(defaultPoints);
+      localPointsRef.current = defaultPoints;
+      
+      setAdjustments((prev: Adjustments) => ({
+        ...prev,
+        curves: { ...prev.curves, [activeChannel]: defaultPoints },
+      }));
+    };
+
+    const handleResetAll = () => {
+      const defaultPoints = [
+        { x: 0, y: 0 },
+        { x: 255, y: 255 },
+      ];
+
+      setLocalPoints(defaultPoints);
+      localPointsRef.current = defaultPoints;
+
+      setAdjustments((prev: Adjustments) => ({
+        ...prev,
+        curves: {
+          [ActiveChannel.Luma]: defaultPoints,
+          [ActiveChannel.Red]: defaultPoints,
+          [ActiveChannel.Green]: defaultPoints,
+          [ActiveChannel.Blue]: defaultPoints,
+        },
+      }));
+    };
+
+    const areOtherChannelsDirty = [
+      ActiveChannel.Luma,
+      ActiveChannel.Red,
+      ActiveChannel.Green,
+      ActiveChannel.Blue
+    ].some(channel => {
+      if (channel === activeChannel) return false;
+      return !isDefaultCurve(adjustments.curves?.[channel]);
+    });
+
+    const options = [
+      {
+        label: `Copy ${activeChannel.charAt(0).toUpperCase() + activeChannel.slice(1)} Curve`,
+        icon: Copy,
+        onClick: handleCopy,
+      },
+      {
+        label: 'Paste Curve',
+        icon: ClipboardPaste,
+        onClick: handlePaste,
+        disabled: !curveClipboard,
+      },
+      { type: OPTION_SEPARATOR },
+      {
+        label: `Reset ${activeChannel.charAt(0).toUpperCase() + activeChannel.slice(1)} Curve`,
+        icon: RotateCcw,
+        onClick: handleReset,
+      },
+    ];
+
+    if (areOtherChannelsDirty) {
+      options.push({
+        label: 'Reset All Curves',
+        icon: RotateCcw,
+        onClick: handleResetAll,
+      });
+    }
+
+    showContextMenu(e.clientX, e.clientY, options);
+  };
+
   const shouldShowControls = adjustments.showClipping || isHovered || draggingPointIndex !== null;
 
   return (
@@ -398,6 +505,7 @@ export default function CurveGraph({
         className="w-full aspect-square bg-surface-secondary p-1 rounded-md relative"
         onMouseDown={handleContainerMouseDown}
         onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
       >
         <svg ref={svgRef} viewBox="0 0 255 255" className="w-full h-full overflow-visible">
           <path
