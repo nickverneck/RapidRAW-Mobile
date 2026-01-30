@@ -15,7 +15,10 @@ pub fn get_or_init_gpu_context(state: &tauri::State<AppState>) -> Result<GpuCont
     if let Some(context) = &*context_lock {
         return Ok(context.clone());
     }
-    let instance_desc = wgpu::InstanceDescriptor::from_env_or_default();
+    let mut instance_desc = wgpu::InstanceDescriptor::from_env_or_default();
+    if std::env::var("WGPU_BACKEND").is_err() {
+        instance_desc.backends = wgpu::Backends::PRIMARY;
+    }
     let instance = wgpu::Instance::new(&instance_desc);
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
