@@ -12,6 +12,8 @@ pub struct Distortion {
     pub model: String,
     #[serde(rename = "@focal")]
     pub focal: f32,
+    #[serde(rename = "@real-focal")]
+    pub real_focal: Option<f32>,
     #[serde(rename = "@k1")]
     pub k1: Option<f32>,
     #[serde(rename = "@k2")]
@@ -36,6 +38,14 @@ pub struct Tca {
     pub vr: Option<f32>,
     #[serde(rename = "@vb")]
     pub vb: Option<f32>,
+    #[serde(rename = "@cr")]
+    pub cr: Option<f32>,
+    #[serde(rename = "@cb")]
+    pub cb: Option<f32>,
+    #[serde(rename = "@br")]
+    pub br: Option<f32>,
+    #[serde(rename = "@bb")]
+    pub bb: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -57,23 +67,56 @@ pub struct Vignetting {
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CalibrationElement {
+    Distortion(Distortion),
+    Tca(Tca),
+    Vignetting(Vignetting),
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Calibration {
-    #[serde(rename = "distortion", default)]
-    pub distortions: Vec<Distortion>,
-    #[serde(rename = "tca", default)]
-    pub tca: Vec<Tca>,
-    #[serde(rename = "vignetting", default)]
-    pub vignetting: Vec<Vignetting>,
+    #[serde(rename = "$value", default)]
+    pub elements: Vec<CalibrationElement>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Focal {
+    #[serde(rename = "@value")]
+    pub value: Option<f32>,
+    #[serde(rename = "@min")]
+    pub min: Option<f32>,
+    #[serde(rename = "@max")]
+    pub max: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Aperture {
+    #[serde(rename = "@min")]
+    pub min: Option<f32>,
+    #[serde(rename = "@max")]
+    pub max: Option<f32>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct Lens {
+    #[serde(default)]
     pub maker: Vec<MultiName>,
+    #[serde(default)]
     pub model: Vec<MultiName>,
+    #[serde(default)]
     pub mount: Vec<String>,
     pub cropfactor: Option<f32>,
     pub calibration: Option<Calibration>,
+    #[serde(rename = "type")]
+    pub type_: Option<String>,
+    pub focal: Option<Focal>,
+    pub aspect_ratio: Option<String>,
+    pub center: Option<String>,
+    pub compat: Option<String>,
+    pub notes: Option<String>,
+    pub aperture: Option<Aperture>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
@@ -115,40 +158,77 @@ pub struct LensDistortionParams {
 }
 
 impl Lens {
-    pub fn get_name(&self) -> &str {
-        &self.model[0].value
+    pub fn get_full_model_name(&self) -> String {
+        self.model.iter()
+            .find(|m| m.lang.as_deref() == Some("en"))
+            .or_else(|| self.model.first())
+            .map(|m| m.value.clone())
+            .unwrap_or_else(|| "Unknown Model".to_string())
     }
 
-    pub fn get_maker(&self) -> &str {
-        &self.maker[0].value
+    pub fn get_name(&self) -> String {
+        let raw_name = self.get_full_model_name();
+        let maker = self.get_maker();
+
+        if raw_name.to_lowercase().starts_with(&maker.to_lowercase()) {
+            let stripped = raw_name[maker.len()..].trim();
+            if !stripped.is_empty() {
+                return stripped.to_string();
+            }
+        }
+
+        raw_name
+    }
+
+    pub fn get_maker(&self) -> String {
+        self.maker.iter()
+            .find(|m| m.lang.as_deref() == Some("en"))
+            .or_else(|| self.maker.first())
+            .map(|m| m.value.clone())
+            .unwrap_or_else(|| "Misc".to_string())
     }
 
     pub fn get_distortion_params(&self, focal_length: f32, aperture: Option<f32>, distance: Option<f32>) -> Option<LensDistortionParams> {
         let cal = self.calibration.as_ref()?;
-        
-        let (k1, k2, k3, model) = if cal.distortions.is_empty() {
+
+        let mut distortions: Vec<Distortion> = cal.elements.iter()
+            .filter_map(|e| if let CalibrationElement::Distortion(d) = e { Some(d.clone()) } else { None })
+            .collect();
+
+        let mut tcas: Vec<Tca> = cal.elements.iter()
+            .filter_map(|e| if let CalibrationElement::Tca(t) = e { Some(t.clone()) } else { None })
+            .collect();
+
+        let mut vignettings: Vec<Vignetting> = cal.elements.iter()
+            .filter_map(|e| if let CalibrationElement::Vignetting(v) = e { Some(v.clone()) } else { None })
+            .collect();
+
+        let (k1, k2, k3, model) = if distortions.is_empty() {
             (0.0, 0.0, 0.0, 0)
         } else {
-            let mut sorted = cal.distortions.clone();
-            sorted.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
+            distortions.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
             
-            if let Some(exact) = sorted.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
+            if let Some(exact) = distortions.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
                 extract_dist_params(exact)
-            } else if focal_length < sorted[0].focal {
-                extract_dist_params(&sorted[0])
-            } else if focal_length > sorted.last().unwrap().focal {
-                extract_dist_params(sorted.last().unwrap())
+            } else if focal_length < distortions[0].focal {
+                extract_dist_params(&distortions[0])
+            } else if focal_length > distortions.last().unwrap().focal {
+                extract_dist_params(distortions.last().unwrap())
             } else {
                 let mut res = (0.0, 0.0, 0.0, 0);
-                for i in 0..sorted.len() - 1 {
-                    let d1 = &sorted[i];
-                    let d2 = &sorted[i + 1];
+                for i in 0..distortions.len() - 1 {
+                    let d1 = &distortions[i];
+                    let d2 = &distortions[i + 1];
+
                     if focal_length >= d1.focal && focal_length <= d2.focal {
                         let p1 = extract_dist_params(d1);
                         let p2 = extract_dist_params(d2);
-                        if p1.3 != p2.3 { res = p1; } 
-                        else {
-                            let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
+
+                        let range = d2.focal - d1.focal;
+                        if range.abs() < 1e-5 || p1.3 != p2.3 {
+                            res = p1;
+                        } else {
+                            let t = (focal_length - d1.focal) / range;
                             res = (
                                 p1.0 + t as f64 * (p2.0 - p1.0),
                                 p1.1 + t as f64 * (p2.1 - p1.1),
@@ -163,31 +243,36 @@ impl Lens {
             }
         };
 
-        let (tca_vr, tca_vb) = if cal.tca.is_empty() {
+        let (tca_vr, tca_vb) = if tcas.is_empty() {
             (1.0, 1.0)
         } else {
-             let mut sorted = cal.tca.clone();
-             sorted.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
+             tcas.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
              
-             if let Some(exact) = sorted.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
+             if let Some(exact) = tcas.iter().find(|d| (d.focal - focal_length).abs() < 1e-5) {
                  extract_tca_params(exact)
-             } else if focal_length < sorted[0].focal {
-                 extract_tca_params(&sorted[0])
-             } else if focal_length > sorted.last().unwrap().focal {
-                 extract_tca_params(sorted.last().unwrap())
+             } else if focal_length < tcas[0].focal {
+                 extract_tca_params(&tcas[0])
+             } else if focal_length > tcas.last().unwrap().focal {
+                 extract_tca_params(tcas.last().unwrap())
              } else {
                  let mut res = (1.0, 1.0);
-                 for i in 0..sorted.len() - 1 {
-                     let d1 = &sorted[i];
-                     let d2 = &sorted[i + 1];
+                 for i in 0..tcas.len() - 1 {
+                     let d1 = &tcas[i];
+                     let d2 = &tcas[i + 1];
                      if focal_length >= d1.focal && focal_length <= d2.focal {
                          let p1 = extract_tca_params(d1);
                          let p2 = extract_tca_params(d2);
-                         let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
-                         res = (
-                             p1.0 + t as f64 * (p2.0 - p1.0),
-                             p1.1 + t as f64 * (p2.1 - p1.1)
-                         );
+
+                         let range = d2.focal - d1.focal;
+                         if range.abs() < 1e-5 {
+                             res = p1;
+                         } else {
+                             let t = (focal_length - d1.focal) / range;
+                             res = (
+                                 p1.0 + t as f64 * (p2.0 - p1.0),
+                                 p1.1 + t as f64 * (p2.1 - p1.1)
+                             );
+                         }
                          break;
                      }
                  }
@@ -195,20 +280,18 @@ impl Lens {
              }
         };
 
-        let (vig_k1, vig_k2, vig_k3) = if cal.vignetting.is_empty() {
+        let (vig_k1, vig_k2, vig_k3) = if vignettings.is_empty() {
             (0.0, 0.0, 0.0)
         } else {
             let target_aperture = aperture.unwrap_or(3.5);
             let target_distance = distance.unwrap_or(1000.0);
 
-            let mut sorted = cal.vignetting.clone();
-            sorted.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
+            vignettings.sort_by(|a, b| a.focal.partial_cmp(&b.focal).unwrap());
 
             let find_best_vig = |items: &[Vignetting]| -> (f64, f64, f64) {
                  let best_aperture_item = items.iter().min_by(|a, b| {
                      (a.aperture - target_aperture).abs().partial_cmp(&(b.aperture - target_aperture).abs()).unwrap()
                  });
-                 
                  if let Some(best_ap) = best_aperture_item {
                     let candidates: Vec<&Vignetting> = items.iter().filter(|x| (x.aperture - best_ap.aperture).abs() < 0.01).collect();
                     let best_dist = candidates.into_iter().min_by(|a, b| {
@@ -217,38 +300,41 @@ impl Lens {
                          (da - target_distance).abs().partial_cmp(&(db - target_distance).abs()).unwrap()
                     });
                     extract_vig_params(best_dist.unwrap_or(best_ap))
-                 } else {
-                    (0.0, 0.0, 0.0)
-                 }
+                 } else { (0.0, 0.0, 0.0) }
             };
 
-            if focal_length < sorted[0].focal {
-                let group: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - sorted[0].focal).abs() < 0.01).cloned().collect();
+            if focal_length <= vignettings[0].focal + 0.01 {
+                let group: Vec<Vignetting> = vignettings.iter().filter(|x| (x.focal - vignettings[0].focal).abs() < 0.01).cloned().collect();
                 find_best_vig(&group)
-            } else if focal_length > sorted.last().unwrap().focal {
-                let last_focal = sorted.last().unwrap().focal;
-                let group: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - last_focal).abs() < 0.01).cloned().collect();
+            } else if focal_length >= vignettings.last().unwrap().focal - 0.01 {
+                let last_focal = vignettings.last().unwrap().focal;
+                let group: Vec<Vignetting> = vignettings.iter().filter(|x| (x.focal - last_focal).abs() < 0.01).cloned().collect();
                 find_best_vig(&group)
             } else {
                 let mut res = (0.0, 0.0, 0.0);
-                for i in 0..sorted.len() - 1 {
-                    let d1 = &sorted[i];
-                    let d2 = &sorted[i+1];
+                for i in 0..vignettings.len() - 1 {
+                    let d1 = &vignettings[i];
+                    let d2 = &vignettings[i+1];
                     if (d1.focal - d2.focal).abs() < 0.01 { continue; }
 
                     if focal_length >= d1.focal && focal_length <= d2.focal {
-                        let group1: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - d1.focal).abs() < 0.01).cloned().collect();
-                        let group2: Vec<Vignetting> = sorted.iter().filter(|x| (x.focal - d2.focal).abs() < 0.01).cloned().collect();
+                        let group1: Vec<Vignetting> = vignettings.iter().filter(|x| (x.focal - d1.focal).abs() < 0.01).cloned().collect();
+                        let group2: Vec<Vignetting> = vignettings.iter().filter(|x| (x.focal - d2.focal).abs() < 0.01).cloned().collect();
 
                         let p1 = find_best_vig(&group1);
                         let p2 = find_best_vig(&group2);
 
-                        let t = (focal_length - d1.focal) / (d2.focal - d1.focal);
-                        res = (
-                            p1.0 + t as f64 * (p2.0 - p1.0),
-                            p1.1 + t as f64 * (p2.1 - p1.1),
-                            p1.2 + t as f64 * (p2.2 - p1.2),
-                        );
+                        let range = d2.focal - d1.focal;
+                        if range.abs() > 0.01 {
+                            let t = (focal_length - d1.focal) / range;
+                             res = (
+                                p1.0 + t as f64 * (p2.0 - p1.0),
+                                p1.1 + t as f64 * (p2.1 - p1.1),
+                                p1.2 + t as f64 * (p2.2 - p1.2),
+                            );
+                        } else {
+                            res = p1;
+                        }
                         break;
                     }
                 }
@@ -316,6 +402,7 @@ pub fn load_lensfun_db(app_handle: &tauri::AppHandle) -> LensDatabase {
         .filter(|e| e.path().extension().map_or(false, |ext| ext == "xml"))
     {
         let path = entry.path();
+        log::info!("Processing file: {:?}", path);
         match fs::read_to_string(path) {
             Ok(xml_content) => {
                 match quick_xml::de::from_str::<LensDatabase>(&xml_content) {
@@ -323,7 +410,10 @@ pub fn load_lensfun_db(app_handle: &tauri::AppHandle) -> LensDatabase {
                         combined_db.cameras.append(&mut db.cameras);
                         combined_db.lenses.append(&mut db.lenses);
                     }
-                    Err(e) => log::error!("Failed to parse Lensfun XML file {:?}: {}", path, e),
+                    Err(e) => {
+                        eprintln!("\n\n[FATAL PARSE ERROR] Failed to parse Lensfun XML file {:?}: {}\n\n", path, e);
+                        log::error!("Failed to parse Lensfun XML file {:?}: {}", path, e);
+                    },
                 }
             }
             Err(e) => log::error!("Failed to read Lensfun XML file {:?}: {}", path, e),
@@ -340,7 +430,7 @@ pub fn get_lensfun_makers(state: State<AppState>) -> Result<Vec<String>, String>
         let mut makers: Vec<String> = db
             .lenses
             .iter()
-            .map(|lens| lens.get_maker().to_string())
+            .map(|lens| lens.get_maker())
             .collect();
         makers.sort_unstable();
         makers.dedup();
@@ -357,7 +447,7 @@ pub fn get_lensfun_lenses_for_maker(maker: String, state: State<AppState>) -> Re
             .lenses
             .iter()
             .filter(|lens| lens.get_maker() == maker)
-            .map(|lens| lens.get_name().to_string())
+            .map(|lens| lens.get_name())
             .collect();
         models.sort_unstable();
         Ok(models)
@@ -388,14 +478,15 @@ pub fn autodetect_lens(maker: String, model: String, state: State<AppState>) -> 
             let best_match = lenses_from_maker
                 .into_iter()
                 .filter_map(|lens| {
-                    matcher.fuzzy_match(lens.get_name(), &clean_model).map(|score| {
-                        let length_penalty = (lens.get_name().len() as i64 - clean_model.len() as i64).max(0) / 2;
+                    let lens_name = lens.get_full_model_name(); 
+                    matcher.fuzzy_match(&lens_name, &clean_model).map(|score| {
+                        let length_penalty = (lens_name.len() as i64 - clean_model.len() as i64).max(0) / 2;
                         let adjusted_score = score - length_penalty;
                         (adjusted_score, lens)
                     })
                 })
                 .max_by_key(|(score, _)| *score)
-                .map(|(_, lens)| (lens.get_maker().to_string(), lens.get_name().to_string()));
+                .map(|(_, lens)| (lens.get_maker(), lens.get_name()));
 
             if best_match.is_some() {
                 log::info!("[Attempt 1] Success! Found best match: {:?}", best_match);
@@ -410,13 +501,13 @@ pub fn autodetect_lens(maker: String, model: String, state: State<AppState>) -> 
             .lenses
             .iter()
             .filter_map(|lens| {
-                matcher.fuzzy_match(lens.get_name(), &clean_model)
+                matcher.fuzzy_match(&lens.get_full_model_name(), &clean_model)
                     .map(|score| (score, lens))
             })
             .max_by_key(|(score, _): &(i64, _)| *score)
             .map(|(score, lens)| {
                 log::info!("[Attempt 2] Found best fallback match with score {}: '{} {}'", score, lens.get_maker(), lens.get_name());
-                (lens.get_maker().to_string(), lens.get_name().to_string())
+                (lens.get_maker(), lens.get_name())
             });
         
         if best_match_fallback.is_none() {
