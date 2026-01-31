@@ -1192,9 +1192,6 @@ fn get_global_adjustments_from_json(
     js_adjustments: &serde_json::Value,
     is_raw: bool,
 ) -> GlobalAdjustments {
-    if js_adjustments.is_null() {
-        return GlobalAdjustments::default();
-    }
 
     let visibility = js_adjustments.get("sectionVisibility");
     let is_visible = |section: &str| -> bool {
