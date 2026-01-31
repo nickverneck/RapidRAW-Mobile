@@ -124,7 +124,7 @@ fn analyze_image(path: &str, hasher: &image_hasher::Hasher) -> Result<ImageAnaly
     const ANALYSIS_DIM: u32 = 512;
     let file_bytes = std::fs::read(path).map_err(|e| e.to_string())?;
 
-    let img = image_loader::load_base_image_from_bytes(&file_bytes, path, false, 2.5)
+    let img = image_loader::load_base_image_from_bytes(&file_bytes, path, false, 2.5, None)
         .map_err(|e| e.to_string())?;
 
     let (width, height) = img.dimensions();

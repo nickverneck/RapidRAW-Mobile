@@ -1,20 +1,25 @@
 use crate::Cursor;
 use crate::formats::is_raw_file;
-use crate::image_processing::apply_orientation;
-use crate::mask_generation::{MaskDefinition, SubMask, generate_mask_bitmap};
+use crate::image_processing::{apply_orientation, remove_raw_artifacts_and_enhance};
+use crate::mask_generation::{generate_mask_bitmap, MaskDefinition, SubMask};
 use crate::raw_processing::develop_raw_image;
 use anyhow::{anyhow, Context, Result};
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use exif::{Reader as ExifReader, Tag};
-use exr::prelude::*;
 use exr::image::pixel_vec::PixelVec;
-use image::{DynamicImage, GenericImageView, ImageReader, imageops};
+use exr::prelude::*;
+use image::{imageops, DynamicImage, GenericImageView, ImageReader};
 use qoi::Channels;
 use rawler::Orientation;
 use rayon::prelude::*;
 use serde::Deserialize;
-use serde_json::{Value, from_value};
+use serde_json::{from_value, Value};
 use std::panic;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+use std::time::Instant;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,9 +38,15 @@ pub fn load_and_composite(
     adjustments: &Value,
     use_fast_raw_dev: bool,
     highlight_compression: f32,
+    cancel_token: Option<(Arc<AtomicUsize>, usize)>,
 ) -> Result<DynamicImage> {
-    let base_image =
-        load_base_image_from_bytes(base_image, path, use_fast_raw_dev, highlight_compression)?;
+    let base_image = load_base_image_from_bytes(
+        base_image,
+        path,
+        use_fast_raw_dev,
+        highlight_compression,
+        cancel_token,
+    )?;
     composite_patches_on_image(&base_image, adjustments)
 }
 
@@ -98,9 +109,14 @@ pub fn load_base_image_from_bytes(
     path_for_ext_check: &str,
     use_fast_raw_dev: bool,
     highlight_compression: f32,
+    cancel_token: Option<(Arc<AtomicUsize>, usize)>,
 ) -> Result<DynamicImage> {
     let path = std::path::Path::new(path_for_ext_check);
-    if path.extension().and_then(|s| s.to_str()).map_or(false, |s| s.eq_ignore_ascii_case("exr")) {
+    if path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map_or(false, |s| s.eq_ignore_ascii_case("exr"))
+    {
         return load_exr_from_bytes(bytes);
     }
 
@@ -113,30 +129,66 @@ pub fn load_base_image_from_bytes(
     }
 
     if is_raw_file(path_for_ext_check) {
-        match panic::catch_unwind(|| develop_raw_image(bytes, use_fast_raw_dev, highlight_compression)) {
-            Ok(Ok(image)) => Ok(image),
+        match panic::catch_unwind(move || {
+            develop_raw_image(bytes, use_fast_raw_dev, highlight_compression, cancel_token)
+        }) {
+            Ok(Ok(mut image)) => {
+                if !use_fast_raw_dev {
+                    let start = Instant::now();
+                    remove_raw_artifacts_and_enhance(&mut image);
+                    let duration = start.elapsed();
+                    log::info!(
+                        "Raw enhancing for '{}' took {:?}",
+                        path_for_ext_check,
+                        duration
+                    );
+                }
+                Ok(image)
+            }
             Ok(Err(e)) => {
                 log::warn!("Error developing RAW file '{}': {}", path_for_ext_check, e);
                 Err(e)
             }
             Err(_) => {
-                log::error!("Panic while processing corrupt RAW file: {}", path_for_ext_check);
-                Err(anyhow!("Failed to process corrupt RAW file: {}", path_for_ext_check))
+                log::error!(
+                    "Panic while processing corrupt RAW file: {}",
+                    path_for_ext_check
+                );
+                Err(anyhow!(
+                    "Failed to process corrupt RAW file: {}",
+                    path_for_ext_check
+                ))
             }
         }
     } else {
-        load_image_with_orientation(bytes)
+        load_image_with_orientation(bytes, cancel_token)
     }
 }
 
-pub fn load_image_with_orientation(bytes: &[u8]) -> Result<DynamicImage> {
+pub fn load_image_with_orientation(
+    bytes: &[u8],
+    cancel_token: Option<(Arc<AtomicUsize>, usize)>,
+) -> Result<DynamicImage> {
+    let check_cancel = || -> Result<()> {
+        if let Some((tracker, generation)) = &cancel_token {
+            if tracker.load(Ordering::SeqCst) != *generation {
+                return Err(anyhow!("Load cancelled"));
+            }
+        }
+        Ok(())
+    };
+
     let cursor = Cursor::new(bytes);
     let mut reader = ImageReader::new(cursor.clone())
         .with_guessed_format()
         .context("Failed to guess image format")?;
 
     reader.no_limits();
+
+    check_cancel()?;
+
     let image = reader.decode().context("Failed to decode image")?;
+    check_cancel()?;
 
     let oriented_image = {
         let exif_reader = ExifReader::new();
@@ -145,6 +197,7 @@ pub fn load_image_with_orientation(bytes: &[u8]) -> Result<DynamicImage> {
                 .get_field(Tag::Orientation, exif::In::PRIMARY)
                 .and_then(|f| f.value.get_uint(0))
             {
+                check_cancel()?;
                 apply_orientation(image, Orientation::from_u16(orientation as u16))
             } else {
                 image
@@ -199,7 +252,11 @@ pub fn composite_patches_on_image(
     for patch_obj in visible_patches {
         let patch_data = patch_obj.get("patchData").context("Missing patchData")?;
 
-        let mask_bitmap = if let Some(mask_b64) = patch_data.get("mask").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        let mask_bitmap = if let Some(mask_b64) = patch_data
+            .get("mask")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
             let mask_bytes = general_purpose::STANDARD.decode(mask_b64)?;
             let mask_img = image::load_from_memory(&mask_bytes)?.to_luma8();
             if mask_img.width() != base_w || mask_img.height() != base_h {

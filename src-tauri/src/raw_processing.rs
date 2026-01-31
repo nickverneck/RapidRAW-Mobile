@@ -1,5 +1,5 @@
 use crate::image_processing::apply_orientation;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use image::{DynamicImage, ImageBuffer, Rgba};
 use rawler::{
     decoders::{Orientation, RawDecodeParams},
@@ -7,14 +7,23 @@ use rawler::{
     rawimage::RawImage,
     rawsource::RawSource,
 };
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 pub fn develop_raw_image(
     file_bytes: &[u8],
     fast_demosaic: bool,
     highlight_compression: f32,
+    cancel_token: Option<(Arc<AtomicUsize>, usize)>,
 ) -> Result<DynamicImage> {
-    let (developed_image, orientation) =
-        develop_internal(file_bytes, fast_demosaic, highlight_compression)?;
+    let (developed_image, orientation) = develop_internal(
+        file_bytes,
+        fast_demosaic,
+        highlight_compression,
+        cancel_token,
+    )?;
     Ok(apply_orientation(developed_image, orientation))
 }
 
@@ -22,9 +31,23 @@ fn develop_internal(
     file_bytes: &[u8],
     fast_demosaic: bool,
     highlight_compression: f32,
+    cancel_token: Option<(Arc<AtomicUsize>, usize)>,
 ) -> Result<(DynamicImage, Orientation)> {
+    let check_cancel = || -> Result<()> {
+        if let Some((tracker, generation)) = &cancel_token {
+            if tracker.load(Ordering::SeqCst) != *generation {
+                return Err(anyhow!("Load cancelled"));
+            }
+        }
+        Ok(())
+    };
+
+    check_cancel()?;
+
     let source = RawSource::new_from_slice(file_bytes);
     let decoder = rawler::get_decoder(&source)?;
+    
+    check_cancel()?;
     let mut raw_image: RawImage = decoder.raw_image(&source, &RawDecodeParams::default(), false)?;
 
     let metadata = decoder.raw_metadata(&source, &RawDecodeParams::default())?;
@@ -58,12 +81,15 @@ fn develop_internal(
     }
     developer.steps.retain(|&step| step != ProcessingStep::SRgb);
 
+    check_cancel()?;
     let mut developed_intermediate = developer.develop_intermediate(&raw_image)?;
 
     let denominator = (original_white_level - original_black_level).max(1.0);
     let rescale_factor = (headroom_white_level - original_black_level) / denominator;
 
     let safe_highlight_compression = highlight_compression.max(1.01);
+
+    check_cancel()?;
 
     match &mut developed_intermediate {
         Intermediate::Monochrome(pixels) => {
@@ -124,6 +150,9 @@ fn develop_internal(
         let dim = developed_intermediate.dim();
         (dim.w as u32, dim.h as u32)
     };
+
+    check_cancel()?;
+
     let dynamic_image = match developed_intermediate {
         Intermediate::ThreeColor(pixels) => {
             let buffer = ImageBuffer::<Rgba<f32>, _>::from_fn(width, height, |x, y| {
@@ -140,7 +169,7 @@ fn develop_internal(
             DynamicImage::ImageRgba32F(buffer)
         }
         _ => {
-            return Err(anyhow::anyhow!(
+            return Err(anyhow!(
                 "Unsupported intermediate format for f32 conversion"
             ));
         }

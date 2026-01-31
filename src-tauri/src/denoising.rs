@@ -57,7 +57,7 @@ pub fn denoise_image(
 
     let file_bytes = fs::read(path).map_err(|e| e.to_string())?;
 
-    let mut dynamic_img = load_base_image_from_bytes(&file_bytes, &path_str, false, 2.5)
+    let mut dynamic_img = load_base_image_from_bytes(&file_bytes, &path_str, false, 2.5, None)
         .map_err(|e| e.to_string())?;
 
     if is_raw {

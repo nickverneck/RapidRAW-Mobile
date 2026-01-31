@@ -136,6 +136,7 @@ pub struct AppState {
     pub geometry_cache: Mutex<HashMap<u64, DynamicImage>>, 
     pub thumbnail_geometry_cache: Mutex<HashMap<String, (u64, DynamicImage, f32)>>,
     pub lens_db: Mutex<Option<lens_correction::LensDatabase>>,
+    pub load_image_generation: Arc<AtomicUsize>,
 }
 
 #[derive(serde::Serialize)]
@@ -494,6 +495,10 @@ async fn load_image(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<LoadImageResult, String> {
+    let my_generation = state.load_image_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let generation_tracker = state.load_image_generation.clone();
+    let cancel_token = Some((generation_tracker.clone(), my_generation));
+
     let (source_path, sidecar_path) = parse_virtual_path(&path);
     let source_path_str = source_path.to_string_lossy().to_string();
 
@@ -508,12 +513,21 @@ async fn load_image(
     let highlight_compression = settings.raw_highlight_compression.unwrap_or(2.5);
 
     let path_clone = source_path_str.clone();
+
     let (pristine_img, exif_data) = tokio::task::spawn_blocking(move || {
+        if generation_tracker.load(Ordering::SeqCst) != my_generation {
+            return Err("Load cancelled".to_string());
+        }
+
         let result: Result<(DynamicImage, HashMap<String, String>), String> = (|| {
             match read_file_mapped(Path::new(&path_clone)) {
                 Ok(mmap) => {
+                    if generation_tracker.load(Ordering::SeqCst) != my_generation {
+                        return Err("Load cancelled".to_string());
+                    }
+
                     let img =
-                        load_base_image_from_bytes(&mmap, &path_clone, false, highlight_compression)
+                        load_base_image_from_bytes(&mmap, &path_clone, false, highlight_compression, cancel_token.clone())
                             .map_err(|e| e.to_string())?;
                     let exif = exif_processing::read_exif_data(&path_clone, &mmap);
                     Ok((img, exif))
@@ -527,11 +541,17 @@ async fn load_image(
                     let bytes = fs::read(&path_clone).map_err(|io_err| {
                         format!("Fallback read failed for {}: {}", path_clone, io_err)
                     })?;
+
+                    if generation_tracker.load(Ordering::SeqCst) != my_generation {
+                        return Err("Load cancelled".to_string());
+                    }
+
                     let img = load_base_image_from_bytes(
                         &bytes,
                         &path_clone,
                         false,
                         highlight_compression,
+                        cancel_token.clone()
                     )
                     .map_err(|e| e.to_string())?;
                     let exif = exif_processing::read_exif_data(&path_clone, &bytes);
@@ -544,8 +564,17 @@ async fn load_image(
     .await
     .map_err(|e| e.to_string())??;
 
-    let (orig_width, orig_height) = pristine_img.dimensions();
+    if state.load_image_generation.load(Ordering::SeqCst) != my_generation {
+        return Err("Load cancelled".to_string());
+    }
+
     let is_raw = is_raw_file(&source_path_str);
+
+    if state.load_image_generation.load(Ordering::SeqCst) != my_generation {
+        return Err("Load cancelled".to_string());
+    }
+
+    let (orig_width, orig_height) = pristine_img.dimensions();
 
     *state.cached_preview.lock().unwrap() = None;
     *state.gpu_image_cache.lock().unwrap() = None;
@@ -1593,7 +1622,8 @@ async fn batch_export_images(
                         } else {
                             ImageMetadata::default()
                         };
-                        let js_adjustments = metadata.adjustments;
+                        let mut js_adjustments = metadata.adjustments; 
+                        hydrate_adjustments(&state, &mut js_adjustments);
                         let is_raw = is_raw_file(&source_path_str);
 
                         let base_image = match read_file_mapped(Path::new(&source_path_str)) {
@@ -1603,6 +1633,7 @@ async fn batch_export_images(
                                 &js_adjustments,
                                 false,
                                 highlight_compression,
+                                None,
                             )
                             .map_err(|e| format!("Failed to load image from mmap: {}", e))?,
                             Err(e) => {
@@ -1620,6 +1651,7 @@ async fn batch_export_images(
                                     &js_adjustments,
                                     false,
                                     highlight_compression,
+                                    None,
                                 )
                                 .map_err(|e| format!("Failed to load image from bytes: {}", e))?
                             }
@@ -1911,7 +1943,7 @@ async fn estimate_batch_export_size(
     const ESTIMATE_DIM: u32 = 1280;
 
     let original_image = match read_file_mapped(Path::new(&source_path_str)) {
-        Ok(mmap) => load_base_image_from_bytes(&mmap, &source_path_str, true, highlight_compression)
+        Ok(mmap) => load_base_image_from_bytes(&mmap, &source_path_str, true, highlight_compression, None)
             .map_err(|e| e.to_string())?,
         Err(e) => {
             log::warn!(
@@ -1920,7 +1952,7 @@ async fn estimate_batch_export_size(
                 e
             );
             let bytes = fs::read(&source_path_str).map_err(|io_err| io_err.to_string())?;
-            load_base_image_from_bytes(&bytes, &source_path_str, true, highlight_compression)
+            load_base_image_from_bytes(&bytes, &source_path_str, true, highlight_compression, None)
                 .map_err(|e| e.to_string())?
         }
     };
@@ -2610,7 +2642,7 @@ async fn generate_all_community_previews(
         let source_path_str = source_path.to_string_lossy().to_string();
         let image_bytes = fs::read(&source_path).map_err(|e| e.to_string())?;
         let original_image =
-            crate::image_loader::load_base_image_from_bytes(&image_bytes, &source_path_str, true, highlight_compression )
+            crate::image_loader::load_base_image_from_bytes(&image_bytes, &source_path_str, true, highlight_compression, None)
                 .map_err(|e| e.to_string())?;
         let is_raw = is_raw_file(&source_path_str);
         base_thumbnails.push((
@@ -2960,6 +2992,7 @@ fn generate_preview_for_path(
             &js_adjustments,
             false,
             highlight_compression,
+            None,
         )
         .map_err(|e| e.to_string())?,
         Err(e) => {
@@ -2975,6 +3008,7 @@ fn generate_preview_for_path(
                 &js_adjustments,
                 false,
                 highlight_compression,
+                None,
             )
             .map_err(|e| e.to_string())?
         }
@@ -3299,6 +3333,7 @@ fn main() {
             geometry_cache: Mutex::new(HashMap::new()),
             thumbnail_geometry_cache: Mutex::new(HashMap::new()),
             lens_db: Mutex::new(None),
+            load_image_generation: Arc::new(AtomicUsize::new(0)),
         })
         .invoke_handler(tauri::generate_handler![
             load_image,

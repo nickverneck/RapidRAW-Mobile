@@ -780,6 +780,7 @@ pub fn generate_thumbnail_data(
                             &adjustments,
                             true,
                             highlight_compression,
+                            None,
                         )?,
                         Err(_) => {
                             let file_bytes = fs::read(&source_path).map_err(|io_err| {
@@ -791,6 +792,7 @@ pub fn generate_thumbnail_data(
                                 &adjustments,
                                 true,
                                 highlight_compression,
+                                None,
                             )?
                         }
                     }
@@ -922,6 +924,7 @@ pub fn generate_thumbnail_data(
                 &adjustments,
                 true,
                 highlight_compression,
+                None,
             )?,
             Err(e) => {
                 log::warn!("Fallback read for {}: {}", source_path_str, e);
@@ -932,6 +935,7 @@ pub fn generate_thumbnail_data(
                     &adjustments,
                     true,
                     highlight_compression,
+                    None,
                 )?
             }
         }
@@ -1621,6 +1625,7 @@ pub fn apply_auto_adjustments_to_paths(
                 &source_path_str,
                 false,
                 highlight_compression,
+                None,
             )
             .map_err(|e| e.to_string())?;
 
