@@ -38,6 +38,24 @@
   <url type="homepage">https://github.com/CyberTimon/RapidRAW</url>
 
   <releases>
+    <release version="v1.4.11" date="2026-01-31">
+        <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.11</url>
+        <description translate="no">
+            <p>New Features</p>
+            <ul>
+                <li>New RAW Preprocessing Algorithm: Whole new preprocessing engine that handles color noise and sharpness significantly better.</li>
+                <li>Fuji X-Trans: Much better handling of Fuji X-Trans sensors for cleaner and sharper details.</li>
+                <li>Flat-Line Clipping in Curves: Added the ability to drag curve start and end points along the X-axis to precisely clip blacks and whites.</li>
+            </ul>
+            <p>Core Improvements</p>
+            <ul>
+                <li>Improved Lens Detection: Enhanced the Lensfun parser for more reliable detection and added support for more manufacturers.</li>
+                <li>Fluid Navigation: Rapidly switching images is now much smoother thanks to new logic that cancels pending load requests for skipped images.</li>
+                <li>Added cross-channel copy/paste functionality for the curves tool.</li>
+                <li>The productivity context menu is now accessible directly within the editor view.</li>
+            </ul>
+        </description>
+    </release>
     <release version="v1.4.10" date="2026-01-26">
         <url type="details">https://github.com/CyberTimon/RapidRAW/releases/tag/v1.4.10</url>
         <description translate="no">
