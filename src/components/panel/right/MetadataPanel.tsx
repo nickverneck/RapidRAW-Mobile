@@ -65,7 +65,7 @@ function MetadataItem({ label, value }: MetaDataItemProps) {
 const KEY_CAMERA_SETTINGS_MAP: CameraSettings = {
   FNumber: {
     format: (value: number) => `${value}`,
-    label: 'Aperature',
+    label: 'Aperture',
   },
   ExposureTime: {
     format: (value: number) => `${value}`,
