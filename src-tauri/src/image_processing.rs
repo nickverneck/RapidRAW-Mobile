@@ -1726,12 +1726,12 @@ pub fn remove_raw_artifacts_and_enhance(image: &mut DynamicImage) {
             }
         });
 
-    apply_gentle_detail_enhance_optimized(&mut buffer, &ycbcr_buffer, 0.3);
+    apply_gentle_detail_enhance(&mut buffer, &ycbcr_buffer, 0.4);
 
     *image = DynamicImage::ImageRgb32F(buffer);
 }
 
-fn apply_gentle_detail_enhance_optimized(
+fn apply_gentle_detail_enhance(
     buffer: &mut image::ImageBuffer<image::Rgb<f32>, Vec<f32>>, 
     ycbcr_source: &[f32], 
     amount: f32
