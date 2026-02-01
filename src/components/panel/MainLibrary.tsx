@@ -1545,7 +1545,7 @@ export default function MainLibrary({
     >
       <header className="p-4 flex-shrink-0 flex justify-between items-center border-b border-border-color gap-4">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold text-primary">Library</h2>
+          <h2 className="text-2xl font-bold text-primary text-shadow-shiny">Library</h2>
           <div className="flex items-center gap-2">
             <p className="text-sm text-text-secondary truncate">{currentFolderPath}</p>
             <div
