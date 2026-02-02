@@ -141,6 +141,12 @@ export default function CollageModal({ isOpen, onClose, onSave, sourceImages }: 
         });
 
         const results = await Promise.all(imagePromises);
+        if (results.length === 1) {
+          const img = results[0];
+          const ratio = img.width / img.height;
+          setActiveAspectRatio({ name: 'Original', value: ratio });
+          setExportHeight(Math.round(DEFAULT_EXPORT_WIDTH / ratio));
+        }
         setLoadedImages(results);
 
         const initialStates: Record<string, ImageState> = {};

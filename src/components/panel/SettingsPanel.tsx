@@ -572,7 +572,7 @@ export default function SettingsPanel({
             >
               <ArrowLeft />
             </Button>
-            <h1 className="text-3xl font-bold text-accent whitespace-nowrap">Settings</h1>
+            <h1 className="text-3xl font-bold text-accent text-shadow-shiny whitespace-nowrap">Settings</h1>
           </div>
 
           <div className="relative flex w-full min-[1200px]:w-[450px] p-2 bg-surface rounded-md">
