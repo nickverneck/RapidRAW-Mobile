@@ -12,6 +12,10 @@ node_modules
 dist
 dist-ssr
 *.local
+pwa/wasm/pkg
+pwa/static/wasm
+pwa/wasm/target
+pwa/wasm/Cargo.lock
 
 # Editor directories and files
 .vscode/*
