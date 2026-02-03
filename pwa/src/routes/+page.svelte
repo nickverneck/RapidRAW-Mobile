@@ -40,6 +40,12 @@
 	let metadataError = '';
 	let isMetadataLoading = false;
 	let metadataRequestId = 0;
+	let previewUrl: string | null = null;
+	let isPreviewLoading = false;
+	let previewRequestId = 0;
+	let previewTimer: number | null = null;
+	let libraryPath: string | null = null;
+	let viewMode: 'entry' | 'library' | 'editor' = 'entry';
 
 	const presets: Preset[] = [
 		{
@@ -66,6 +72,7 @@
 	$: selectedId = selectedImage?.id ?? null;
 	$: currentRating = selectedImage ? ratings[selectedImage.id] ?? 0 : 0;
 	$: activePanel = isLibraryView ? libraryPanel : editorPanel;
+	$: viewMode = selectedImage ? 'editor' : libraryPath ? 'library' : 'entry';
 
 	function handleLibraryList(event: CustomEvent<{ images: LibraryImage[] }>) {
 		libraryImages = event.detail.images;
@@ -73,6 +80,10 @@
 
 	function handleLibrarySelect(event: CustomEvent<{ image: LibraryImage | null }>) {
 		selectedImage = event.detail.image;
+	}
+
+	function handleLibraryStatus(event: CustomEvent<{ activePath: string | null }>) {
+		libraryPath = event.detail.activePath;
 	}
 
 	function handleBack() {
@@ -142,6 +153,67 @@
 		}
 	}
 
+	function clearPreviewUrl() {
+		if (previewUrl) {
+			URL.revokeObjectURL(previewUrl);
+			previewUrl = null;
+		}
+	}
+
+	function schedulePreviewRender() {
+		if (previewTimer) {
+			clearTimeout(previewTimer);
+		}
+		previewTimer = window.setTimeout(() => {
+			void renderPreview();
+		}, 150);
+	}
+
+	async function renderPreview() {
+		if (!selectedImage) {
+			clearPreviewUrl();
+			return;
+		}
+
+		const requestId = ++previewRequestId;
+		isPreviewLoading = true;
+
+		try {
+			const file = await selectedImage.handle.getFile();
+			const buffer = await file.arrayBuffer();
+			const wasm = await getWasmModule();
+			const bytes = new Uint8Array(buffer);
+			const adjustmentsJson = JSON.stringify(showOriginal ? DEFAULT_ADJUSTMENTS : adjustments);
+
+			let previewBytes: Uint8Array | undefined;
+			if (typeof wasm.load_image_preview_with_adjustments_png === 'function') {
+				previewBytes = wasm.load_image_preview_with_adjustments_png(
+					bytes,
+					selectedImage.name,
+					1440,
+					adjustmentsJson,
+					true,
+					1.5
+				);
+			} else if (typeof wasm.load_image_preview_png === 'function') {
+				previewBytes = wasm.load_image_preview_png(bytes, selectedImage.name, 1440, true, 1.5);
+			}
+
+			if (requestId !== previewRequestId || !previewBytes) return;
+
+			const blob = new Blob([previewBytes], { type: 'image/png' });
+			const url = URL.createObjectURL(blob);
+			clearPreviewUrl();
+			previewUrl = url;
+		} catch (error) {
+			console.error('Preview render failed', error);
+		} finally {
+			if (requestId === previewRequestId) {
+				isPreviewLoading = false;
+			}
+		}
+	}
+
 	async function loadMetadata(image: LibraryImage) {
 		if (typeof window === 'undefined') return;
 		const requestId = ++metadataRequestId;
@@ -178,6 +250,20 @@
 		metadataError = '';
 		isMetadataLoading = false;
 		metadataRequestId += 1;
+		isPreviewLoading = false;
+		previewRequestId += 1;
+		if (previewTimer) clearTimeout(previewTimer);
+		clearPreviewUrl();
+	}
+
+	$: if (selectedImage) {
+		adjustments;
+		crop;
+		maskSettings;
+		showOriginal;
+		if (typeof window !== 'undefined') {
+			schedulePreviewRender();
+		}
 	}
 </script>
 
@@ -185,58 +271,77 @@
 	<title>RapidRAW</title>
 </svelte:head>
 
-<AppShell>
-	<MainLibrary slot="sidebar" on:list={handleLibraryList} on:select={handleLibrarySelect} />
-
-	<Editor
-		{selectedImage}
-		{showOriginal}
-		{isWaveformVisible}
-		{canUndo}
-		{canRedo}
-		on:back={handleBack}
-		on:toggleOriginal={() => (showOriginal = !showOriginal)}
-		on:toggleWaveform={() => (isWaveformVisible = !isWaveformVisible)}
-		on:toggleFullscreen={() => {}}
-		on:undo={() => (canUndo = false)}
-		on:redo={() => (canRedo = false)}
-	/>
-
-	<div slot="right" class="h-full">
-		<RightPanel
-			{activePanel}
+<AppShell
+	layout={viewMode}
+	showRight={viewMode === 'editor'}
+	showBottom={viewMode !== 'entry'}
+>
+	{#if viewMode === 'editor'}
+		<Editor
 			{selectedImage}
-			{adjustments}
-			{crop}
-			maskSettings={maskSettings}
-			exportSettings={exportSettings}
-			{presets}
-			{metadata}
-			{isMetadataLoading}
-			metadataError={metadataError}
-			on:select={handlePanelSelect}
-			on:adjustmentsChange={(event) => (adjustments = event.detail.adjustments)}
-			on:cropChange={(event) => (crop = event.detail.crop)}
-			on:maskChange={(event) => (maskSettings = event.detail.settings)}
-			on:exportChange={(event) => (exportSettings = event.detail.settings)}
-			on:apply={handlePresetApply}
-			on:generate={(event) => console.log('AI generate', event.detail)}
-			on:export={handleExport}
+			{previewUrl}
+			{showOriginal}
+			{isWaveformVisible}
+			{canUndo}
+			{canRedo}
+			{isPreviewLoading}
+			on:back={handleBack}
+			on:toggleOriginal={() => (showOriginal = !showOriginal)}
+			on:toggleWaveform={() => (isWaveformVisible = !isWaveformVisible)}
+			on:toggleFullscreen={() => {}}
+			on:undo={() => (canUndo = false)}
+			on:redo={() => (canRedo = false)}
 		/>
-	</div>
+	{:else}
+		<MainLibrary
+			on:list={handleLibraryList}
+			on:select={handleLibrarySelect}
+			on:status={handleLibraryStatus}
+		/>
+	{/if}
 
-	<BottomBar
-		slot="bottom"
-		images={libraryImages}
-		{selectedId}
-		rating={currentRating}
-		{zoom}
-		{isLibraryView}
-		filmstripVisible={filmstripVisible}
-		on:select={handleFilmstripSelect}
-		on:rate={handleRate}
-		on:zoom={handleZoom}
-		on:toggleFilmstrip={() => (filmstripVisible = !filmstripVisible)}
-		on:export={handleExport}
-	/>
+	<svelte:fragment slot="right">
+		{#if viewMode === 'editor'}
+			<div class="h-full">
+				<RightPanel
+					{activePanel}
+					{selectedImage}
+					{adjustments}
+					{crop}
+					maskSettings={maskSettings}
+					exportSettings={exportSettings}
+					{presets}
+					{metadata}
+					{isMetadataLoading}
+					metadataError={metadataError}
+					on:select={handlePanelSelect}
+					on:adjustmentsChange={(event) => (adjustments = event.detail.adjustments)}
+					on:cropChange={(event) => (crop = event.detail.crop)}
+					on:maskChange={(event) => (maskSettings = event.detail.settings)}
+					on:exportChange={(event) => (exportSettings = event.detail.settings)}
+					on:apply={handlePresetApply}
+					on:generate={(event) => console.log('AI generate', event.detail)}
+					on:export={handleExport}
+				/>
+			</div>
+		{/if}
+	</svelte:fragment>
+
+	<svelte:fragment slot="bottom">
+		{#if viewMode !== 'entry'}
+			<BottomBar
+				images={libraryImages}
+				{selectedId}
+				rating={currentRating}
+				{zoom}
+				isLibraryView={viewMode === 'library'}
+				filmstripVisible={filmstripVisible}
+				on:select={handleFilmstripSelect}
+				on:rate={handleRate}
+				on:zoom={handleZoom}
+				on:toggleFilmstrip={() => (filmstripVisible = !filmstripVisible)}
+				on:export={handleExport}
+			/>
+		{/if}
+	</svelte:fragment>
 </AppShell>

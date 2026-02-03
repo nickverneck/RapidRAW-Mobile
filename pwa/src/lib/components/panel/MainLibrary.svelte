@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import type { LibraryImage } from '$lib/types/library';
-	import { isRawFile } from '$lib/utils/raw';
+	import { isRawFile, isSupportedImageFile } from '$lib/utils/raw';
 	import { getWasmModule } from '$lib/wasm/rapidraw';
 
 	type FileHandle = FileSystemFileHandle;
@@ -10,6 +10,7 @@
 	const dispatch = createEventDispatcher<{
 		select: { image: LibraryImage | null };
 		list: { images: LibraryImage[] };
+		status: { activePath: string | null };
 	}>();
 
 	let activePath: string | null = null;
@@ -103,6 +104,17 @@
 		}
 	}
 
+	function formatErrorMessage(error: unknown, fallback: string) {
+		if (error && typeof error === 'object') {
+			const maybe = error as { name?: string; message?: string };
+			if (maybe.name || maybe.message) {
+				return `${maybe.name ?? 'Error'}${maybe.message ? `: ${maybe.message}` : ''}`;
+			}
+		}
+		if (typeof error === 'string') return error;
+		return fallback;
+	}
+
 	async function scanDirectory(handle: FileSystemDirectoryHandle) {
 		errorMessage = '';
 		try {
@@ -115,12 +127,21 @@
 			selectedId = null;
 			dispatch('select', { image: null });
 
-			const wasm = await getWasmModule();
-			const newImages: Array<ImageEntry> = [];
+			let wasm: Awaited<ReturnType<typeof getWasmModule>> | null = null;
+			try {
+				wasm = await getWasmModule();
+			} catch (error) {
+				console.warn('WASM module failed to load, falling back to extension filter.', error);
+				wasm = null;
+			}
 
+			const newImages: Array<ImageEntry> = [];
 			for await (const entry of handle.values()) {
 				if (entry.kind !== 'file') continue;
-				if (!wasm.is_supported_image_file(entry.name)) continue;
+				const isSupported = wasm
+					? wasm.is_supported_image_file(entry.name)
+					: isSupportedImageFile(entry.name);
+				if (!isSupported) continue;
 
 				const file = await entry.getFile();
 				const imageEntry: ImageEntry = {
@@ -139,7 +160,7 @@
 				enqueuePreview(entry);
 			}
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'Failed to open folder.';
+			errorMessage = formatErrorMessage(error, 'Failed to open folder.');
 		} finally {
 			isIndexing = false;
 			isLoading = false;
@@ -160,7 +181,11 @@
 				await scanDirectory(directoryHandle);
 			}
 		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'Failed to open folder.';
+			const message = formatErrorMessage(error, 'Failed to open folder.');
+			if (message.toLowerCase().includes('abort') || message.toLowerCase().includes('canceled')) {
+				return;
+			}
+			errorMessage = message;
 		}
 	}
 
@@ -172,6 +197,7 @@
 		activePath = null;
 		selectedId = null;
 		dispatch('select', { image: null });
+		dispatch('status', { activePath });
 	}
 
 	function refreshLibrary() {
@@ -215,6 +241,8 @@
 	});
 
 	$: imageCount = images.length;
+	$: hasFolder = !!activePath;
+	$: isEntryView = !hasFolder && imageCount === 0 && !isIndexing;
 
 	$: gridCardWidth = thumbnailSize + 120;
 	$: gridCardHeight = thumbnailSize + 72;
@@ -252,6 +280,7 @@
 	});
 
 	$: dispatch('list', { images });
+	$: dispatch('status', { activePath });
 
 	function handleSelect(entry: ImageEntry) {
 		selectedId = entry.id;
@@ -264,197 +293,225 @@
 </script>
 
 <div class="flex h-full flex-col gap-4 p-4">
-	<div class="flex items-center justify-between">
-		<div>
-			<p class="text-xs uppercase tracking-[0.2em] text-text-secondary">Library</p>
-			<h2 class="text-lg font-semibold text-text-primary">Main Library</h2>
-			<p class="text-xs text-text-secondary">
-				{#if activePath}{activePath}{:else}No folder selected{/if}
-			</p>
-		</div>
-		<div class="flex items-center gap-2">
-			<button
-				class="rounded-md border border-border-color px-3 py-2 text-xs text-text-secondary"
-				on:click={resetLibrary}
-			>
-				Home
-			</button>
-			<button
-				class="rounded-md border border-border-color px-3 py-2 text-xs text-text-secondary"
-				on:click={refreshLibrary}
-			>
-				Refresh
-			</button>
-		</div>
-	</div>
-
-	<div class="flex flex-col gap-2">
-		<div class="flex items-center gap-2">
-			<input
-				class="flex-1 rounded-md border border-border-color bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary"
-				type="text"
-				placeholder="Search by filename, tag, or note"
-				bind:value={searchText}
-			/>
-			<button
-				class="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-button-text"
-				on:click={openFolder}
-			>
-				Open Folder
-			</button>
-		</div>
-
-		<div class="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
-				<span>Rating</span>
-				<select
-					class="bg-transparent text-xs text-text-secondary"
-					bind:value={ratingFilter}
-				>
-					{#each ratingFilterOptions as option}
-						<option value={option}>{option}</option>
-					{/each}
-				</select>
-			</label>
-			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
-				<span>RAW</span>
-				<select class="bg-transparent text-xs text-text-secondary" bind:value={rawFilter}>
-					{#each rawFilterOptions as option}
-						<option value={option}>{option}</option>
-					{/each}
-				</select>
-			</label>
-			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
-				<span>Sort</span>
-				<select class="bg-transparent text-xs text-text-secondary" bind:value={sortBy}>
-					{#each sortOptions as option}
-						<option value={option}>{option}</option>
-					{/each}
-				</select>
-				<button
-					class="rounded-md border border-border-color px-2 py-1 text-[10px]"
-					on:click={() => (sortDir = sortDir === 'asc' ? 'desc' : 'asc')}
-				>
-					{sortDir.toUpperCase()}
-				</button>
-			</label>
-			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
-				<span>Thumb</span>
-				<select
-					class="bg-transparent text-xs text-text-secondary"
-					on:change={(event) => {
-						const value = Number((event.target as HTMLSelectElement).value);
-						thumbnailSize = Number.isFinite(value) ? value : thumbnailSize;
-					}}
-				>
-					{#each thumbnailOptions as option}
-						<option value={option.value} selected={option.value === thumbnailSize}>
-							{option.label}
-						</option>
-					{/each}
-				</select>
-			</label>
-			<div class="ml-auto flex items-center gap-1">
-				{#each viewModes as mode}
-					<button
-						class={`rounded-md px-2 py-1 ${
-							viewMode === mode.id
-								? 'bg-card-active text-text-primary'
-								: 'border border-border-color text-text-secondary'
-						}`}
-						on:click={() => (viewMode = mode.id as 'grid' | 'list')}
-					>
-						{mode.label}
-					</button>
-				{/each}
+	{#if isEntryView}
+		<div class="flex flex-1 flex-col items-center justify-center gap-6 text-center">
+			<div class="rounded-full border border-border-color/60 bg-bg-primary/40 px-4 py-2 text-xs uppercase tracking-[0.3em] text-text-secondary">
+				RapidRAW
 			</div>
-		</div>
-	</div>
-
-	<div
-		class="flex-1 overflow-auto rounded-lg border border-dashed border-border-color/60 p-2"
-		on:scroll={handleScroll}
-		bind:clientHeight={viewportHeight}
-		bind:clientWidth={viewportWidth}
-	>
-		{#if isLoading}
-			<p class="text-sm text-text-secondary">Loading library…</p>
-		{:else if imageCount === 0}
-			<div class="flex h-full flex-col items-center justify-center gap-2 text-center">
-				<p class="text-sm text-text-secondary">No images loaded yet.</p>
-				<p class="text-xs text-text-secondary">
-					Use “Open Folder” to start indexing your library.
+			<div>
+				<h2 class="text-2xl font-semibold text-text-primary">Start your library</h2>
+				<p class="mt-2 text-sm text-text-secondary">
+					Open a folder to begin browsing and editing.
 				</p>
 			</div>
-		{:else}
-			<div class="relative" style={`height: ${totalHeight}px;`}>
-				{#each visibleLayout as item (item.image.id)}
-					<button
-						class={`absolute rounded-md border border-border-color text-left ${
-							selectedId === item.image.id ? 'bg-card-active' : 'bg-transparent'
-						}`}
-						style={`top: ${item.top}px; left: ${item.left}px; width: ${item.width}px; height: ${item.height}px;`}
-						on:click={() => handleSelect(item.image)}
-					>
-						{#if viewMode === 'grid'}
-							<div class="flex h-full flex-col gap-2 p-2">
-								{#if item.image.thumbUrl}
-									<img
-										class="h-full max-h-[calc(100%-48px)] w-full rounded-md border border-border-color object-cover"
-										src={item.image.thumbUrl}
-										alt={item.image.name}
-									/>
-								{:else}
-									<div class="flex flex-1 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
-										{item.image.status === 'loading' ? 'Loading' : '—'}
-									</div>
-								{/if}
-								<div>
-									<p class="truncate text-xs text-text-primary">{item.image.name}</p>
-								</div>
-							</div>
-						{:else}
-							<div class="flex items-center gap-3 p-2">
-								{#if item.image.thumbUrl}
-									<img
-										class="h-16 w-16 rounded-md border border-border-color object-cover"
-										src={item.image.thumbUrl}
-										alt={item.image.name}
-									/>
-								{:else}
-									<div class="flex h-16 w-16 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
-										{item.image.status === 'loading' ? 'Loading' : '—'}
-									</div>
-								{/if}
-								<div class="flex-1">
-									<p class="text-sm text-text-primary">{item.image.name}</p>
-									<p class="text-xs text-text-secondary">
-										{Math.round(item.image.size / 1024)} KB · {new Date(item.image.lastModified).toLocaleDateString()}
-									</p>
-									{#if item.image.error}
-										<p class="text-xs text-red-300">{item.image.error}</p>
-									{/if}
-								</div>
-							</div>
-						{/if}
-					</button>
-				{/each}
+			<div class="flex flex-wrap items-center justify-center gap-3">
+				<button
+					class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-button-text"
+					on:click={openFolder}
+				>
+					Open Folder
+				</button>
+				<button
+					class="rounded-md border border-border-color px-4 py-2 text-sm text-text-secondary"
+					on:click={refreshLibrary}
+				>
+					Continue Session
+				</button>
 			</div>
-		{/if}
-	</div>
-
-	<div class="flex items-center justify-between text-xs text-text-secondary">
-		<div>
-			{#if isIndexing}
-				Indexing library…
-			{:else}
-				{imageCount} images
+			{#if errorMessage}
+				<p class="text-xs text-red-300">{errorMessage}</p>
 			{/if}
 		</div>
-		<div>Search: {searchText || '—'}</div>
-	</div>
+	{:else}
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-xs uppercase tracking-[0.2em] text-text-secondary">Library</p>
+				<h2 class="text-lg font-semibold text-text-primary">Main Library</h2>
+				<p class="text-xs text-text-secondary">
+					{#if activePath}{activePath}{:else}No folder selected{/if}
+				</p>
+			</div>
+			<div class="flex items-center gap-2">
+				<button
+					class="rounded-md border border-border-color px-3 py-2 text-xs text-text-secondary"
+					on:click={resetLibrary}
+				>
+					Home
+				</button>
+				<button
+					class="rounded-md border border-border-color px-3 py-2 text-xs text-text-secondary"
+					on:click={refreshLibrary}
+				>
+					Refresh
+				</button>
+			</div>
+		</div>
 
-	{#if errorMessage}
-		<p class="text-xs text-red-300">{errorMessage}</p>
+		<div class="flex flex-col gap-2">
+			<div class="flex items-center gap-2">
+				<input
+					class="flex-1 rounded-md border border-border-color bg-transparent px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary"
+					type="text"
+					placeholder="Search by filename, tag, or note"
+					bind:value={searchText}
+				/>
+				<button
+					class="rounded-md bg-accent px-3 py-2 text-xs font-semibold text-button-text"
+					on:click={openFolder}
+				>
+					Open Folder
+				</button>
+			</div>
+
+			<div class="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
+				<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+					<span>Rating</span>
+					<select class="bg-transparent text-xs text-text-secondary" bind:value={ratingFilter}>
+						{#each ratingFilterOptions as option}
+							<option value={option}>{option}</option>
+						{/each}
+					</select>
+				</label>
+				<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+					<span>RAW</span>
+					<select class="bg-transparent text-xs text-text-secondary" bind:value={rawFilter}>
+						{#each rawFilterOptions as option}
+							<option value={option}>{option}</option>
+						{/each}
+					</select>
+				</label>
+				<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+					<span>Sort</span>
+					<select class="bg-transparent text-xs text-text-secondary" bind:value={sortBy}>
+						{#each sortOptions as option}
+							<option value={option}>{option}</option>
+						{/each}
+					</select>
+					<button
+						class="rounded-md border border-border-color px-2 py-1 text-[10px]"
+						on:click={() => (sortDir = sortDir === 'asc' ? 'desc' : 'asc')}
+					>
+						{sortDir.toUpperCase()}
+					</button>
+				</label>
+				<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+					<span>Thumb</span>
+					<select
+						class="bg-transparent text-xs text-text-secondary"
+						on:change={(event) => {
+							const value = Number((event.target as HTMLSelectElement).value);
+							thumbnailSize = Number.isFinite(value) ? value : thumbnailSize;
+						}}
+					>
+						{#each thumbnailOptions as option}
+							<option value={option.value} selected={option.value === thumbnailSize}>
+								{option.label}
+							</option>
+						{/each}
+					</select>
+				</label>
+				<div class="ml-auto flex items-center gap-1">
+					{#each viewModes as mode}
+						<button
+							class={`rounded-md px-2 py-1 ${
+								viewMode === mode.id
+									? 'bg-card-active text-text-primary'
+									: 'border border-border-color text-text-secondary'
+							}`}
+							on:click={() => (viewMode = mode.id as 'grid' | 'list')}
+						>
+							{mode.label}
+						</button>
+					{/each}
+				</div>
+			</div>
+		</div>
+
+		<div
+			class="flex-1 overflow-auto rounded-lg border border-dashed border-border-color/60 p-2"
+			on:scroll={handleScroll}
+			bind:clientHeight={viewportHeight}
+			bind:clientWidth={viewportWidth}
+		>
+			{#if isLoading}
+				<p class="text-sm text-text-secondary">Loading library…</p>
+			{:else if imageCount === 0}
+				<div class="flex h-full flex-col items-center justify-center gap-2 text-center">
+					<p class="text-sm text-text-secondary">No images loaded yet.</p>
+					<p class="text-xs text-text-secondary">
+						Use “Open Folder” to start indexing your library.
+					</p>
+				</div>
+			{:else}
+				<div class="relative" style={`height: ${totalHeight}px;`}>
+					{#each visibleLayout as item (item.image.id)}
+						<button
+							class={`absolute rounded-md border border-border-color text-left ${
+								selectedId === item.image.id ? 'bg-card-active' : 'bg-transparent'
+							}`}
+							style={`top: ${item.top}px; left: ${item.left}px; width: ${item.width}px; height: ${item.height}px;`}
+							on:click={() => handleSelect(item.image)}
+						>
+							{#if viewMode === 'grid'}
+								<div class="flex h-full flex-col gap-2 p-2">
+									{#if item.image.thumbUrl}
+										<img
+											class="h-full max-h-[calc(100%-48px)] w-full rounded-md border border-border-color object-cover"
+											src={item.image.thumbUrl}
+											alt={item.image.name}
+										/>
+									{:else}
+										<div class="flex flex-1 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
+											{item.image.status === 'loading' ? 'Loading' : '—'}
+										</div>
+									{/if}
+									<div>
+										<p class="truncate text-xs text-text-primary">{item.image.name}</p>
+									</div>
+								</div>
+							{:else}
+								<div class="flex items-center gap-3 p-2">
+									{#if item.image.thumbUrl}
+										<img
+											class="h-16 w-16 rounded-md border border-border-color object-cover"
+											src={item.image.thumbUrl}
+											alt={item.image.name}
+										/>
+									{:else}
+										<div class="flex h-16 w-16 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
+											{item.image.status === 'loading' ? 'Loading' : '—'}
+										</div>
+									{/if}
+									<div class="flex-1">
+										<p class="text-sm text-text-primary">{item.image.name}</p>
+										<p class="text-xs text-text-secondary">
+											{Math.round(item.image.size / 1024)} KB · {new Date(item.image.lastModified).toLocaleDateString()}
+										</p>
+										{#if item.image.error}
+											<p class="text-xs text-red-300">{item.image.error}</p>
+										{/if}
+									</div>
+								</div>
+							{/if}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
+		<div class="flex items-center justify-between text-xs text-text-secondary">
+			<div>
+				{#if isIndexing}
+					Indexing library…
+				{:else}
+					{imageCount} images
+				{/if}
+			</div>
+			<div>Search: {searchText || '—'}</div>
+		</div>
+
+		{#if errorMessage}
+			<p class="text-xs text-red-300">{errorMessage}</p>
+		{/if}
 	{/if}
 </div>

@@ -33,10 +33,27 @@ export const RAW_EXTENSIONS = new Set([
 	'sr2'
 ]);
 
+export const NON_RAW_EXTENSIONS = new Set([
+	'jpg',
+	'jpeg',
+	'png',
+	'gif',
+	'bmp',
+	'tiff',
+	'tif',
+	'exr',
+	'qoi'
+]);
+
 export function getExtension(name: string): string {
 	return name.split('.').pop()?.toLowerCase() ?? '';
 }
 
 export function isRawFile(name: string): boolean {
 	return RAW_EXTENSIONS.has(getExtension(name));
+}
+
+export function isSupportedImageFile(name: string): boolean {
+	const ext = getExtension(name);
+	return RAW_EXTENSIONS.has(ext) || NON_RAW_EXTENSIONS.has(ext);
 }

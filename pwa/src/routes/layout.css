@@ -102,10 +102,14 @@
 .app-body {
 	flex: 1;
 	display: grid;
-	grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(260px, 340px);
+	grid-template-columns: minmax(0, 1fr);
 	gap: 0.75rem;
 	padding: 0.75rem;
 	min-height: 0;
+}
+
+.app-body[data-layout='editor'] {
+	grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
 }
 
 .app-sidebar,

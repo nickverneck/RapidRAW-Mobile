@@ -4,7 +4,9 @@
 	import EditorToolbar from './editor/EditorToolbar.svelte';
 
 	export let selectedImage: LibraryImage | null = null;
+	export let previewUrl: string | null = null;
 	export let isLoading = false;
+	export let isPreviewLoading = false;
 	export let showOriginal = false;
 	export let isWaveformVisible = false;
 	export let canUndo = false;
@@ -67,10 +69,10 @@
 
 			<div class="flex-1 overflow-hidden rounded-lg border border-border-color bg-bg-primary/40 p-4">
 				{#if selectedImage}
-					{#if selectedImage.thumbUrl}
+					{#if previewUrl || selectedImage.thumbUrl}
 						<div class="relative flex h-full items-center justify-center">
 							<img
-								src={selectedImage.thumbUrl}
+								src={previewUrl ?? selectedImage.thumbUrl}
 								alt={selectedImage.name}
 								class="max-h-full max-w-full rounded-md border border-border-color object-contain"
 							/>
@@ -82,7 +84,7 @@
 						</div>
 					{:else}
 						<div class="flex h-full items-center justify-center text-sm text-text-secondary">
-							{isLoading ? 'Rendering preview…' : 'Preview unavailable.'}
+							{isPreviewLoading || isLoading ? 'Rendering preview…' : 'Preview unavailable.'}
 						</div>
 					{/if}
 				{:else}

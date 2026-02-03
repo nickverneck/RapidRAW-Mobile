@@ -3,6 +3,55 @@ use js_sys::Promise;
 
 mod core;
 
+fn decode_image_from_bytes(
+	data: &[u8],
+	path: &str,
+	use_fast_raw_dev: bool,
+	highlight_compression: f32,
+) -> Result<image::DynamicImage, JsValue> {
+	let is_raw = core::formats::is_raw_file(path);
+	if is_raw {
+		#[cfg(feature = "raw-processing")]
+		{
+			let mut img = core::raw_processing::develop_raw_image(
+				data,
+				use_fast_raw_dev,
+				highlight_compression,
+				None,
+			)
+			.map_err(|err| JsValue::from_str(&format!("raw decode failed: {err}")))?;
+			if !use_fast_raw_dev {
+				core::image_processing::remove_raw_artifacts_and_enhance(&mut img);
+			}
+			Ok(img)
+		}
+		#[cfg(not(feature = "raw-processing"))]
+		{
+			Err(JsValue::from_str("RAW decoding is not enabled in this build."))
+		}
+	} else {
+		#[cfg(feature = "image-decoding")]
+		{
+			let decoded = core::image_loader::load_non_raw_image_from_bytes(data, path)
+				.map_err(|err| JsValue::from_str(&format!("image decode failed: {err}")))?;
+			Ok(decoded)
+		}
+		#[cfg(not(feature = "image-decoding"))]
+		{
+			Err(JsValue::from_str("Image decoding is not enabled in this build."))
+		}
+	}
+}
+
+fn encode_png(image: &image::DynamicImage) -> Result<Vec<u8>, JsValue> {
+	let rgba = image.to_rgba8();
+	let mut bytes = Vec::new();
+	image::DynamicImage::ImageRgba8(rgba)
+		.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+		.map_err(|err| JsValue::from_str(&format!("png encode failed: {err}")))?;
+	Ok(bytes)
+}
+
 #[wasm_bindgen]
 pub fn version() -> String {
 	"rapidraw-wasm 0.1.0".to_string()
@@ -53,38 +102,7 @@ pub fn load_image_preview_png(
 	use_fast_raw_dev: bool,
 	highlight_compression: f32,
 ) -> Result<Vec<u8>, JsValue> {
-	let is_raw = core::formats::is_raw_file(path);
-	let image = if is_raw {
-		#[cfg(feature = "raw-processing")]
-		{
-			let mut img = core::raw_processing::develop_raw_image(
-				data,
-				use_fast_raw_dev,
-				highlight_compression,
-				None,
-			)
-			.map_err(|err| JsValue::from_str(&format!("raw decode failed: {err}")))?;
-			if !use_fast_raw_dev {
-				core::image_processing::remove_raw_artifacts_and_enhance(&mut img);
-			}
-			img
-		}
-		#[cfg(not(feature = "raw-processing"))]
-		{
-			return Err(JsValue::from_str("RAW decoding is not enabled in this build."));
-		}
-	} else {
-		#[cfg(feature = "image-decoding")]
-		{
-			let decoded = core::image_loader::load_non_raw_image_from_bytes(data, path)
-				.map_err(|err| JsValue::from_str(&format!("image decode failed: {err}")))?;
-			decoded
-		}
-		#[cfg(not(feature = "image-decoding"))]
-		{
-			return Err(JsValue::from_str("Image decoding is not enabled in this build."));
-		}
-	};
+	let image = decode_image_from_bytes(data, path, use_fast_raw_dev, highlight_compression)?;
 
 	let image = if max_edge > 0 {
 		core::image_utils::downscale_f32_image(&image, max_edge, max_edge)
@@ -92,12 +110,29 @@ pub fn load_image_preview_png(
 		image
 	};
 
-	let rgba = image.to_rgba8();
-	let mut bytes = Vec::new();
-	image::DynamicImage::ImageRgba8(rgba)
-		.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
-		.map_err(|err| JsValue::from_str(&format!("png encode failed: {err}")))?;
-	Ok(bytes)
+	encode_png(&image)
+}
+
+#[wasm_bindgen]
+pub fn load_image_preview_with_adjustments_png(
+	data: &[u8],
+	path: &str,
+	max_edge: u32,
+	adjustments_json: &str,
+	use_fast_raw_dev: bool,
+	highlight_compression: f32,
+) -> Result<Vec<u8>, JsValue> {
+	let mut image = decode_image_from_bytes(data, path, use_fast_raw_dev, highlight_compression)?;
+	let adjustments = core::adjustments::parse_adjustments(adjustments_json);
+	core::adjustments::apply_basic_adjustments(&mut image, &adjustments);
+
+	let image = if max_edge > 0 {
+		core::image_utils::downscale_f32_image(&image, max_edge, max_edge)
+	} else {
+		image
+	};
+
+	encode_png(&image)
 }
 
 #[cfg(feature = "image-decoding")]
@@ -162,10 +197,5 @@ pub fn develop_raw_preview_png(
 		image
 	};
 
-	let rgba = image.to_rgba8();
-	let mut bytes = Vec::new();
-	image::DynamicImage::ImageRgba8(rgba)
-		.write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
-		.map_err(|err| JsValue::from_str(&format!("png encode failed: {err}")))?;
-	Ok(bytes)
+	encode_png(&image)
 }

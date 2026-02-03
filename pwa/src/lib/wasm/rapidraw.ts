@@ -8,6 +8,14 @@ export type WasmModule = {
 		use_fast_raw_dev: boolean,
 		highlightCompression: number
 	) => Uint8Array;
+	load_image_preview_with_adjustments_png?: (
+		data: Uint8Array,
+		path: string,
+		maxEdge: number,
+		adjustmentsJson: string,
+		use_fast_raw_dev: boolean,
+		highlightCompression: number
+	) => Uint8Array;
 	decode_image_preview_png?: (data: Uint8Array, path: string, maxEdge: number) => Uint8Array;
 	develop_raw_preview_png?: (
 		data: Uint8Array,

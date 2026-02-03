@@ -2,6 +2,8 @@ pub mod formats;
 pub mod geometry;
 pub mod metadata;
 #[cfg(feature = "image-decoding")]
+pub mod adjustments;
+#[cfg(feature = "image-decoding")]
 pub mod image_utils;
 #[cfg(feature = "image-decoding")]
 pub mod image_loader;
