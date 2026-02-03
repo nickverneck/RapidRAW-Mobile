@@ -1,7 +1,15 @@
 pub mod formats;
 pub mod geometry;
 pub mod metadata;
+#[cfg(feature = "image-decoding")]
+pub mod image_utils;
+#[cfg(feature = "image-decoding")]
+pub mod image_loader;
+#[cfg(feature = "image-decoding")]
+pub mod non_raw_metadata;
 #[cfg(feature = "raw-processing")]
 pub mod image_processing;
 #[cfg(feature = "raw-processing")]
 pub mod raw_processing;
+#[cfg(feature = "raw-processing")]
+pub mod raw_metadata;

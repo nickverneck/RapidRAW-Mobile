@@ -14,6 +14,7 @@ dist-ssr
 *.local
 pwa/wasm/pkg
 pwa/static/wasm
+pwa/static/wasm-threads
 pwa/wasm/target
 pwa/wasm/Cargo.lock
 

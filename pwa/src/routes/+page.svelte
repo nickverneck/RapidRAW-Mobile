@@ -1,62 +1,67 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-
-	let wasmStatus = 'Not loaded';
-	let wasmVersion = '';
-	let wasmError = '';
-	let wasmBytes = 0;
-	let supportsRaw = false;
-	let geometryJson = '';
-	let metadataJson = '';
-
-	onMount(async () => {
-		try {
-			wasmStatus = 'Loading...';
-			const wasmModuleUrl = new URL('/wasm/rapidraw_wasm.js', window.location.origin).toString();
-			const mod = await import(/* @vite-ignore */ wasmModuleUrl);
-			await mod.default();
-			wasmVersion = mod.version();
-			wasmBytes = mod.load_image(new Uint8Array([1, 2, 3, 4]));
-			supportsRaw = mod.is_supported_image_file('sample.nef');
-			metadataJson = mod.default_image_metadata_json();
-			geometryJson = mod.geometry_from_adjustments(
-				JSON.stringify({ transformScale: 110, transformRotate: 2.5 })
-			);
-			wasmStatus = 'Ready';
-		} catch (error) {
-			wasmStatus = 'Unavailable';
-			wasmError =
-				error instanceof Error
-					? error.message
-					: 'Unknown error loading WASM module.';
-		}
-	});
+	import AppShell from '$lib/components/layout/AppShell.svelte';
+	import PanelPlaceholder from '$lib/components/layout/PanelPlaceholder.svelte';
 </script>
 
 <svelte:head>
-	<title>RapidRAW PWA</title>
+	<title>RapidRAW</title>
 </svelte:head>
 
-<main class="page">
-	<header class="hero">
-		<p class="eyebrow">RapidRAW</p>
-		<h1>RapidRAW PWA</h1>
-		<p class="lead">Scaffold ready: PWA + WASM toolchain wired.</p>
-	</header>
+<AppShell title="RapidRAW">
+	<PanelPlaceholder
+		slot="sidebar"
+		title="Library"
+		subtitle="No folder opened yet"
+		body="Choose a folder to start browsing images."
+	>
+		<div class="mt-auto flex flex-col gap-2">
+			<button class="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-button-text">
+				Open Folder
+			</button>
+			<button class="rounded-md border border-border-color px-3 py-2 text-sm text-text-secondary">
+				Import Session
+			</button>
+		</div>
+	</PanelPlaceholder>
 
-	<section class="panel">
-		<h2>WASM Status</h2>
-		<p class="status">{wasmStatus}</p>
-		{#if wasmVersion}
-			<p class="detail">Version: {wasmVersion}</p>
-			<p class="detail">load_image sample bytes: {wasmBytes}</p>
-			<p class="detail">supports .nef RAW: {supportsRaw ? 'yes' : 'no'}</p>
-			<p class="detail">default metadata: {metadataJson}</p>
-			<p class="detail">geometry params: {geometryJson}</p>
-		{/if}
-		{#if wasmError}
-			<p class="error">Error: {wasmError}</p>
-			<p class="hint">Run <code>bun run wasm:build</code> to generate the module.</p>
-		{/if}
-	</section>
-</main>
+	<PanelPlaceholder
+		title="Editor"
+		subtitle="Select an image to begin"
+		body="The main canvas and tool panels will live here."
+	>
+		<div class="mt-6 flex flex-1 items-center justify-center rounded-lg border border-dashed border-border-color bg-bg-secondary/60">
+			<p class="text-sm text-text-secondary">Canvas Preview</p>
+		</div>
+	</PanelPlaceholder>
+
+	<PanelPlaceholder
+		slot="right"
+		title="Controls"
+		subtitle="Adjustments & presets"
+		body="This panel will host exposure, color, curves, and AI tools."
+	>
+		<div class="mt-4 grid gap-2">
+			<div class="rounded-md border border-border-color px-3 py-2 text-sm text-text-secondary">
+				Exposure
+			</div>
+			<div class="rounded-md border border-border-color px-3 py-2 text-sm text-text-secondary">
+				Color
+			</div>
+			<div class="rounded-md border border-border-color px-3 py-2 text-sm text-text-secondary">
+				Curves
+			</div>
+		</div>
+	</PanelPlaceholder>
+
+	<div slot="bottom" class="flex w-full items-center justify-between text-sm text-text-secondary">
+		<div class="flex items-center gap-4">
+			<span>Zoom: 100%</span>
+			<span>Rating: —</span>
+		</div>
+		<div class="flex items-center gap-2">
+			<button class="rounded-md border border-border-color px-3 py-2">Copy</button>
+			<button class="rounded-md border border-border-color px-3 py-2">Paste</button>
+			<button class="rounded-md bg-accent px-3 py-2 text-button-text">Export</button>
+		</div>
+	</div>
+</AppShell>
