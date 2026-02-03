@@ -5,6 +5,11 @@
 	export let activePanel: PanelId = 'adjustments';
 
 	const dispatch = createEventDispatcher<{ select: { id: PanelId } }>();
+
+	function selectPanel(id: PanelId) {
+		activePanel = id;
+		dispatch('select', { id });
+	}
 </script>
 
 <div class="flex h-full flex-col gap-1 p-1">
@@ -15,7 +20,7 @@
 					? 'bg-surface text-text-primary'
 					: 'text-text-secondary hover:bg-surface hover:text-text-primary'
 			}`}
-			on:click={() => dispatch('select', { id: option.id })}
+			on:click={() => selectPanel(option.id)}
 			title={option.label}
 		>
 			{option.label}

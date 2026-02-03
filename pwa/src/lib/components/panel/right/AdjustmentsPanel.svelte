@@ -8,7 +8,8 @@
 
 	const dispatch = createEventDispatcher<{ change: { adjustments: Adjustments } }>();
 
-	const sections = [
+	type SliderItem = { key: keyof Adjustments; label: string; min: number; max: number; step: number };
+	const sections: { title: string; items: SliderItem[] }[] = [
 		{
 			title: 'Basic',
 			items: [
@@ -38,7 +39,7 @@
 			title: 'Effects',
 			items: [{ key: 'vignette', label: 'Vignette', min: -1, max: 1, step: 0.05 }]
 		}
-	] as const;
+	];
 
 	function updateValue(key: keyof Adjustments, value: number) {
 		dispatch('change', { adjustments: { ...adjustments, [key]: value } });
