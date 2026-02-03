@@ -135,12 +135,13 @@
 }
 
 .app-bottom {
-	height: 96px;
+	height: auto;
+	min-height: 96px;
 	background: rgba(var(--color-bg-secondary-rgb), var(--opacity-bg-secondary, 1));
 	border-top: 1px solid rgb(var(--color-border-color) / 1);
 	display: flex;
-	align-items: center;
-	padding: 0 1rem;
+	align-items: stretch;
+	padding: 0.5rem 1rem;
 }
 
 .page {

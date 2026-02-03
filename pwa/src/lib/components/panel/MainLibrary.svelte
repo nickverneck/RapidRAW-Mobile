@@ -1,15 +1,16 @@
 <script lang="ts">
+	import { createEventDispatcher } from 'svelte';
+	import type { LibraryImage } from '$lib/types/library';
+	import { isRawFile } from '$lib/utils/raw';
+	import { getWasmModule } from '$lib/wasm/rapidraw';
+
 	type FileHandle = FileSystemFileHandle;
-	type ImageEntry = {
-		id: string;
-		name: string;
-		handle: FileHandle;
-		size: number;
-		lastModified: number;
-		status: 'pending' | 'loading' | 'ready' | 'error';
-		thumbUrl?: string;
-		error?: string;
-	};
+	type ImageEntry = LibraryImage;
+
+	const dispatch = createEventDispatcher<{
+		select: { image: LibraryImage | null };
+		list: { images: LibraryImage[] };
+	}>();
 
 	let activePath: string | null = null;
 	let isIndexing = false;
@@ -25,64 +26,28 @@
 	let ratingFilter = 'Show All';
 	let sortBy: 'Date' | 'Name' | 'Size' = 'Date';
 	let sortDir: 'asc' | 'desc' = 'desc';
+	let thumbnailSize = 180;
 
 	const viewModes = [
 		{ id: 'grid', label: 'Grid' },
 		{ id: 'list', label: 'List' }
 	];
+	const thumbnailOptions = [
+		{ label: 'Small', value: 120 },
+		{ label: 'Medium', value: 180 },
+		{ label: 'Large', value: 240 }
+	];
+
 
 	const MAX_CONCURRENT_PREVIEWS = 3;
 	let activePreviewCount = 0;
 	const previewQueue: Array<ImageEntry> = [];
+	const overscanRows = 2;
+	let scrollTop = 0;
+	let viewportHeight = 0;
+	let viewportWidth = 0;
 
-	type WasmModule = {
-		default: () => Promise<void>;
-		is_supported_image_file: (path: string) => boolean;
-		load_image_preview_png?: (
-			data: Uint8Array,
-			path: string,
-			maxEdge: number,
-			use_fast_raw_dev: boolean,
-			highlightCompression: number
-		) => Uint8Array;
-		decode_image_preview_png?: (data: Uint8Array, path: string, maxEdge: number) => Uint8Array;
-		develop_raw_preview_png?: (
-			data: Uint8Array,
-			maxEdge: number,
-			fastDemosaic: boolean,
-			highlightCompression: number
-		) => Uint8Array;
-	};
-
-	let wasmModulePromise: Promise<WasmModule> | null = null;
-
-	function getWasmModule() {
-		if (wasmModulePromise) return wasmModulePromise;
-		wasmModulePromise = (async () => {
-			const wantsThreads = window.crossOriginIsolated;
-			const threadModuleUrl = new URL(
-				'/wasm-threads/rapidraw_wasm.js',
-				window.location.origin
-			).toString();
-			const singleModuleUrl = new URL(
-				'/wasm/rapidraw_wasm.js',
-				window.location.origin
-			).toString();
-			const primaryUrl = wantsThreads ? threadModuleUrl : singleModuleUrl;
-			const fallbackUrl = wantsThreads ? singleModuleUrl : threadModuleUrl;
-
-			try {
-				const mod = await import(/* @vite-ignore */ primaryUrl);
-				await mod.default();
-				return mod as WasmModule;
-			} catch (error) {
-				const mod = await import(/* @vite-ignore */ fallbackUrl);
-				await mod.default();
-				return mod as WasmModule;
-			}
-		})();
-		return wasmModulePromise;
-	}
+	// WASM module loader is shared in $lib/wasm/rapidraw.
 
 	function revokePreviewUrls() {
 		for (const image of images) {
@@ -143,8 +108,12 @@
 		try {
 			isIndexing = true;
 			isLoading = true;
+			previewQueue.length = 0;
+			activePreviewCount = 0;
 			revokePreviewUrls();
 			images = [];
+			selectedId = null;
+			dispatch('select', { image: null });
 
 			const wasm = await getWasmModule();
 			const newImages: Array<ImageEntry> = [];
@@ -196,10 +165,13 @@
 	}
 
 	function resetLibrary() {
+		previewQueue.length = 0;
+		activePreviewCount = 0;
 		revokePreviewUrls();
 		images = [];
 		activePath = null;
 		selectedId = null;
+		dispatch('select', { image: null });
 	}
 
 	function refreshLibrary() {
@@ -209,13 +181,28 @@
 	}
 
 	const lower = (value: string) => value.toLowerCase();
+	const isRawName = (name: string) => isRawFile(name);
+
+	const rawFilterOptions = ['All Types', 'RAW Only', 'Non-RAW Only', 'Prefer RAW'];
+	const ratingFilterOptions = ['Show All', '1 & up', '2 & up', '3 & up', '4 & up', '5 only'];
+	const sortOptions: Array<'Date' | 'Name' | 'Size'> = ['Date', 'Name', 'Size'];
 
 	$: filteredImages = images.filter((entry) => {
 		if (!searchText.trim()) return true;
 		return lower(entry.name).includes(lower(searchText));
 	});
 
-	$: sortedImages = [...filteredImages].sort((a, b) => {
+	$: rawFilteredImages = filteredImages.filter((entry) => {
+		if (rawFilter === 'RAW Only') return isRawName(entry.name);
+		if (rawFilter === 'Non-RAW Only') return !isRawName(entry.name);
+		return true;
+	});
+
+	$: sortedImages = [...rawFilteredImages].sort((a, b) => {
+		if (rawFilter === 'Prefer RAW') {
+			const rawDiff = Number(isRawName(b.name)) - Number(isRawName(a.name));
+			if (rawDiff !== 0) return rawDiff;
+		}
 		let result = 0;
 		if (sortBy === 'Name') {
 			result = a.name.localeCompare(b.name);
@@ -228,6 +215,52 @@
 	});
 
 	$: imageCount = images.length;
+
+	$: gridCardWidth = thumbnailSize + 120;
+	$: gridCardHeight = thumbnailSize + 72;
+	$: listRowHeight = Math.max(72, thumbnailSize + 24);
+	$: gap = 12;
+	$: columns =
+		viewMode === 'grid'
+			? Math.max(1, Math.floor((viewportWidth + gap) / (gridCardWidth + gap)))
+			: 1;
+	$: cardWidth = viewMode === 'grid' ? gridCardWidth : Math.max(1, viewportWidth);
+	$: cardHeight = viewMode === 'grid' ? gridCardHeight : listRowHeight;
+	$: rowStride = cardHeight + gap;
+	$: colStride = cardWidth + gap;
+	$: totalRows = Math.ceil(sortedImages.length / columns);
+	$: totalHeight = totalRows * rowStride;
+	$: startRow = Math.max(0, Math.floor(scrollTop / rowStride) - overscanRows);
+	$: endRow = Math.min(
+		totalRows,
+		Math.ceil((scrollTop + viewportHeight) / rowStride) + overscanRows
+	);
+	$: startIndex = startRow * columns;
+	$: endIndex = Math.min(sortedImages.length, endRow * columns);
+	$: visibleImages = sortedImages.slice(startIndex, endIndex);
+	$: visibleLayout = visibleImages.map((image, localIndex) => {
+		const globalIndex = startIndex + localIndex;
+		const row = Math.floor(globalIndex / columns);
+		const col = globalIndex % columns;
+		return {
+			image,
+			top: row * rowStride,
+			left: viewMode === 'grid' ? col * colStride : 0,
+			width: viewMode === 'grid' ? gridCardWidth : cardWidth,
+			height: cardHeight
+		};
+	});
+
+	$: dispatch('list', { images });
+
+	function handleSelect(entry: ImageEntry) {
+		selectedId = entry.id;
+		dispatch('select', { image: entry });
+	}
+
+	function handleScroll(event: Event) {
+		scrollTop = (event.currentTarget as HTMLElement).scrollTop;
+	}
 </script>
 
 <div class="flex h-full flex-col gap-4 p-4">
@@ -272,15 +305,55 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-			<div class="rounded-md border border-border-color px-2 py-1">
-				Rating: {ratingFilter}
-			</div>
-			<div class="rounded-md border border-border-color px-2 py-1">
-				RAW: {rawFilter}
-			</div>
-			<div class="rounded-md border border-border-color px-2 py-1">
-				Sort: {sortBy} ({sortDir})
-			</div>
+			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+				<span>Rating</span>
+				<select
+					class="bg-transparent text-xs text-text-secondary"
+					bind:value={ratingFilter}
+				>
+					{#each ratingFilterOptions as option}
+						<option value={option}>{option}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+				<span>RAW</span>
+				<select class="bg-transparent text-xs text-text-secondary" bind:value={rawFilter}>
+					{#each rawFilterOptions as option}
+						<option value={option}>{option}</option>
+					{/each}
+				</select>
+			</label>
+			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+				<span>Sort</span>
+				<select class="bg-transparent text-xs text-text-secondary" bind:value={sortBy}>
+					{#each sortOptions as option}
+						<option value={option}>{option}</option>
+					{/each}
+				</select>
+				<button
+					class="rounded-md border border-border-color px-2 py-1 text-[10px]"
+					on:click={() => (sortDir = sortDir === 'asc' ? 'desc' : 'asc')}
+				>
+					{sortDir.toUpperCase()}
+				</button>
+			</label>
+			<label class="flex items-center gap-2 rounded-md border border-border-color px-2 py-1">
+				<span>Thumb</span>
+				<select
+					class="bg-transparent text-xs text-text-secondary"
+					on:change={(event) => {
+						const value = Number((event.target as HTMLSelectElement).value);
+						thumbnailSize = Number.isFinite(value) ? value : thumbnailSize;
+					}}
+				>
+					{#each thumbnailOptions as option}
+						<option value={option.value} selected={option.value === thumbnailSize}>
+							{option.label}
+						</option>
+					{/each}
+				</select>
+			</label>
 			<div class="ml-auto flex items-center gap-1">
 				{#each viewModes as mode}
 					<button
@@ -298,9 +371,14 @@
 		</div>
 	</div>
 
-	<div class="flex-1 overflow-auto rounded-lg border border-dashed border-border-color/60 p-4">
-			{#if isLoading}
-				<p class="text-sm text-text-secondary">Loading library…</p>
+	<div
+		class="flex-1 overflow-auto rounded-lg border border-dashed border-border-color/60 p-2"
+		on:scroll={handleScroll}
+		bind:clientHeight={viewportHeight}
+		bind:clientWidth={viewportWidth}
+	>
+		{#if isLoading}
+			<p class="text-sm text-text-secondary">Loading library…</p>
 		{:else if imageCount === 0}
 			<div class="flex h-full flex-col items-center justify-center gap-2 text-center">
 				<p class="text-sm text-text-secondary">No images loaded yet.</p>
@@ -309,36 +387,56 @@
 				</p>
 			</div>
 		{:else}
-			<div class={viewMode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'flex flex-col gap-2'}>
-				{#each sortedImages as image}
+			<div class="relative" style={`height: ${totalHeight}px;`}>
+				{#each visibleLayout as item (item.image.id)}
 					<button
-						class={`rounded-md border border-border-color p-3 text-left ${
-							selectedId === image.id ? 'bg-card-active' : 'bg-transparent'
+						class={`absolute rounded-md border border-border-color text-left ${
+							selectedId === item.image.id ? 'bg-card-active' : 'bg-transparent'
 						}`}
-						on:click={() => (selectedId = image.id)}
+						style={`top: ${item.top}px; left: ${item.left}px; width: ${item.width}px; height: ${item.height}px;`}
+						on:click={() => handleSelect(item.image)}
 					>
-						<div class="flex items-center gap-3">
-							{#if image.thumbUrl}
-								<img
-									class="h-16 w-16 rounded-md border border-border-color object-cover"
-									src={image.thumbUrl}
-									alt={image.name}
-								/>
-							{:else}
-								<div class="flex h-16 w-16 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
-									{image.status === 'loading' ? 'Loading' : '—'}
-								</div>
-							{/if}
-							<div class="flex-1">
-								<p class="text-sm text-text-primary">{image.name}</p>
-								<p class="text-xs text-text-secondary">
-									{Math.round(image.size / 1024)} KB · {new Date(image.lastModified).toLocaleDateString()}
-								</p>
-								{#if image.error}
-									<p class="text-xs text-red-300">{image.error}</p>
+						{#if viewMode === 'grid'}
+							<div class="flex h-full flex-col gap-2 p-2">
+								{#if item.image.thumbUrl}
+									<img
+										class="h-full max-h-[calc(100%-48px)] w-full rounded-md border border-border-color object-cover"
+										src={item.image.thumbUrl}
+										alt={item.image.name}
+									/>
+								{:else}
+									<div class="flex flex-1 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
+										{item.image.status === 'loading' ? 'Loading' : '—'}
+									</div>
 								{/if}
+								<div>
+									<p class="truncate text-xs text-text-primary">{item.image.name}</p>
+								</div>
 							</div>
-						</div>
+						{:else}
+							<div class="flex items-center gap-3 p-2">
+								{#if item.image.thumbUrl}
+									<img
+										class="h-16 w-16 rounded-md border border-border-color object-cover"
+										src={item.image.thumbUrl}
+										alt={item.image.name}
+									/>
+								{:else}
+									<div class="flex h-16 w-16 items-center justify-center rounded-md border border-border-color text-xs text-text-secondary">
+										{item.image.status === 'loading' ? 'Loading' : '—'}
+									</div>
+								{/if}
+								<div class="flex-1">
+									<p class="text-sm text-text-primary">{item.image.name}</p>
+									<p class="text-xs text-text-secondary">
+										{Math.round(item.image.size / 1024)} KB · {new Date(item.image.lastModified).toLocaleDateString()}
+									</p>
+									{#if item.image.error}
+										<p class="text-xs text-red-300">{item.image.error}</p>
+									{/if}
+								</div>
+							</div>
+						{/if}
 					</button>
 				{/each}
 			</div>
