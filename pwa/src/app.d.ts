@@ -8,6 +8,24 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	interface FileSystemFileHandle {
+		kind: 'file';
+		name: string;
+		getFile(): Promise<File>;
+	}
+
+	interface FileSystemDirectoryHandle {
+		kind: 'directory';
+		name: string;
+		values(): AsyncIterable<FileSystemHandle>;
+	}
+
+	type FileSystemHandle = FileSystemFileHandle | FileSystemDirectoryHandle;
+
+	interface Window {
+		showDirectoryPicker?: (options?: any) => Promise<FileSystemDirectoryHandle>;
+	}
 }
 
 export {};

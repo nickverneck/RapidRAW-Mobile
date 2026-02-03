@@ -9,7 +9,7 @@
 </svelte:head>
 
 <AppShell title="RapidRAW">
-	<MainLibrary slot="sidebar" imageCount={0} />
+	<MainLibrary slot="sidebar" />
 
 	<PanelPlaceholder
 		title="Editor"
