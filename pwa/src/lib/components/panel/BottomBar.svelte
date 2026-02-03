@@ -8,7 +8,6 @@
 	export let rating = 0;
 	export let zoom = 1;
 	export let isLibraryView = false;
-	export let isLoading = false;
 	export let filmstripVisible = true;
 	export let filmstripHeight = 120;
 	export let isCopied = false;
@@ -113,7 +112,7 @@
 				</button>
 			</div>
 		</div>
-		<div class="flex-grow" />
+		<div class="flex-grow"></div>
 		{#if isLibraryView}
 			<div class="flex items-center gap-2">
 				<button
@@ -141,7 +140,7 @@
 						Zoom
 					</button>
 					<div class="relative h-5 w-32">
-						<div class="absolute top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-surface" />
+						<div class="absolute top-1/2 h-1.5 w-full -translate-y-1/2 rounded-full bg-surface"></div>
 						<input
 							class="slider-input absolute top-1/2 h-1.5 w-full -translate-y-1/2 appearance-none bg-transparent"
 							type="range"

@@ -185,7 +185,7 @@
 	<title>RapidRAW</title>
 </svelte:head>
 
-<AppShell title="RapidRAW">
+<AppShell>
 	<MainLibrary slot="sidebar" on:list={handleLibraryList} on:select={handleLibrarySelect} />
 
 	<Editor

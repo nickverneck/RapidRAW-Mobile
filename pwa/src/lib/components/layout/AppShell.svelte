@@ -1,14 +1,4 @@
-<script lang="ts">
-	import TitleBar from './TitleBar.svelte';
-
-	export let title = 'RapidRAW';
-	export let showTitleBar = true;
-</script>
-
 <div class="app-shell">
-	{#if showTitleBar}
-		<TitleBar {title} />
-	{/if}
 	<div class="app-body">
 		<aside class="app-sidebar">
 			<slot name="sidebar" />
