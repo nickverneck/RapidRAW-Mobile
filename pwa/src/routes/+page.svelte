@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AppShell from '$lib/components/layout/AppShell.svelte';
 	import PanelPlaceholder from '$lib/components/layout/PanelPlaceholder.svelte';
+	import MainLibrary from '$lib/components/panel/MainLibrary.svelte';
 </script>
 
 <svelte:head>
@@ -8,21 +9,7 @@
 </svelte:head>
 
 <AppShell title="RapidRAW">
-	<PanelPlaceholder
-		slot="sidebar"
-		title="Library"
-		subtitle="No folder opened yet"
-		body="Choose a folder to start browsing images."
-	>
-		<div class="mt-auto flex flex-col gap-2">
-			<button class="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-button-text">
-				Open Folder
-			</button>
-			<button class="rounded-md border border-border-color px-3 py-2 text-sm text-text-secondary">
-				Import Session
-			</button>
-		</div>
-	</PanelPlaceholder>
+	<MainLibrary slot="sidebar" imageCount={0} />
 
 	<PanelPlaceholder
 		title="Editor"
