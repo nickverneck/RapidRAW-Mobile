@@ -42,21 +42,28 @@ export function getWasmModule(): Promise<WasmModule> {
 		const primaryUrl = wantsThreads ? threadModuleUrl : singleModuleUrl;
 		const fallbackUrl = wantsThreads ? singleModuleUrl : threadModuleUrl;
 
-		const loadModule = async (url: string) => {
+		const loadModule = async (url: string, initThreads: boolean) => {
 			const mod = await import(/* @vite-ignore */ url);
 			await mod.default();
-			if (wantsThreads && typeof mod.init_thread_pool === 'function') {
+			if (initThreads && typeof mod.init_thread_pool === 'function') {
 				const threads = Math.min(8, navigator.hardwareConcurrency || 4);
-				await mod.init_thread_pool(threads);
+				try {
+					await mod.init_thread_pool(threads);
+				} catch (error) {
+					console.warn('Thread pool init failed, falling back to single-thread.', error);
+				}
 			}
 			return mod as WasmModule;
 		};
 
 		try {
-			return await loadModule(primaryUrl);
+			return await loadModule(primaryUrl, wantsThreads);
 		} catch (error) {
-			return await loadModule(fallbackUrl);
+			return await loadModule(fallbackUrl, false);
 		}
-	})();
+	})().catch((error) => {
+		wasmModulePromise = null;
+		throw error;
+	});
 	return wasmModulePromise;
 }
