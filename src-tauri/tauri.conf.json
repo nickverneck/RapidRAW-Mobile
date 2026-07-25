@@ -13,40 +13,73 @@
         "label": "main",
         "create": false,
         "title": "RapidRAW",
-        "width": 1200,
-        "height": 800,
+        "width": 1280,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 600,
         "transparent": true,
         "decorations": false
       }
     ],
     "security": {
       "csp": null,
-      "capabilities": ["default"]
+      "capabilities": ["default"],
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPCACHE/thumbnails/*"]
+      }
     },
     "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "resources": [
-      "resources",
-      "lensfun_db"
-    ],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "resources": ["resources", "lensfun_db"],
     "category": "Photography",
     "fileAssociations": [
       {
         "ext": [
-          "dng", "pro", "ari", "crw", "cr2", "cr3", "bay", "raw", "erf", "raf",
-          "3fr", "fff", "iiq", "kdc", "k25", "dcs", "dcr", "mos", "rwl", "mef",
-          "mrw", "nef", "nrw", "orf", "rw2", "pef", "ptx", "srw", "x3f", "arw",
-          "srf", "sr2", "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "exr",
+          "dng",
+          "pro",
+          "ari",
+          "crw",
+          "cr2",
+          "cr3",
+          "bay",
+          "raw",
+          "erf",
+          "raf",
+          "3fr",
+          "fff",
+          "iiq",
+          "kdc",
+          "k25",
+          "dcs",
+          "dcr",
+          "mos",
+          "rwl",
+          "mef",
+          "mrw",
+          "nef",
+          "nrw",
+          "orf",
+          "rw2",
+          "pef",
+          "ptx",
+          "srw",
+          "x3f",
+          "arw",
+          "srf",
+          "sr2",
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "bmp",
+          "tiff",
+          "tif",
+          "exr",
           "qoi"
         ],
         "name": "Image",
@@ -60,5 +93,5 @@
       }
     }
   },
-  "version": "1.4.11"
+  "version": "1.5.9"
 }

@@ -1,14 +1,17 @@
+import { useTranslation } from 'react-i18next';
 import Slider from '../ui/Slider';
-import Switch from '../ui/Switch';
-import { Adjustments, Effect } from '../../utils/adjustments';
+import { Adjustments, Effect, CreativeAdjustment } from '../../utils/adjustments';
 import LUTControl from '../ui/LUTControl';
 import { AppSettings } from '../ui/AppProperties';
+import Text from '../ui/Text';
+import { TextVariants } from '../../types/typography';
 
 interface EffectsPanelProps {
   adjustments: Adjustments;
   isForMask: boolean;
   setAdjustments(adjustments: Partial<Adjustments>): any;
   handleLutSelect(path: string): void;
+  onLutHover?: (path: string | null) => void;
   appSettings: AppSettings | null;
   onDragStateChange?: (isDragging: boolean) => void;
 }
@@ -18,20 +21,15 @@ export default function EffectsPanel({
   setAdjustments,
   isForMask = false,
   handleLutSelect,
+  onLutHover,
   appSettings,
   onDragStateChange,
 }: EffectsPanelProps) {
-  const handleAdjustmentChange = (key: Effect, value: string) => {
+  const { t } = useTranslation();
+
+  const handleAdjustmentChange = (key: string, value: string) => {
     const numericValue = parseInt(value, 10);
     setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: numericValue }));
-  };
-
-  const handleCheckedChange = (key: Effect, checked: boolean) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: checked }));
-  };
-
-  const handleColorChange = (key: Effect, value: string) => {
-    setAdjustments((prev: Partial<Adjustments>) => ({ ...prev, [key]: value }));
   };
 
   const handleLutIntensityChange = (intensity: number) => {
@@ -52,82 +50,70 @@ export default function EffectsPanel({
   const adjustmentVisibility = appSettings?.adjustmentVisibility || {};
 
   return (
-    <div>
+    <div className="space-y-4">
+      <div className="p-2 bg-bg-tertiary rounded-md">
+        <Text variant={TextVariants.heading} className="mb-2">
+          {t('adjustments.effects.creative')}
+        </Text>
+
+        <Slider
+          label={t('adjustments.effects.glow')}
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.GlowAmount, e.target.value)}
+          step={1}
+          value={adjustments.glowAmount}
+          onDragStateChange={onDragStateChange}
+        />
+
+        <Slider
+          label={t('adjustments.effects.halation')}
+          max={100}
+          min={0}
+          onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.HalationAmount, e.target.value)}
+          step={1}
+          value={adjustments.halationAmount}
+          onDragStateChange={onDragStateChange}
+        />
+
+        {!isForMask && (
+          <Slider
+            label={t('adjustments.effects.lightFlares')}
+            max={100}
+            min={0}
+            onChange={(e: any) => handleAdjustmentChange(CreativeAdjustment.FlareAmount, e.target.value)}
+            step={1}
+            value={adjustments.flareAmount}
+            onDragStateChange={onDragStateChange}
+          />
+        )}
+      </div>
+
       {!isForMask && (
-        <>
-          <div className="my-4 p-2 bg-bg-tertiary rounded-md">
-            <p className="text-md font-semibold mb-2 text-primary">LUT</p>
+        <div className="space-y-4">
+          <div className="p-2 bg-bg-tertiary rounded-md">
+            <Text variant={TextVariants.heading} className="mb-2">
+              {t('adjustments.effects.lut')}
+            </Text>
             <LUTControl
+              lutPath={adjustments.lutPath || null}
               lutName={adjustments.lutName || null}
               lutIntensity={adjustments.lutIntensity || 100}
               onLutSelect={handleLutSelect}
+              onLutHover={onLutHover}
               onIntensityChange={handleLutIntensityChange}
               onClear={handleLutClear}
               onDragStateChange={onDragStateChange}
             />
           </div>
 
-          {adjustmentVisibility.negativeConversion !== false && (
-            <div className="mb-4 p-2 bg-bg-tertiary rounded-md">
-              <p className="text-md font-semibold mb-2 text-primary">Negative Conversion</p>
-              <div className="mb-2">
-                <Switch
-                  label="Enable"
-                  checked={!!adjustments.enableNegativeConversion}
-                  onChange={(checked: boolean) => handleCheckedChange(Effect.EnableNegativeConversion, checked)}
-                />
-              </div>
-              {adjustments.enableNegativeConversion && (
-                <div className="space-y-2 mt-2 pt-2 border-t border-bg-secondary">
-                  <div className="flex items-center justify-between">
-                    <label htmlFor="filmBaseColor" className="text-sm font-medium text-text-primary">
-                      Film Base Color
-                    </label>
-                    <input
-                      className="p-0 h-8 w-12 border-none rounded-md cursor-pointer bg-bg-secondary"
-                      id="filmBaseColor"
-                      onChange={(e: any) => handleColorChange(Effect.FilmBaseColor, e.target.value)}
-                      type="color"
-                      value={adjustments.filmBaseColor || '#ff8800'}
-                    />
-                  </div>
-                  <Slider
-                    label="Red Balance"
-                    max={100}
-                    min={-100}
-                    onChange={(e: any) => handleAdjustmentChange(Effect.NegativeRedBalance, e.target.value)}
-                    step={1}
-                    value={adjustments.negativeRedBalance || 0}
-                    onDragStateChange={onDragStateChange}
-                  />
-                  <Slider
-                    label="Green Balance"
-                    max={100}
-                    min={-100}
-                    onChange={(e: any) => handleAdjustmentChange(Effect.NegativeGreenBalance, e.target.value)}
-                    step={1}
-                    value={adjustments.negativeGreenBalance || 0}
-                    onDragStateChange={onDragStateChange}
-                  />
-                  <Slider
-                    label="Blue Balance"
-                    max={100}
-                    min={-100}
-                    onChange={(e: any) => handleAdjustmentChange(Effect.NegativeBlueBalance, e.target.value)}
-                    step={1}
-                    value={adjustments.negativeBlueBalance || 0}
-                    onDragStateChange={onDragStateChange}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
           {adjustmentVisibility.vignette !== false && (
-            <div className="mb-4 p-2 bg-bg-tertiary rounded-md">
-              <p className="text-md font-semibold mb-2 text-primary">Vignette</p>
+            <div className="p-2 bg-bg-tertiary rounded-md">
+              <Text variant={TextVariants.heading} className="mb-2">
+                {t('adjustments.effects.vignette')}
+              </Text>
               <Slider
-                label="Amount"
+                label={t('adjustments.effects.amount')}
                 max={100}
                 min={-100}
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteAmount, e.target.value)}
@@ -137,16 +123,17 @@ export default function EffectsPanel({
               />
               <Slider
                 defaultValue={50}
-                label="Midpoint"
+                label={t('adjustments.effects.midpoint')}
                 max={100}
                 min={0}
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteMidpoint, e.target.value)}
                 step={1}
                 value={adjustments.vignetteMidpoint}
                 onDragStateChange={onDragStateChange}
+                fillOrigin="min"
               />
               <Slider
-                label="Roundness"
+                label={t('adjustments.effects.roundness')}
                 max={100}
                 min={-100}
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteRoundness, e.target.value)}
@@ -156,22 +143,25 @@ export default function EffectsPanel({
               />
               <Slider
                 defaultValue={50}
-                label="Feather"
+                label={t('adjustments.effects.feather')}
                 max={100}
                 min={0}
                 onChange={(e: any) => handleAdjustmentChange(Effect.VignetteFeather, e.target.value)}
                 step={1}
                 value={adjustments.vignetteFeather}
                 onDragStateChange={onDragStateChange}
+                fillOrigin="min"
               />
             </div>
           )}
 
           {adjustmentVisibility.grain !== false && (
             <div className="p-2 bg-bg-tertiary rounded-md">
-              <p className="text-md font-semibold mb-2 text-primary">Grain</p>
+              <Text variant={TextVariants.heading} className="mb-2">
+                {t('adjustments.effects.grain')}
+              </Text>
               <Slider
-                label="Amount"
+                label={t('adjustments.effects.amount')}
                 max={100}
                 min={0}
                 onChange={(e: any) => handleAdjustmentChange(Effect.GrainAmount, e.target.value)}
@@ -181,27 +171,29 @@ export default function EffectsPanel({
               />
               <Slider
                 defaultValue={25}
-                label="Size"
+                label={t('adjustments.effects.size')}
                 max={100}
                 min={0}
                 onChange={(e: any) => handleAdjustmentChange(Effect.GrainSize, e.target.value)}
                 step={1}
                 value={adjustments.grainSize}
                 onDragStateChange={onDragStateChange}
+                fillOrigin="min"
               />
               <Slider
                 defaultValue={50}
-                label="Roughness"
+                label={t('adjustments.effects.roughness')}
                 max={100}
                 min={0}
                 onChange={(e: any) => handleAdjustmentChange(Effect.GrainRoughness, e.target.value)}
                 step={1}
                 value={adjustments.grainRoughness}
                 onDragStateChange={onDragStateChange}
+                fillOrigin="min"
               />
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

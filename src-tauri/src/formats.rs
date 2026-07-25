@@ -1,3 +1,6 @@
+use std::convert::AsRef;
+use std::path::Path;
+
 pub const RAW_EXTENSIONS: &[(&str, &str)] = &[
     // Adobe
     ("dng", "Adobe Digital Negative"),
@@ -68,36 +71,40 @@ pub const RAW_EXTENSIONS: &[(&str, &str)] = &[
 ]; // Tell me if your's is missing.
 
 pub const NON_RAW_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "exr", "qoi",
+    "jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "webp", "jxl", // Standard formats
+    "exr", "hdr", // High Dynamic Range / Wide Gamut
+    "tga", "ico", "dds", // Graphics & Icons
+    "qoi", "ff", // Simple/Specialist formats
+    "pnm", "pbm", "pgm", "ppm", "pam", // Netpbm family
 ];
 
-pub fn is_raw_file(path: &str) -> bool {
-    if let Some(ext) = std::path::Path::new(path)
-        .extension()
-        .and_then(|s| s.to_str())
-    {
-        let lower_ext = ext.to_lowercase();
-        RAW_EXTENSIONS
-            .iter()
-            .any(|(raw_ext, _)| *raw_ext == lower_ext)
-    } else {
-        false
-    }
+pub fn is_raw_file<P: AsRef<Path>>(path: P) -> bool {
+    let ext = match path.as_ref().extension().and_then(|s| s.to_str()) {
+        Some(e) => e,
+        None => return false,
+    };
+
+    RAW_EXTENSIONS
+        .iter()
+        .any(|(raw_ext, _)| raw_ext.eq_ignore_ascii_case(ext))
 }
 
-pub fn is_supported_image_file(path: &str) -> bool {
-    if let Some(ext) = std::path::Path::new(path)
-        .extension()
-        .and_then(|s| s.to_str())
+pub fn is_supported_image_file<P: AsRef<Path>>(path: P) -> bool {
+    let path = path.as_ref();
+
+    let ext = match path.extension().and_then(|s| s.to_str()) {
+        Some(e) => e,
+        None => return false,
+    };
+
+    if RAW_EXTENSIONS
+        .iter()
+        .any(|(raw_ext, _)| raw_ext.eq_ignore_ascii_case(ext))
     {
-        let lower_ext = ext.to_lowercase();
-        RAW_EXTENSIONS
-            .iter()
-            .any(|(raw_ext, _)| *raw_ext == lower_ext)
-            || NON_RAW_EXTENSIONS
-                .iter()
-                .any(|non_raw_ext| *non_raw_ext == lower_ext)
-    } else {
-        false
+        return true;
     }
+
+    NON_RAW_EXTENSIONS
+        .iter()
+        .any(|non_raw_ext| non_raw_ext.eq_ignore_ascii_case(ext))
 }

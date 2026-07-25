@@ -1,9 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import Slider from './Slider';
 import Wheel from '@uiw/react-color-wheel';
 import { ColorResult, HsvaColor, hsvaToHex } from '@uiw/color-convert';
 import { Sun } from 'lucide-react';
 import { HueSatLum } from '../../utils/adjustments';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
+import Text from './Text';
+import { TextColors, TextVariants } from '../../types/typography';
 
 interface ColorWheelProps {
   defaultValue: HueSatLum;
@@ -11,26 +15,8 @@ interface ColorWheelProps {
   onChange(hsl: HueSatLum): void;
   value: HueSatLum;
   onDragStateChange?: (isDragging: boolean) => void;
+  isExpanded?: boolean;
 }
-
-const ResetIcon = () => (
-  <svg
-    className="text-text-secondary hover:text-text-primary transition-colors duration-150"
-    fill="none"
-    height="14"
-    stroke="currentColor"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    strokeWidth="2"
-    viewBox="0 0 24 24"
-    width="14"
-  >
-    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-    <path d="M21 3v5h-5" />
-    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-    <path d="M3 21v-5h5" />
-  </svg>
-);
 
 const ColorWheel = ({
   defaultValue = { hue: 0, saturation: 0, luminance: 0 },
@@ -38,17 +24,50 @@ const ColorWheel = ({
   onChange,
   value,
   onDragStateChange,
+  isExpanded = false,
 }: ColorWheelProps) => {
-  const effectiveValue = value || defaultValue;
+  const { t } = useTranslation();
+  const effectiveValue = { ...defaultValue, ...value };
   const { hue, saturation, luminance } = effectiveValue;
-  const sizerRef = useRef<any>(null);
+  const sizerRef = useRef<HTMLDivElement>(null);
   const [wheelSize, setWheelSize] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isHovered, setIsHovered] = useState(false);
   const [isWheelDragging, setIsWheelDragging] = useState(false);
   const [isSliderDragging, setIsSliderDragging] = useState(false);
+  const [isLabelHovered, setIsLabelHovered] = useState(false);
+  const modifierState = useRef({ ctrl: false, shift: false });
+  const instanceId = useId().replace(/:/g, '');
 
   const isDragging = isWheelDragging || isSliderDragging;
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      modifierState.current = {
+        ctrl: e.ctrlKey,
+        shift: e.shiftKey,
+      };
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      modifierState.current = {
+        ctrl: e.ctrlKey,
+        shift: e.shiftKey,
+      };
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(`--cg-hue-${instanceId}`, hue.toString());
+    document.documentElement.style.setProperty(`--cg-sat-${instanceId}`, `${saturation}%`);
+  }, [hue, saturation, instanceId]);
 
   useEffect(() => {
     const observer = new ResizeObserver((entries) => {
@@ -75,10 +94,7 @@ const ColorWheel = ({
   useEffect(() => {
     const handleInteractionEnd = () => {
       setIsWheelDragging(false);
-      onDragStateChange?.(isSliderDragging); 
-      if (containerRef.current && !containerRef.current.matches(':hover')) {
-        setIsHovered(false);
-      }
+      onDragStateChange?.(isSliderDragging);
     };
     if (isWheelDragging) {
       window.addEventListener('mouseup', handleInteractionEnd);
@@ -95,10 +111,42 @@ const ColorWheel = ({
   }, [isDragging, onDragStateChange]);
 
   const handleWheelChange = (color: ColorResult) => {
-    onChange({ ...effectiveValue, hue: color.hsva.h, saturation: color.hsva.s });
+    const { ctrl, shift } = modifierState.current;
+    const newValues = { ...effectiveValue };
+
+    if (ctrl && !shift) {
+      newValues.hue = color.hsva.h;
+      newValues.saturation = saturation;
+    } else if (shift && !ctrl) {
+      let newSaturation = color.hsva.s;
+
+      const hueDelta = Math.abs(color.hsva.h - hue);
+
+      if (hueDelta > 30) {
+        newSaturation = 0;
+      }
+
+      newSaturation = Math.max(0, Math.min(100, newSaturation));
+
+      newValues.saturation = newSaturation;
+      newValues.hue = hue;
+    } else {
+      newValues.hue = color.hsva.h;
+      newValues.saturation = color.hsva.s;
+    }
+
+    onChange(newValues);
   };
 
-  const handleLumChange = (e: any) => {
+  const handleHueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...effectiveValue, hue: parseFloat(e.target.value) });
+  };
+
+  const handleSaturationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...effectiveValue, saturation: parseFloat(e.target.value) });
+  };
+
+  const handleLumChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange({ ...effectiveValue, luminance: parseFloat(e.target.value) });
   };
 
@@ -114,41 +162,67 @@ const ColorWheel = ({
   const hsva: HsvaColor = { h: hue, s: saturation, v: 100, a: 1 };
   const hexColor = hsvaToHex(hsva);
 
+  const pointerSize = isWheelDragging ? 14 : 12;
+  const pointerOffset = pointerSize / 2;
+
+  const satWrapperStyle = { '--cg-hue': `var(--cg-hue-${instanceId})` } as React.CSSProperties;
+  const lumWrapperStyle = {
+    '--cg-hue': `var(--cg-hue-${instanceId})`,
+    '--cg-sat': `var(--cg-sat-${instanceId})`,
+  } as React.CSSProperties;
+
   return (
-    <div
-      className="relative flex flex-col items-center gap-2"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        if (!isDragging) {
-          setIsHovered(false);
-        }
-      }}
-      ref={containerRef}
-    >
+    <div className="relative flex flex-col items-center gap-2" ref={containerRef}>
       <div
-        className="flex items-center justify-center cursor-pointer"
-        onDoubleClick={handleReset}
-        title={`Double-click to reset ${label.toLowerCase()}`}
-      >
-        <p className="text-sm font-medium text-text-secondary select-none">{label}</p>
-      </div>
-      <button
-        className={`absolute top-0 right-0 p-0.5 rounded hover:bg-card-active transition-all duration-200 cursor-pointer active:scale-95 ${
-          isHovered && !isDragging ? 'opacity-100' : 'opacity-0'
-        }`}
+        className="relative cursor-pointer h-5 w-full overflow-hidden"
         onClick={handleReset}
-        title={`Reset ${label.toLowerCase()}`}
-        type="button"
+        onDoubleClick={handleReset}
+        onMouseEnter={() => setIsLabelHovered(true)}
+        onMouseLeave={() => setIsLabelHovered(false)}
       >
-        <ResetIcon />
-      </button>
+        <Text
+          variant={TextVariants.label}
+          className={`absolute inset-0 flex items-center justify-center whitespace-nowrap select-none transition-opacity duration-200 ease-in-out ${
+            !isDragging && !isLabelHovered ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          {label}
+        </Text>
+
+        <Text
+          variant={TextVariants.label}
+          color={TextColors.primary}
+          className={`absolute inset-0 flex items-center justify-center whitespace-nowrap select-none transition-opacity duration-200 ease-in-out ${
+            !isDragging && isLabelHovered ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          {t('ui.colorWheel.reset')}
+        </Text>
+
+        <Text
+          as="div"
+          variant={TextVariants.label}
+          className={`absolute inset-0 flex items-center justify-center gap-2 whitespace-nowrap select-none transition-opacity duration-200 ease-in-out ${
+            isDragging ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <div className="flex items-center tabular-nums">
+            <span className="font-bold">{t('ui.colorWheel.hueAbbreviation')}</span>
+            <span className="w-8 text-right">{Math.round(hue)}&deg;</span>
+          </div>
+
+          <div className="flex items-center tabular-nums">
+            <span className="font-bold">{t('ui.colorWheel.saturationAbbreviation')}</span>
+            <span className="w-6 text-right">{Math.round(saturation)}</span>
+          </div>
+        </Text>
+      </div>
 
       <div ref={sizerRef} className="relative w-full aspect-square">
         {wheelSize > 0 && (
-          <div 
-            className="absolute inset-0 cursor-pointer" 
-            onDoubleClick={handleReset} 
-            title="Double-click to reset"
+          <div
+            className="absolute inset-0 cursor-pointer"
+            onDoubleClick={handleReset}
             onMouseDownCapture={handleDragStart}
             onTouchStartCapture={handleDragStart}
           >
@@ -156,6 +230,7 @@ const ColorWheel = ({
               color={hsva}
               height={wheelSize}
               onChange={handleWheelChange}
+              angle={0}
               pointer={({ style }) => (
                 <div style={{ ...style, zIndex: 1 }}>
                   <div
@@ -164,9 +239,10 @@ const ColorWheel = ({
                       border: '2px solid white',
                       borderRadius: '50%',
                       boxShadow: '0 0 2px rgba(0,0,0,0.5)',
-                      height: 12,
-                      transform: 'translate(-6px, -6px)',
-                      width: 12,
+                      height: pointerSize,
+                      width: pointerSize,
+                      transform: `translate(-${pointerOffset}px, -${pointerOffset}px)`,
+                      transition: 'width 150ms ease-out, height 150ms ease-out, transform 150ms ease-out',
                     }}
                   />
                 </div>
@@ -177,16 +253,61 @@ const ColorWheel = ({
         )}
       </div>
 
-      <div className="w-full">
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: 'auto',
+              opacity: 1,
+              transitionEnd: { overflow: 'visible' },
+            }}
+            exit={{ height: 0, opacity: 0, overflow: 'hidden' }}
+            transition={{ duration: 0.2 }}
+            className="w-full flex flex-col gap-2"
+          >
+            <div className="w-full">
+              <Slider
+                defaultValue={defaultValue.hue}
+                label={t('ui.colorWheel.hue')}
+                max={360}
+                min={0}
+                onChange={handleHueChange}
+                onDragStateChange={setIsSliderDragging}
+                step={1}
+                value={hue}
+                trackClassName="cg-hue-gradient"
+              />
+            </div>
+
+            <div className="w-full" style={satWrapperStyle}>
+              <Slider
+                defaultValue={defaultValue.saturation}
+                label={t('ui.colorWheel.saturation')}
+                max={100}
+                min={0}
+                onChange={handleSaturationChange}
+                onDragStateChange={setIsSliderDragging}
+                step={1}
+                value={saturation}
+                trackClassName="cg-sat-gradient"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="w-full" style={lumWrapperStyle}>
         <Slider
           defaultValue={defaultValue.luminance}
-          label={<Sun size={16} className="text-text-secondary" />}
+          label={isExpanded ? t('ui.colorWheel.luminance') : <Sun size={16} className="text-text-secondary" />}
           max={100}
           min={-100}
           onChange={handleLumChange}
           onDragStateChange={setIsSliderDragging}
           step={1}
           value={luminance}
+          trackClassName="cg-lum-gradient"
         />
       </div>
     </div>

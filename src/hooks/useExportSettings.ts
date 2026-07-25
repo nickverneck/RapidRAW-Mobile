@@ -9,7 +9,10 @@ export function useExportSettings() {
   const [resizeValue, setResizeValue] = useState(2048);
   const [dontEnlarge, setDontEnlarge] = useState(true);
   const [keepMetadata, setKeepMetadata] = useState(true);
+  const [preserveTimestamps, setPreserveTimestamps] = useState(false);
   const [stripGps, setStripGps] = useState(true);
+  const [exportMasks, setExportMasks] = useState(false);
+  const [preserveFolders, setPreserveFolders] = useState(false);
   const [filenameTemplate, setFilenameTemplate] = useState('{original_filename}_edited');
   const [enableWatermark, setEnableWatermark] = useState(false);
   const [watermarkPath, setWatermarkPath] = useState<string | null>(null);
@@ -26,7 +29,10 @@ export function useExportSettings() {
     setResizeValue(preset.resizeValue);
     setDontEnlarge(preset.dontEnlarge);
     setKeepMetadata(preset.keepMetadata);
+    setPreserveTimestamps(preset.preserveTimestamps ?? false);
     setStripGps(preset.stripGps);
+    setExportMasks(preset.exportMasks ?? false);
+    setPreserveFolders(preset.preserveFolders ?? false);
     setFilenameTemplate(preset.filenameTemplate);
     setEnableWatermark(preset.enableWatermark);
     setWatermarkPath(preset.watermarkPath);
@@ -45,7 +51,10 @@ export function useExportSettings() {
       resizeValue,
       dontEnlarge,
       keepMetadata,
+      preserveTimestamps,
       stripGps,
+      exportMasks,
+      preserveFolders,
       filenameTemplate,
       enableWatermark,
       watermarkPath,
@@ -62,7 +71,10 @@ export function useExportSettings() {
       resizeValue,
       dontEnlarge,
       keepMetadata,
+      preserveTimestamps,
       stripGps,
+      exportMasks,
+      preserveFolders,
       filenameTemplate,
       enableWatermark,
       watermarkPath,
@@ -88,8 +100,14 @@ export function useExportSettings() {
     setDontEnlarge,
     keepMetadata,
     setKeepMetadata,
+    preserveTimestamps,
+    setPreserveTimestamps,
     stripGps,
     setStripGps,
+    exportMasks,
+    setExportMasks,
+    preserveFolders,
+    setPreserveFolders,
     filenameTemplate,
     setFilenameTemplate,
     enableWatermark,

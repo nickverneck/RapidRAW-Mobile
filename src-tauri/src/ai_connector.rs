@@ -1,7 +1,9 @@
-use anyhow::{anyhow, Result};
-use base64::{engine::general_purpose, Engine as _};
-use image::{codecs::jpeg::JpegEncoder, imageops, DynamicImage, GenericImageView, ImageFormat, RgbaImage};
-use reqwest::{multipart, Client};
+use anyhow::{Result, anyhow};
+use base64::{Engine as _, engine::general_purpose};
+use image::{
+    DynamicImage, GenericImageView, ImageFormat, RgbaImage, codecs::jpeg::JpegEncoder, imageops,
+};
+use reqwest::{Client, multipart};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Cursor;
@@ -52,9 +54,15 @@ fn image_to_jpeg_bytes(img: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
     Ok(buf.into_inner())
 }
 
-async fn upload_source_image(client: &Client, address: &str, source_id: &str, image: &DynamicImage) -> Result<()> {
+async fn upload_source_image(
+    client: &Client,
+    base_url: &str,
+    source_id: &str,
+    image: &DynamicImage,
+    token: Option<&str>,
+) -> Result<()> {
     let jpeg_bytes = image_to_jpeg_bytes(image, 95)?;
-    
+
     let part = multipart::Part::bytes(jpeg_bytes)
         .file_name("source.jpg")
         .mime_str("image/jpeg")?;
@@ -63,11 +71,15 @@ async fn upload_source_image(client: &Client, address: &str, source_id: &str, im
         .text("source_id", source_id.to_string())
         .part("file", part);
 
-    let res = client
-        .post(format!("http://{}/upload_source", address))
-        .multipart(form)
-        .send()
-        .await?;
+    let mut req = client
+        .post(format!("{}/upload_source", base_url))
+        .multipart(form);
+
+    if let Some(auth_token) = token {
+        req = req.bearer_auth(auth_token);
+    }
+
+    let res = req.send().await?;
 
     if !res.status().is_success() {
         return Err(anyhow!("Upload failed: {}", res.text().await?));
@@ -84,23 +96,32 @@ fn composite_full_res(
     let crop_color = image::load_from_memory(&crop_color_bytes)?;
 
     let mut full_color = RgbaImage::new(full_width, full_height);
-    imageops::overlay(&mut full_color, &crop_color, response.x.into(), response.y.into());
+    imageops::overlay(
+        &mut full_color,
+        &crop_color,
+        response.x.into(),
+        response.y.into(),
+    );
 
     Ok(full_color)
 }
 
 pub async fn check_status(address: &str) -> Result<bool> {
     let client = Client::new();
-    let res = client.get(format!("http://{}/health", address)).send().await;
+    let res = client
+        .get(format!("http://{}/health", address))
+        .send()
+        .await;
     Ok(res.is_ok())
 }
 
 pub async fn process_inpainting(
-    address: &str,
+    base_url: &str,
     source_path: &str,
     full_source_image: &DynamicImage,
     mask_image: &DynamicImage,
     prompt: String,
+    token: Option<&str>,
 ) -> Result<RgbaImage> {
     let client = Client::new();
     let source_id = generate_source_id(source_path)?;
@@ -112,17 +133,32 @@ pub async fn process_inpainting(
         prompt,
         negative_prompt: "blur, low quality, distortion, watermark".to_string(),
         mask_image_base64: mask_b64,
-        seed: 0, 
+        seed: 0,
     };
 
-    let url = format!("http://{}/inpaint", address);
-    let response = client.post(&url).json(&payload).send().await?;
+    let url = format!("{}/inpaint", base_url);
+
+    let mut req = client.post(&url).json(&payload);
+    if let Some(auth_token) = token {
+        req = req.bearer_auth(auth_token);
+    }
+
+    let response = req.send().await?;
 
     let middleware_data: MiddlewareResponse = if response.status() == 404 {
-        upload_source_image(&client, address, &source_id, full_source_image).await?;
-        let retry_res = client.post(&url).json(&payload).send().await?;
+        upload_source_image(&client, base_url, &source_id, full_source_image, token).await?;
+
+        let mut retry_req = client.post(&url).json(&payload);
+        if let Some(auth_token) = token {
+            retry_req = retry_req.bearer_auth(auth_token);
+        }
+
+        let retry_res = retry_req.send().await?;
         if !retry_res.status().is_success() {
-            return Err(anyhow!("AI generation failed after upload: {}", retry_res.text().await?));
+            return Err(anyhow!(
+                "AI generation failed after upload: {}",
+                retry_res.text().await?
+            ));
         }
         retry_res.json().await?
     } else if !response.status().is_success() {

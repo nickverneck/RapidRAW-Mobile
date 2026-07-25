@@ -10,6 +10,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
+import { useTranslation } from 'react-i18next';
 import { PresetListType, usePresets, UserPreset } from '../../../hooks/usePresets';
 import { useContextMenu } from '../../../context/ContextMenuContext';
 import {
@@ -22,19 +23,29 @@ import {
   FolderPlus,
   Loader2,
   Plus,
-  RefreshCw,
   SortAsc,
   Trash2,
   Users,
+  Layers,
+  Crop,
+  Save,
+  Wrench,
+  Palette,
+  Settings2,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import AddPresetModal from '../../modals/AddPresetModal';
-import RenamePresetModal from '../../modals/RenamePresetModal';
+import ConfigurePresetModal from '../../modals/ConfigurePresetModal';
 import CreateFolderModal from '../../modals/CreateFolderModal';
 import RenameFolderModal from '../../modals/RenameFolderModal';
 import Button from '../../ui/Button';
-import { Adjustments, INITIAL_ADJUSTMENTS } from '../../../utils/adjustments';
+import Text from '../../ui/Text';
+import Slider from '../../ui/Slider';
+import { TextColors, TextVariants, TextWeights } from '../../../types/typography';
+import { Adjustments, INITIAL_ADJUSTMENTS, ADJUSTMENT_GROUPS } from '../../../utils/adjustments';
 import { Invokes, OPTION_SEPARATOR, Panel, Preset, SelectedImage } from '../../ui/AppProperties';
+import { useEditorStore } from '../../../store/useEditorStore';
+import { useUIStore } from '../../../store/useUIStore';
+import { useEditorActions } from '../../../hooks/useEditorActions';
 
 interface DroppableFolderItemProps {
   children: any;
@@ -50,6 +61,10 @@ interface DraggablePresetItemProps {
   onContextMenu(event: any, preset: any): void;
   preset: any;
   previewUrl: string;
+  isActive?: boolean;
+  intensity?: number;
+  onIntensityChange?: (val: number) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 interface FolderProps {
@@ -63,20 +78,20 @@ interface FolderState {
 
 interface ModalState {
   isOpen: boolean;
-  preset: UserPreset | null;
+  preset: Preset | null;
 }
 
 interface PresetItemDisplayProps {
   isGeneratingPreviews: boolean;
-  preset: any;
+  preset: Preset;
   previewUrl: string;
+  isActive?: boolean;
+  intensity?: number;
+  onIntensityChange?: (val: number) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
 }
 
 interface PresetsPanelProps {
-  activePanel: Panel | null;
-  adjustments: Adjustments;
-  selectedImage: SelectedImage;
-  setAdjustments(adjustments: Partial<Adjustments>): void;
   onNavigateToCommunity(): void;
 }
 
@@ -93,21 +108,199 @@ const itemVariants = {
   exit: { opacity: 0, x: -15, transition: { duration: 0.2 } },
 };
 
-function PresetItemDisplay({ preset, previewUrl, isGeneratingPreviews }: PresetItemDisplayProps) {
+const evaluateCurveY = (curve: Array<{ x: number; y: number }>, targetX: number): number => {
+  const len = curve.length;
+  if (len === 1) return curve[0].y;
+  if (targetX <= curve[0].x) return curve[0].y;
+  if (targetX >= curve[len - 1].x) return curve[len - 1].y;
+
+  for (let i = 0; i < len - 1; i++) {
+    const p2 = curve[i + 1];
+    if (targetX <= p2.x) {
+      const p1 = curve[i];
+      const range = p2.x - p1.x;
+      return range === 0 ? p1.y : p1.y + ((targetX - p1.x) / range) * (p2.y - p1.y);
+    }
+  }
+  return targetX;
+};
+
+const mixAdjustments = (presetObj: any, intensity: number, initialObj: any = INITIAL_ADJUSTMENTS): any => {
+  const fraction = intensity / 100;
+
+  if (fraction === 1) return { ...presetObj };
+  if (fraction === 0) return { ...initialObj };
+
+  const result: any = {};
+  const keys = Object.keys(presetObj);
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const presetVal = presetObj[key];
+    const initialVal = initialObj[key] !== undefined ? initialObj[key] : (INITIAL_ADJUSTMENTS as any)[key];
+
+    if (typeof presetVal === 'number') {
+      result[key] = typeof initialVal === 'number' ? initialVal + (presetVal - initialVal) * fraction : presetVal;
+    } else if (Array.isArray(presetVal)) {
+      if (!Array.isArray(initialVal)) {
+        result[key] = fraction > 0 ? presetVal : initialVal;
+        continue;
+      }
+
+      if (presetVal.length > 0 && presetVal[0].x !== undefined && presetVal[0].y !== undefined) {
+        const xVals: number[] = [];
+        let p1 = 0,
+          p2 = 0;
+        const len1 = initialVal.length,
+          len2 = presetVal.length;
+
+        while (p1 < len1 && p2 < len2) {
+          const x1 = initialVal[p1].x,
+            x2 = presetVal[p2].x;
+          if (x1 < x2) {
+            xVals.push(x1);
+            p1++;
+          } else if (x1 > x2) {
+            xVals.push(x2);
+            p2++;
+          } else {
+            xVals.push(x1);
+            p1++;
+            p2++;
+          }
+        }
+        while (p1 < len1) xVals.push(initialVal[p1++].x);
+        while (p2 < len2) xVals.push(presetVal[p2++].x);
+
+        const newCurve = new Array(xVals.length);
+
+        for (let j = 0; j < xVals.length; j++) {
+          const x = xVals[j];
+          const yInit = evaluateCurveY(initialVal, x);
+          const yPreset = evaluateCurveY(presetVal, x);
+          const yInterp = yInit + (yPreset - yInit) * fraction;
+
+          newCurve[j] = {
+            x,
+            y: yInterp < 0 ? 0 : yInterp > 255 ? 255 : yInterp,
+          };
+        }
+        result[key] = newCurve;
+      } else {
+        result[key] = fraction > 0 ? presetVal : initialVal;
+      }
+    } else if (presetVal !== null && typeof presetVal === 'object') {
+      result[key] = mixAdjustments(presetVal, intensity, initialVal || {});
+    } else {
+      result[key] = fraction > 0 ? presetVal : initialVal;
+    }
+  }
+  return result;
+};
+
+function PresetItemDisplay({
+  preset,
+  previewUrl,
+  isGeneratingPreviews,
+  isActive,
+  intensity,
+  onIntensityChange,
+  onDragStateChange,
+}: PresetItemDisplayProps) {
+  const { t } = useTranslation();
+  const geometryKeys = ADJUSTMENT_GROUPS.geometry.flatMap((g) => g.keys);
+
+  const supportsMasks = preset.includeMasks ?? (preset.adjustments?.masks && preset.adjustments.masks.length > 0);
+  const supportsGeometry =
+    preset.includeCropTransform ?? geometryKeys.some((key) => preset.adjustments?.[key] !== undefined);
+  const isTool = preset.presetType === 'tool';
+  const tooltipContent = useMemo(() => {
+    const features = [];
+    if (supportsMasks) features.push(t('editor.presets.supports.masks'));
+    if (supportsGeometry) features.push(t('editor.presets.supports.cropTransform'));
+
+    if (features.length === 0) return undefined;
+    return t('editor.presets.supports.label', { features: features.join(' + ') });
+  }, [supportsMasks, supportsGeometry, t]);
+
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-surface cursor-grabbing">
-      <div className="w-20 h-14 bg-bg-tertiary rounded-md flex items-center justify-center flex-shrink-0">
-        {isGeneratingPreviews && !previewUrl ? (
-          <Loader2 size={20} className="animate-spin text-text-secondary" />
-        ) : previewUrl ? (
-          <img src={previewUrl} alt={`${preset.name} preview`} className="w-full h-full object-cover rounded-md" />
-        ) : (
-          <Loader2 size={20} className="animate-spin text-text-secondary" />
+    <div className="flex flex-col p-2 rounded-lg bg-surface cursor-grabbing">
+      <div className="flex items-center gap-3">
+        <div
+          className="w-20 h-14 bg-bg-tertiary rounded-md flex items-center justify-center shrink-0 relative overflow-hidden"
+          data-tooltip={tooltipContent}
+        >
+          {isGeneratingPreviews && !previewUrl ? (
+            <Loader2 size={20} className="animate-spin text-text-secondary" />
+          ) : previewUrl ? (
+            <img
+              src={previewUrl}
+              alt={`${preset.name} preview`}
+              className="w-full h-full object-cover rounded-md pointer-events-none"
+            />
+          ) : (
+            <Loader2 size={20} className="animate-spin text-text-secondary" />
+          )}
+
+          {(supportsMasks || supportsGeometry) && (
+            <>
+              <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-linear-to-bl from-black/30 via-black/0 to-transparent pointer-events-none z-0" />
+
+              <div className="absolute top-1 right-1 bg-primary rounded-full px-1.5 py-0.5 flex items-center gap-1.5 backdrop-blur-xs shadow-xs z-10 pointer-events-none">
+                {supportsMasks && <Layers size={11} className="text-white" />}
+                {supportsGeometry && <Crop size={11} className="text-white" />}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="grow min-w-0 flex flex-col justify-center">
+          <Text color={TextColors.primary} weight={TextWeights.medium} className="truncate">
+            {preset.name}
+          </Text>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {isTool ? (
+              <Wrench size={12} className="text-text-secondary" />
+            ) : (
+              <Palette size={12} className="text-text-secondary" />
+            )}
+            <Text
+              variant={TextVariants.small}
+              color={TextColors.secondary}
+              className="text-[10px] uppercase tracking-wider"
+            >
+              {isTool ? t('editor.presets.types.tool') : t('editor.presets.types.style')}
+            </Text>
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {isActive && onIntensityChange && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            className="w-full cursor-auto overflow-hidden"
+            onClick={(e: any) => e.stopPropagation()}
+            onPointerDown={(e: any) => e.stopPropagation()}
+          >
+            <div className="mt-3 px-1 pb-1">
+              <Slider
+                min={0}
+                max={200}
+                defaultValue={100}
+                value={intensity ?? 100}
+                onChange={(e: any) => onIntensityChange(Number(e.target.value))}
+                onDragStateChange={onDragStateChange}
+                label={t('editor.presets.amount')}
+                step={1}
+              />
+            </div>
+          </motion.div>
         )}
-      </div>
-      <div className="flex-grow min-w-0">
-        <p className="font-medium truncate">{preset.name}</p>
-      </div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -118,8 +311,12 @@ function FolderItemDisplay({ folder }: FolderProps) {
       <div className="p-1">
         <FolderIcon size={18} />
       </div>
-      <p className="font-normal flex-grow truncate select-none">{folder.name}</p>
-      <span className="text-text-secondary text-sm ml-auto pr-1">{folder.children?.length || 0}</span>
+      <Text color={TextColors.primary} weight={TextWeights.medium} className="grow truncate select-none">
+        {folder.name}
+      </Text>
+      <Text as="span" weight={TextWeights.medium} className="ml-auto pr-1">
+        {folder.children?.length || 0}
+      </Text>
     </div>
   );
 }
@@ -130,6 +327,10 @@ function DraggablePresetItem({
   onContextMenu,
   previewUrl,
   isGeneratingPreviews,
+  isActive,
+  intensity,
+  onIntensityChange,
+  onDragStateChange,
 }: DraggablePresetItemProps) {
   const {
     attributes,
@@ -169,9 +370,23 @@ function DraggablePresetItem({
       ref={setCombinedRef}
       style={style}
     >
-      <div {...listeners} {...attributes} className="cursor-grab">
-        <PresetItemDisplay preset={preset} previewUrl={previewUrl} isGeneratingPreviews={isGeneratingPreviews} />
-      </div>
+      <motion.div
+        {...listeners}
+        {...attributes}
+        className="cursor-grab"
+        whileTap={{ scale: isActive ? 1 : 0.98 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+      >
+        <PresetItemDisplay
+          preset={preset}
+          previewUrl={previewUrl}
+          isGeneratingPreviews={isGeneratingPreviews}
+          isActive={isActive}
+          intensity={intensity}
+          onIntensityChange={onIntensityChange}
+          onDragStateChange={onDragStateChange}
+        />
+      </motion.div>
     </div>
   );
 }
@@ -209,7 +424,7 @@ function DroppableFolderItem({ folder, onContextMenu, children, onToggle, isExpa
         className="flex items-center gap-2 p-2 rounded-lg bg-surface cursor-pointer"
         onContextMenu={(e: any) => onContextMenu(e, { folder })}
       >
-        <div className="p-1 cursor-grab" {...listeners} {...attributes}>
+        <div className="p-1 cursor-grab" ref={setDraggableNodeRef} {...listeners} {...attributes}>
           {isExpanded ? (
             <FolderOpen
               className="text-primary"
@@ -230,16 +445,23 @@ function DroppableFolderItem({ folder, onContextMenu, children, onToggle, isExpa
             />
           )}
         </div>
-        <p className="font-normal flex-grow truncate select-none" onClick={() => onToggle(folder.id)}>
+        <Text
+          color={TextColors.primary}
+          weight={TextWeights.medium}
+          className="grow truncate select-none"
+          onClick={() => onToggle(folder.id)}
+        >
           {folder.name}
-        </p>
-        <span className="text-text-secondary text-sm ml-auto pr-1">{folder.children?.length || 0}</span>
+        </Text>
+        <Text as="span" variant={TextVariants.small} color={TextColors.secondary} className="ml-auto pr-1">
+          {folder.children?.length || 0}
+        </Text>
       </div>
       <AnimatePresence>
         {isExpanded && hasChildren && (
           <motion.div
             animate={{ height: 'auto', opacity: 1 }}
-            className="pl-6 space-y-2 overflow-hidden pt-2"
+            className="ml-5 pl-4 border-l-[1.5px] border-border-color/50 space-y-2 overflow-hidden pt-2"
             exit={{ height: 0, opacity: 0 }}
             initial={{ height: 0, opacity: 0 }}
           >
@@ -251,16 +473,18 @@ function DroppableFolderItem({ folder, onContextMenu, children, onToggle, isExpa
   );
 }
 
-export default function PresetsPanel({
-  activePanel,
-  adjustments,
-  selectedImage,
-  setAdjustments,
-  onNavigateToCommunity,
-}: PresetsPanelProps) {
+export default function PresetsPanel({ onNavigateToCommunity }: PresetsPanelProps) {
+  const { t } = useTranslation();
+  const selectedImage = useEditorStore((s) => s.selectedImage);
+  const adjustments = useEditorStore((s) => s.adjustments);
+  const activePanel = useUIStore((s) => s.activeRightPanel);
+  const setEditor = useEditorStore((s) => s.setEditor);
+  const { setAdjustments } = useEditorActions();
+
   const {
     addFolder,
     addPreset,
+    configurePreset,
     deleteItem,
     duplicatePreset,
     exportPresetsToFile,
@@ -268,29 +492,41 @@ export default function PresetsPanel({
     importLegacyPresetsFromFile,
     isLoading,
     movePreset,
+    overwritePreset,
     presets,
     renameItem,
     reorderItems,
     sortAllPresetsAlphabetically,
-    updatePreset,
   } = usePresets(adjustments);
   const { showContextMenu } = useContextMenu();
   const [previews, setPreviews] = useState<Record<string, string | null>>({});
   const [isGeneratingPreviews, setIsGeneratingPreviews] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [configureModalState, setConfigureModalState] = useState<ModalState>({ isOpen: false, preset: null });
   const [isAddFolderModalOpen, setIsAddFolderModalOpen] = useState(false);
-  const [renamePresetState, setRenamePresetState] = useState<ModalState>({ isOpen: false, preset: null });
   const [renameFolderState, setRenameFolderState] = useState<FolderState>({ isOpen: false, folder: null });
   const [expandedFolders, setExpandedFolders] = useState(new Set<string>());
   const [activeItem, setActiveItem] = useState<any>(null);
   const [folderPreviewsGenerated, setFolderPreviewsGenerated] = useState<Set<string>>(new Set());
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [presetIntensity, setPresetIntensity] = useState<number>(100);
+  const [baseAdjustments, setBaseAdjustments] = useState<Adjustments | null>(null);
+
   const previewsRef = useRef(previews);
   previewsRef.current = previews;
   const expandedFoldersRef = useRef(expandedFolders);
   expandedFoldersRef.current = expandedFolders;
   const previewQueue = useRef<Array<any>>([]);
   const isProcessingQueue = useRef(false);
+  const currentImagePathRef = useRef<string | null>(selectedImage?.path || null);
+
+  const handleDragStateChange = useCallback(
+    (isDragging: boolean) => {
+      setEditor({ isSliderDragging: isDragging });
+    },
+    [setEditor],
+  );
 
   useEffect(() => {
     const allPresetIds = new Set();
@@ -381,8 +617,18 @@ export default function PresetsPanel({
     isProcessingQueue.current = true;
     setIsGeneratingPreviews(true);
 
+    const pathAtStart = currentImagePathRef.current;
+
     while (previewQueue.current.length > 0) {
-      const { preset, folderId } = previewQueue.current.shift();
+      if (pathAtStart !== currentImagePathRef.current) {
+        previewQueue.current = [];
+        break;
+      }
+
+      const item = previewQueue.current.shift();
+      if (!item) break;
+      const { preset, folderId } = item;
+
       if (folderId && !expandedFoldersRef.current.has(folderId)) {
         continue;
       }
@@ -396,7 +642,13 @@ export default function PresetsPanel({
         const imageData: Uint8Array = await invoke(Invokes.GeneratePresetPreview, {
           jsAdjustments: fullPresetAdjustments,
         });
-        const blob = new Blob([imageData], { type: 'image/jpeg' });
+
+        if (pathAtStart !== currentImagePathRef.current) {
+          previewQueue.current = [];
+          break;
+        }
+
+        const blob = new Blob([new Uint8Array(imageData)], { type: 'image/jpeg' });
         const url = URL.createObjectURL(blob);
         setPreviews((prev: Record<string, string | null>) => {
           const oldUrl = prev[preset.id];
@@ -407,12 +659,13 @@ export default function PresetsPanel({
         });
       } catch (error) {
         console.error(`Failed to generate preview for preset ${preset.name}:`, error);
-        setPreviews((prev: Record<string, string | null>) => ({ ...prev, [preset.id]: null }));
+        if (pathAtStart === currentImagePathRef.current) {
+          setPreviews((prev: Record<string, string | null>) => ({ ...prev, [preset.id]: null }));
+        }
       }
     }
 
     isProcessingQueue.current = false;
-
     setIsGeneratingPreviews(false);
   }, []);
 
@@ -451,12 +704,17 @@ export default function PresetsPanel({
       }
 
       setIsGeneratingPreviews(true);
+      const pathAtStart = currentImagePathRef.current;
+
       try {
         const fullPresetAdjustments: any = { ...INITIAL_ADJUSTMENTS, ...preset.adjustments };
         const imageData: Uint8Array = await invoke(Invokes.GeneratePresetPreview, {
           jsAdjustments: fullPresetAdjustments,
         });
-        const blob = new Blob([imageData], { type: 'image/jpeg' });
+
+        if (pathAtStart !== currentImagePathRef.current) return;
+
+        const blob = new Blob([new Uint8Array(imageData)], { type: 'image/jpeg' });
         const url = URL.createObjectURL(blob);
 
         setPreviews((prev: Record<string, string | null>) => {
@@ -468,9 +726,13 @@ export default function PresetsPanel({
         });
       } catch (error) {
         console.error(`Failed to generate preview for preset ${preset.name}:`, error);
-        setPreviews((prev: Record<string, string | null>) => ({ ...prev, [preset.id]: null }));
+        if (pathAtStart === currentImagePathRef.current) {
+          setPreviews((prev: Record<string, string | null>) => ({ ...prev, [preset.id]: null }));
+        }
       } finally {
-        setIsGeneratingPreviews(false);
+        if (pathAtStart === currentImagePathRef.current) {
+          setIsGeneratingPreviews(false);
+        }
       }
     },
     [selectedImage?.isReady],
@@ -503,7 +765,6 @@ export default function PresetsPanel({
 
     const rootPresets = presets.filter((item: UserPreset) => item.preset).map((item) => item.preset);
     const presetsToGenerate: any = rootPresets.filter((p: any) => !previewsRef.current[p.id]);
-    console.log(presetsToGenerate);
 
     if (presetsToGenerate.length > 0) {
       enqueuePreviews(presetsToGenerate);
@@ -511,19 +772,39 @@ export default function PresetsPanel({
   }, [selectedImage?.isReady, presets, enqueuePreviews]);
 
   useEffect(() => {
+    const isPathChanged = selectedImage?.path !== currentImagePathRef.current;
+
+    if (isPathChanged || !selectedImage?.isReady) {
+      Object.values(previewsRef.current).forEach((url) => {
+        if (url && url.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+
+      previewsRef.current = {};
+      previewQueue.current = [];
+
+      setPreviews({});
+      setFolderPreviewsGenerated(new Set<string>());
+
+      setActivePresetId(null);
+      setBaseAdjustments(null);
+
+      if (isPathChanged && selectedImage?.path) {
+        currentImagePathRef.current = selectedImage.path;
+      }
+    }
+
     if (activePanel === Panel.Presets && selectedImage?.isReady && presets.length > 0) {
       generateRootPreviews();
       expandedFolders.forEach((folderId: string) => {
         generateFolderPreviews(folderId);
       });
-    } else if (!selectedImage?.isReady) {
-      setPreviews({});
-      setFolderPreviewsGenerated(new Set<string>());
-      previewQueue.current = [];
     }
   }, [
     activePanel,
     selectedImage?.isReady,
+    selectedImage?.path,
     presets.length,
     generateRootPreviews,
     generateFolderPreviews,
@@ -531,30 +812,66 @@ export default function PresetsPanel({
   ]);
 
   const handleApplyPreset = (preset: Preset) => {
+    if (activePresetId === preset.id) {
+      setActivePresetId(null);
+      if (baseAdjustments) {
+        setAdjustments(baseAdjustments);
+      }
+      setBaseAdjustments(null);
+      return;
+    }
+
+    setBaseAdjustments(adjustments);
+    setActivePresetId(preset.id);
+    setPresetIntensity(100);
+
     setAdjustments((prevAdjustments: Adjustments) => ({
       ...prevAdjustments,
       ...preset.adjustments,
     }));
   };
 
-  const handleSaveCurrentSettingsAsPreset = async (name: string) => {
-    const newPreset = addPreset(name);
-    setIsAddModalOpen(false);
-    if (newPreset) {
-      await generateSinglePreview(newPreset);
+  const handleIntensityChange = useCallback(
+    (preset: Preset, intensity: number) => {
+      setPresetIntensity(intensity);
+      const mixed = mixAdjustments(preset.adjustments, intensity);
+      setAdjustments((prev: Adjustments) => ({
+        ...prev,
+        ...mixed,
+      }));
+    },
+    [setAdjustments],
+  );
+
+  const handleSaveConfiguredPreset = async (
+    name: string,
+    includeMasks: boolean,
+    includeCropTransform: boolean,
+    presetType: 'tool' | 'style',
+  ) => {
+    if (configureModalState.preset) {
+      const updated = configurePreset(
+        configureModalState.preset.id,
+        name,
+        includeMasks,
+        includeCropTransform,
+        presetType,
+      );
+      if (updated) {
+        await generateSinglePreview(updated);
+      }
+    } else {
+      const newPreset = addPreset(name, null, includeMasks, includeCropTransform, presetType);
+      if (newPreset) {
+        await generateSinglePreview(newPreset);
+      }
     }
+    setConfigureModalState({ isOpen: false, preset: null });
   };
 
   const handleAddFolder = (name: string) => {
     addFolder(name);
     setIsAddFolderModalOpen(false);
-  };
-
-  const handleRenamePresetSave = (newName: string) => {
-    if (renamePresetState.preset) {
-      renameItem(renamePresetState.preset.id ?? null, newName);
-    }
-    setRenamePresetState({ isOpen: false, preset: null });
   };
 
   const handleRenameFolderSave = (newName: string) => {
@@ -598,7 +915,6 @@ export default function PresetsPanel({
     const activeId = active.id;
     const activeParentId = itemParentMap.get(activeId);
     const activeType = active.data.current?.type;
-    console.log('Activetype: ', activeType);
 
     if (!over) {
       if (activeParentId !== null) {
@@ -645,16 +961,17 @@ export default function PresetsPanel({
     try {
       const selectedPath = await openDialog({
         filters: [
-          { name: 'All Preset Files', extensions: ['rrpreset', 'xmp', 'lrtemplate'] },
-          { name: 'RapidRAW Preset', extensions: ['rrpreset'] },
-          { name: 'Legacy Preset', extensions: ['xmp', 'lrtemplate'] },
+          { name: t('editor.presets.dialog.allPresetFiles'), extensions: ['rrpreset', 'xmp', 'lrtemplate'] },
+          { name: t('editor.presets.dialog.rapidRawPreset'), extensions: ['rrpreset'] },
+          { name: t('editor.presets.dialog.legacyPreset'), extensions: ['xmp', 'lrtemplate'] },
         ],
         multiple: false,
-        title: 'Import Presets',
+        title: t('editor.presets.dialog.importPresetsTitle'),
       });
 
       if (typeof selectedPath === 'string') {
-        const isLegacy = selectedPath.toLowerCase().endsWith('.xmp') || selectedPath.toLowerCase().endsWith('.lrtemplate');
+        const isLegacy =
+          selectedPath.toLowerCase().endsWith('.xmp') || selectedPath.toLowerCase().endsWith('.lrtemplate');
 
         if (isLegacy) {
           await importLegacyPresetsFromFile(selectedPath);
@@ -678,8 +995,10 @@ export default function PresetsPanel({
     try {
       const filePath = await saveDialog({
         defaultPath: `${name}.rrpreset`.replace(/[<>:"/\\|?*]/g, '_'),
-        filters: [{ name: 'Preset File', extensions: ['rrpreset'] }],
-        title: `Export ${isFolder ? 'Folder' : 'Preset'}`,
+        filters: [{ name: t('editor.presets.dialog.presetFile'), extensions: ['rrpreset'] }],
+        title: t('editor.presets.dialog.exportTitle', {
+          type: isFolder ? t('editor.presets.types.folder') : t('editor.presets.types.preset'),
+        }),
       });
 
       if (filePath) {
@@ -697,8 +1016,8 @@ export default function PresetsPanel({
     try {
       const filePath = await saveDialog({
         defaultPath: 'all_presets.rrpreset',
-        filters: [{ name: 'Preset File', extensions: ['rrpreset'] }],
-        title: 'Export All Presets',
+        filters: [{ name: t('editor.presets.dialog.presetFile'), extensions: ['rrpreset'] }],
+        title: t('editor.presets.dialog.exportAllTitle'),
       });
 
       if (filePath) {
@@ -721,44 +1040,43 @@ export default function PresetsPanel({
       options = [
         {
           icon: Edit,
-          label: 'Rename Folder',
+          label: t('editor.presets.menu.renameFolder'),
           onClick: () => setRenameFolderState({ isOpen: true, folder: data }),
         },
         {
           icon: FileDown,
-          label: 'Export Folder',
+          label: t('editor.presets.menu.exportFolder'),
           onClick: () => handleExport(item),
         },
         { type: OPTION_SEPARATOR },
         {
           icon: Trash2,
           isDestructive: true,
-          label: 'Delete Folder',
+          label: t('editor.presets.menu.deleteFolder'),
           onClick: () => handleDeleteItem(data?.id ?? null, true),
         },
       ];
     } else {
       options = [
         {
-          icon: RefreshCw,
-          label: 'Overwrite Preset',
-
+          icon: Save,
+          label: t('editor.presets.menu.overwrite'),
           onClick: async () => {
-            const updated = updatePreset(data?.id ?? null);
+            const updated = overwritePreset(data?.id ?? null);
             if (updated) {
               await generateSinglePreview(updated);
             }
           },
         },
+        {
+          icon: Settings2,
+          label: t('editor.presets.menu.configurePreset'),
+          onClick: () => setConfigureModalState({ isOpen: true, preset: data as Preset }),
+        },
         { type: OPTION_SEPARATOR },
         {
-          icon: Edit,
-          label: 'Rename Preset',
-          onClick: () => setRenamePresetState({ isOpen: true, preset: data ?? null }),
-        },
-        {
           icon: CopyPlus,
-          label: 'Duplicate Preset',
+          label: t('editor.presets.menu.duplicatePreset'),
           onClick: async () => {
             const duplicated = duplicatePreset(data?.id ?? null);
             if (duplicated) {
@@ -768,14 +1086,14 @@ export default function PresetsPanel({
         },
         {
           icon: FileDown,
-          label: 'Export Preset',
+          label: t('editor.presets.menu.exportPreset'),
           onClick: () => handleExport(item),
         },
         { type: OPTION_SEPARATOR },
         {
           icon: Trash2,
           isDestructive: true,
-          label: 'Delete Preset',
+          label: t('editor.presets.menu.deletePreset'),
           onClick: () => handleDeleteItem(data?.id ?? null, false),
         },
       ];
@@ -792,19 +1110,19 @@ export default function PresetsPanel({
     const options = [
       {
         icon: Plus,
-        label: 'New Preset',
-        onClick: () => setIsAddModalOpen(true),
+        label: t('editor.presets.menu.newPreset'),
+        onClick: () => setConfigureModalState({ isOpen: true, preset: null }),
       },
       {
         icon: FolderPlus,
-        label: 'New Folder',
+        label: t('editor.presets.menu.newFolder'),
         onClick: () => setIsAddFolderModalOpen(true),
       },
       { type: OPTION_SEPARATOR },
       {
         disabled: presets.length === 0,
         icon: SortAsc,
-        label: 'Sort All Alphabetically',
+        label: t('editor.presets.menu.sortAll'),
         onClick: sortAllPresetsAlphabetically,
       },
     ];
@@ -817,13 +1135,13 @@ export default function PresetsPanel({
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col h-full">
-        <div className="p-4 flex justify-between items-center flex-shrink-0 border-b border-surface">
-          <h2 className="text-xl font-bold text-primary text-shadow-shiny">Presets</h2>
+        <div className="p-4 flex justify-between items-center shrink-0 border-b border-surface">
+          <Text variant={TextVariants.title}>{t('editor.presets.title')}</Text>
           <div className="flex items-center gap-1">
             <button
               className="p-2 rounded-full hover:bg-surface transition-colors"
               onClick={onNavigateToCommunity}
-              title="Explore Community Presets"
+              data-tooltip={t('editor.presets.tooltips.explore')}
             >
               <Users size={18} />
             </button>
@@ -831,7 +1149,7 @@ export default function PresetsPanel({
               className="p-2 rounded-full hover:bg-surface transition-colors"
               disabled={isLoading}
               onClick={handleImportPresets}
-              title="Import presets from .rrpreset file"
+              data-tooltip={t('editor.presets.tooltips.import')}
             >
               <FileUp size={18} />
             </button>
@@ -839,15 +1157,15 @@ export default function PresetsPanel({
               className="p-2 rounded-full hover:bg-surface transition-colors"
               disabled={presets.length === 0 || isLoading}
               onClick={handleExportAllPresets}
-              title="Export all presets to .rrpreset file"
+              data-tooltip={t('editor.presets.tooltips.export')}
             >
               <FileDown size={18} />
             </button>
             <button
               className="p-2 rounded-full hover:bg-surface transition-colors"
               disabled={isLoading}
-              onClick={() => setIsAddModalOpen(true)}
-              title="Save current settings as new preset"
+              onClick={() => setConfigureModalState({ isOpen: true, preset: null })}
+              data-tooltip={t('editor.presets.tooltips.saveNew')}
             >
               <Plus size={18} />
             </button>
@@ -855,25 +1173,29 @@ export default function PresetsPanel({
         </div>
 
         <div
-          className={`flex-grow overflow-y-auto p-4 space-y-2 rounded-lg transition-colors ${
+          className={`grow overflow-y-auto p-4 space-y-2 rounded-lg transition-colors ${
             isRootOver ? 'bg-surface-hover' : ''
           }`}
           onContextMenu={handleBackgroundContextMenu}
           ref={setRootNodeRef}
         >
           {isLoading && presets.length === 0 && (
-            <div className="text-center text-text-secondary py-2">
-              <Loader2 size={16} className="animate-spin inline-block mr-2" /> Loading Presets...
-            </div>
+            <Text
+              as="div"
+              variant={TextVariants.heading}
+              color={TextColors.secondary}
+              weight={TextWeights.normal}
+              className="text-center mt-4"
+            >
+              <Loader2 size={14} className="animate-spin inline-block mr-2" /> {t('editor.presets.status.loading')}
+            </Text>
           )}
           {!isLoading && presets.length === 0 ? (
-            <div className="text-center text-text-secondary py-8 flex flex-col items-center gap-4">
-              <p className="max-w-xs">
-                No presets saved yet. Create your own, import from a file, or explore community presets.
-              </p>
+            <div className="text-center text-text-secondary flex flex-col items-center gap-4 pt-4">
+              <Text className="max-w-xs">{t('editor.presets.status.empty')}</Text>
               <Button variant="secondary" onClick={onNavigateToCommunity}>
                 <Users size={16} className="mr-2" />
-                Get Community Presets
+                {t('editor.presets.status.getCommunity')}
               </Button>
             </div>
           ) : (
@@ -912,6 +1234,10 @@ export default function PresetsPanel({
                                   onContextMenu={(e: any) => handleContextMenu(e, { preset })}
                                   preset={preset}
                                   previewUrl={previews[preset.id] || ''}
+                                  isActive={preset.id === activePresetId}
+                                  intensity={preset.id === activePresetId ? presetIntensity : 100}
+                                  onIntensityChange={(val) => handleIntensityChange(preset, val)}
+                                  onDragStateChange={handleDragStateChange}
                                 />
                               </motion.div>
                             ))}
@@ -939,6 +1265,9 @@ export default function PresetsPanel({
                         onContextMenu={(e: any) => handleContextMenu(e, item)}
                         preset={item.preset}
                         previewUrl={(item.preset?.id ? previews[item.preset.id] : '') || ''}
+                        isActive={item.preset?.id === activePresetId}
+                        intensity={item.preset?.id === activePresetId ? presetIntensity : 100}
+                        onIntensityChange={(val) => handleIntensityChange(item.preset as Preset, val)}
                       />
                     </motion.div>
                   ))}
@@ -947,21 +1276,16 @@ export default function PresetsPanel({
           )}
         </div>
 
-        <AddPresetModal
-          isOpen={isAddModalOpen}
-          onClose={() => setIsAddModalOpen(false)}
-          onSave={handleSaveCurrentSettingsAsPreset}
+        <ConfigurePresetModal
+          isOpen={configureModalState.isOpen}
+          initialPreset={configureModalState.preset}
+          onClose={() => setConfigureModalState({ isOpen: false, preset: null })}
+          onSave={handleSaveConfiguredPreset}
         />
         <CreateFolderModal
           isOpen={isAddFolderModalOpen}
           onClose={() => setIsAddFolderModalOpen(false)}
           onSave={handleAddFolder}
-        />
-        <RenamePresetModal
-          currentName={renamePresetState.preset?.name}
-          isOpen={renamePresetState.isOpen}
-          onClose={() => setRenamePresetState({ isOpen: false, preset: null })}
-          onSave={handleRenamePresetSave}
         />
         <RenameFolderModal
           currentName={renameFolderState.folder?.name}

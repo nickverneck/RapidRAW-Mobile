@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Invokes } from '../components/ui/AppProperties';
+import Text from '../components/ui/Text';
+import { TextVariants } from '../types/typography';
 
 interface TaggingSubMenuProps {
   paths: string[];
@@ -26,6 +29,7 @@ export default function TaggingSubMenu({
   appSettings,
   hideContextMenu,
 }: TaggingSubMenuProps) {
+  const { t } = useTranslation();
   const [tags, setTags] = useState<{ tag: string; isUser: boolean }[]>(initialTags);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +83,11 @@ export default function TaggingSubMenu({
   const shortcuts = appSettings?.taggingShortcuts || [];
 
   return (
-    <div className="bg-surface/90 p-2 w-64 text-text-primary rounded-lg" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="bg-surface/95 p-2 w-64 text-text-primary rounded-lg"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       <div className="mb-2">
         <div className="flex flex-wrap gap-1 p-1 bg-surface rounded-md min-h-[32px] items-center">
           <AnimatePresence>
@@ -93,8 +101,8 @@ export default function TaggingSubMenu({
                   animate="visible"
                   exit="exit"
                   onClick={() => handleRemoveTag(tagItem)}
-                  title={`Remove tag "${tagItem.tag}"`}
-                  className="flex items-center gap-1 bg-bg-primary text-text-primary text-xs font-medium px-2 py-1 rounded group cursor-pointer"
+                  data-tooltip={t('menus.tagging.removeTooltip', { tag: tagItem.tag })}
+                  className="flex items-center gap-1 bg-bg-primary text-text-primary text-xs font-medium px-2 py-1 rounded-sm group cursor-pointer"
                 >
                   <span>{tagItem.tag}</span>
                   <span className="rounded-full group-hover:bg-black/20 p-0.5 transition-colors">
@@ -109,9 +117,11 @@ export default function TaggingSubMenu({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="text-xs text-text-secondary italic p-1 select-none"
+                className="p-1 select-none"
               >
-                No tags added
+                <Text variant={TextVariants.small} className="italic">
+                  {t('menus.tagging.noTags')}
+                </Text>
               </motion.span>
             )}
           </AnimatePresence>
@@ -125,13 +135,13 @@ export default function TaggingSubMenu({
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="Add a tag..."
-          className="w-full bg-surface border border-border-color rounded-md pl-2 pr-8 py-1.5 text-sm focus:outline-none"
+          placeholder={t('menus.tagging.placeholder')}
+          className="w-full bg-surface border border-border-color rounded-md pl-2 pr-8 py-1.5 text-sm focus:outline-hidden"
         />
         <button
           onClick={() => handleAddTag(inputValue)}
           className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full text-text-secondary hover:text-text-primary hover:bg-surface"
-          title="Add tag"
+          data-tooltip={t('menus.tagging.addTagTooltip')}
         >
           <Plus size={16} />
         </button>
@@ -139,13 +149,13 @@ export default function TaggingSubMenu({
 
       {shortcuts.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-text-primary px-1 py-1">SHORTCUTS</p>
+          <p className="text-xs font-semibold text-text-primary px-1 py-1">{t('menus.tagging.shortcutsHeading')}</p>
           <div className="flex flex-wrap gap-1">
             {shortcuts.map((shortcut: string) => (
               <button
                 key={shortcut}
                 onClick={() => handleAddTag(shortcut)}
-                className="bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary text-xs font-medium px-2 py-1 rounded"
+                className="bg-surface text-text-secondary hover:bg-card-active hover:text-text-primary text-xs font-medium px-2 py-1 rounded-sm"
               >
                 {shortcut}
               </button>

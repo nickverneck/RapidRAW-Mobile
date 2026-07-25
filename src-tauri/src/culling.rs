@@ -1,8 +1,10 @@
+use crate::app_settings::load_settings;
 use image::{GenericImageView, GrayImage, imageops};
 use image_hasher::{HashAlg, HasherConfig};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::{AppHandle, Emitter};
@@ -87,12 +89,12 @@ fn calculate_laplacian_variance(image: &GrayImage) -> f64 {
         return 0.0;
     }
     let mean = sum / laplacian_values.len() as f64;
-    let variance = laplacian_values
+
+    laplacian_values
         .iter()
         .map(|v| (v - mean).powi(2))
         .sum::<f64>()
-        / laplacian_values.len() as f64;
-    variance
+        / laplacian_values.len() as f64
 }
 
 fn calculate_exposure_metric(image: &GrayImage) -> f64 {
@@ -120,11 +122,20 @@ fn calculate_exposure_metric(image: &GrayImage) -> f64 {
     (1.0f64 - penalty).max(0.0)
 }
 
-fn analyze_image(path: &str, hasher: &image_hasher::Hasher) -> Result<ImageAnalysisData, String> {
-    const ANALYSIS_DIM: u32 = 512;
+fn analyze_image(
+    path: &str,
+    hasher: &image_hasher::Hasher,
+    settings: &crate::app_settings::AppSettings,
+) -> Result<ImageAnalysisData, String> {
+    const ANALYSIS_DIM: u32 = 720; // FIXME: How should we calculate good focus if it's downscaled?!?
+
+    if crate::file_management::is_cloud_placeholder(Path::new(path)) {
+        return Err(format!("'{}' is stored in iCloud and not downloaded", path));
+    }
+
     let file_bytes = std::fs::read(path).map_err(|e| e.to_string())?;
 
-    let img = image_loader::load_base_image_from_bytes(&file_bytes, path, false, 2.5, None)
+    let img = image_loader::load_base_image_from_bytes(&file_bytes, path, true, settings, None)
         .map_err(|e| e.to_string())?;
 
     let (width, height) = img.dimensions();
@@ -178,6 +189,8 @@ pub async fn cull_images(
         return Ok(CullingSuggestions::default());
     }
 
+    let app_settings = load_settings(app_handle.clone()).unwrap_or_default();
+
     let total_count = paths.len();
     let completed_count = Arc::new(AtomicUsize::new(0));
     let _ = app_handle.emit("culling-start", total_count);
@@ -199,7 +212,8 @@ pub async fn cull_images(
                     stage: "Analyzing images...".to_string(),
                 },
             );
-            analyze_image(path, &hasher).map_err(|e| (path.to_string(), e))
+
+            analyze_image(path, &hasher, &app_settings).map_err(|e| (path.to_string(), e))
         })
         .collect();
 
